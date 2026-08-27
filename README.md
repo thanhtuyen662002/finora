@@ -6,27 +6,26 @@ Its goal is to provide a lightweight **Personal Finance OS** with accurate finan
 
 ## Status
 
-Finora has completed **Phase 0 — Foundation**.
+Finora has completed **Phase 0 — Foundation (with Corrective Pass)**.
 
 See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the authoritative progress ledger.
 
 ## Planned Stack
 
-- Next.js App Router
-- React
-- TypeScript
-- Tailwind CSS
-- shadcn/ui
-- Supabase PostgreSQL/Auth/Storage
-- Google Gemini API
+- Next.js 16 App Router (Active LTS, Turbopack, Proxy convention)
+- React 19
+- TypeScript 5.7+
+- Tailwind CSS & shadcn/ui (`components.json`)
+- Supabase PostgreSQL/Auth/Storage (`@supabase/ssr` 0.12.x)
+- Google Gemini API (server-side provider abstraction)
 - Progressive Web App
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ (tested on Node 22+)
-- npm
+- Node.js 22+ (Active LTS runtime baseline; see `.nvmrc` and `engines` in `package.json`)
+- npm 10+
 
 ### Installation & Development
 
@@ -82,11 +81,7 @@ REPORT
 
 Do not jump ahead of the current implementation phase.
 
-## Phase 0
-
-The implementation task for Phase 0 is maintained at:
-
-[`prompts/PHASE_0_FOUNDATION.md`](prompts/PHASE_0_FOUNDATION.md)
+## Phase 0 Foundation
 
 Phase 0 establishes the Next.js/Supabase application foundation only. It must not implement finance features or AI product features yet.
 

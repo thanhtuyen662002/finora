@@ -1,7 +1,11 @@
 import { type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { updateSession } from "@/lib/supabase/proxy";
 
-export async function middleware(request: NextRequest) {
+/**
+ * Next.js 16 Proxy convention for request boundary handling.
+ * Refreshes auth session cookies before reaching Server Components or route handlers.
+ */
+export async function proxy(request: NextRequest) {
   return await updateSession(request);
 }
 
@@ -12,7 +16,7 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public assets with extensions
+     * - images, fonts, icons, manifest
      */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],

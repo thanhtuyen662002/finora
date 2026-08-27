@@ -1,17 +1,12 @@
 /**
  * Environment configuration for Finora.
- * Strictly separates browser-safe public variables from server-only secrets.
+ * Phase 0: strictly provides validated access to public Supabase client credentials.
  */
 
 export interface ClientEnv {
   supabaseUrl: string;
   supabasePublishableKey: string;
   isConfigured: boolean;
-}
-
-export interface ServerEnv extends ClientEnv {
-  supabaseSecretKey?: string;
-  fxApiKey?: string;
 }
 
 /**
@@ -29,28 +24,5 @@ export function getClientEnv(): ClientEnv {
     supabaseUrl,
     supabasePublishableKey,
     isConfigured: Boolean(supabaseUrl && supabasePublishableKey),
-  };
-}
-
-/**
- * Returns server-only environment variables.
- * MUST only be invoked in server contexts (Server Components, Route Handlers, Server Actions).
- */
-export function getServerEnv(): ServerEnv {
-  if (typeof window !== "undefined") {
-    throw new Error(
-      "SECURITY VIOLATION: getServerEnv() must not be called from client-side code."
-    );
-  }
-
-  const clientEnv = getClientEnv();
-  const supabaseSecretKey =
-    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const fxApiKey = process.env.FX_API_KEY;
-
-  return {
-    ...clientEnv,
-    supabaseSecretKey,
-    fxApiKey,
   };
 }

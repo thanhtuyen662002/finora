@@ -101,17 +101,18 @@ This file records decisions with architectural consequences. New decisions shoul
 
 ---
 
-## ADR-007 — Supabase SSR Architecture in Next.js App Router
+## ADR-007 — Supabase SSR Architecture with Next.js 16 Proxy Convention
 
 **Status:** Accepted
 
-**Decision:** Use `@supabase/ssr` with separate browser client (`createBrowserClient`), server client (`createServerClient` using `next/headers` cookies), and middleware session refresh (`updateSession`).
+**Decision:** Use `@supabase/ssr` (0.12.x+) with Next.js 16 App Router, using separate browser client (`createBrowserClient`), server client (`createServerClient` using `next/headers` cookies), and request-boundary session refresh via `src/proxy.ts` and `src/lib/supabase/proxy.ts` calling `supabase.auth.getClaims()` and propagating cache headers from `setAll(cookiesToSet, headers)`.
 
-**Reason:** Next.js App Router requires separate cookie handling semantics for Client Components, Server Components/Actions, and Middleware to preserve secure authentication sessions without exposing server secrets.
+**Reason:** Next.js 16 standardizes request interception in `proxy.ts` over legacy `middleware.ts`. Current Supabase SSR guidance uses `getClaims()` for secure, efficient session validation at the edge/request boundary and requires propagating response/cache headers returned by cookie manipulation to prevent stale auth caching.
 
 **Consequences:**
 
-- `src/lib/supabase/client.ts` is restricted to public publishable credentials.
+- `src/lib/supabase/client.ts` uses public publishable credentials only (`createBrowserClient`).
 - `src/lib/supabase/server.ts` provides async cookie-aware client for Server Components, Route Handlers, and Server Actions.
-- `src/middleware.ts` handles active cookie refresh before Server Components run.
-- `src/config/env.ts` provides explicit runtime boundaries preventing server credentials from leaking to client contexts.
+- `src/proxy.ts` delegates to `src/lib/supabase/proxy.ts` (`updateSession`) calling `supabase.auth.getClaims()` and forwarding Set-Cookie and cache headers.
+- `src/config/env.ts` provides strict runtime boundaries preventing server credentials from leaking to client contexts.
+- Node runtime contract is established as Node.js 22+ Active LTS.

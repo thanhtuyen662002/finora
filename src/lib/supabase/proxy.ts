@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getClientEnv } from "@/config/env";
 
 /**
- * Updates the user session in middleware so authentication state remains fresh.
+ * Updates user session and propagates authentication cookies and cache headers
+ * at the Next.js request boundary (Proxy).
  */
 export async function updateSession(request: NextRequest) {
   const { supabaseUrl, supabasePublishableKey, isConfigured } = getClientEnv();
@@ -33,7 +34,8 @@ export async function updateSession(request: NextRequest) {
             name: string;
             value: string;
             options?: Parameters<typeof supabaseResponse.cookies.set>[2];
-          }>
+          }>,
+          headers?: Record<string, string>
         ) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
@@ -44,13 +46,20 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
+          if (headers) {
+            for (const [key, value] of Object.entries(headers)) {
+              if (value) {
+                supabaseResponse.headers.set(key, value);
+              }
+            }
+          }
         },
       },
     }
   );
 
-  // Refresh session token if needed
-  await supabase.auth.getUser();
+  // Trigger lazy session init / token validation using getClaims() per current Supabase SSR guidance
+  await supabase.auth.getClaims();
 
   return supabaseResponse;
 }
