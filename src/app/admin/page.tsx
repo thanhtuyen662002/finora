@@ -40,6 +40,8 @@ export default function AdminPage() {
   const [selectedModelParser, setSelectedModelParser] = useState('gemini-2.5-flash');
   const [selectedModelChat, setSelectedModelChat] = useState('gemini-2.5-pro');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [inviteFeedback, setInviteFeedback] = useState(false);
+  const [fxSyncFeedback, setFxSyncFeedback] = useState(false);
 
   const toggleFlag = (key: string) => {
     setFlags((prev) =>
@@ -51,6 +53,16 @@ export default function AdminPage() {
     e.preventDefault();
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
+  };
+
+  const handleInviteUser = () => {
+    setInviteFeedback(true);
+    setTimeout(() => setInviteFeedback(false), 2500);
+  };
+
+  const handleSyncFx = () => {
+    setFxSyncFeedback(true);
+    setTimeout(() => setFxSyncFeedback(false), 2500);
   };
 
   return (
@@ -185,9 +197,16 @@ export default function AdminPage() {
                   Quản lý quyền truy cập và phân quyền API Key.
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={() => alert('Chức năng mời thành viên')}>
-                Mời thành viên mới
-              </Button>
+              <div className="flex items-center space-x-2">
+                {inviteFeedback && (
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    Đã gửi thư mời (Mô phỏng)!
+                  </span>
+                )}
+                <Button size="sm" onClick={handleInviteUser}>
+                  Mời thành viên mới
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -335,14 +354,21 @@ export default function AdminPage() {
                   Quy đổi ngoại tệ phục vụ định giá tài sản và báo cáo theo tỷ giá thời gian thực.
                 </CardDescription>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => alert('Đã đồng bộ tỷ giá mới nhất')}
-              >
-                <RefreshCw className="h-4 w-4 mr-1.5" />
-                Cập nhật tỷ giá
-              </Button>
+              <div className="flex items-center space-x-2">
+                {fxSyncFeedback && (
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    Đã đồng bộ tỷ giá mới nhất!
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSyncFx}
+                >
+                  <RefreshCw className="h-4 w-4 mr-1.5" />
+                  Cập nhật tỷ giá
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">

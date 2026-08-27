@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { MOCK_BUDGETS } from '@/lib/mock/budgets';
-import { MockBudget } from '@/types/finance';
+import { MockBudget, MockBudgetInput } from '@/types/finance';
 import { formatMoney } from '@/lib/money/format';
+import { EmptyState } from '@/components/finance/EmptyState';
 import { Plus, Target, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export default function BudgetsPage() {
@@ -19,22 +20,22 @@ export default function BudgetsPage() {
 
   const totalLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
   const totalSpent = budgets.reduce((sum, b) => sum + b.spent, 0);
-  const overallPercent = Math.round((totalSpent / totalLimit) * 100);
+  const overallPercent = totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) : 0;
   const remaining = totalLimit - totalSpent;
 
   const overBudgetCount = budgets.filter((b) => b.spent > b.limit).length;
 
-  const handleAddBudget = (newB: any) => {
+  const handleAddBudget = (newB: MockBudgetInput & { categoryName?: string }) => {
     const created: MockBudget = {
       id: `bgt-${Date.now()}`,
       categoryId: newB.categoryId,
-      categoryName: newB.categoryName,
+      categoryName: newB.categoryName || 'Danh mục',
       categoryIcon: 'ShoppingBag',
       categoryColor: '#6366f1',
       limit: newB.limit,
       spent: 0,
       currency: 'VND',
-      period: 'MONTHLY',
+      period: (newB.period as 'MONTHLY' | 'WEEKLY' | 'YEARLY') || 'MONTHLY',
     };
     setBudgets([...budgets, created]);
   };
@@ -104,17 +105,26 @@ export default function BudgetsPage() {
         </CardContent>
       </Card>
 
-      {/* Individual Categories Budget Grid */}
-      <div className="space-y-3">
-        <h3 className="text-base font-semibold text-foreground">
-          Chi tiết danh mục ({budgets.length})
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {budgets.map((b) => (
-            <BudgetProgress key={b.id} budget={b} />
-          ))}
+      {/* Individual Categories Budget Grid or Empty State */}
+      {budgets.length === 0 ? (
+        <EmptyState
+          title="Chưa thiết lập ngân sách"
+          description="Đặt hạn mức chi tiêu hàng tháng cho từng danh mục để kiểm soát tài chính."
+          actionLabel="+ Thiết lập ngân sách"
+          onAction={() => setAddBudgetOpen(true)}
+        />
+      ) : (
+        <div className="space-y-3">
+          <h3 className="text-base font-semibold text-foreground">
+            Chi tiết danh mục ({budgets.length})
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {budgets.map((b) => (
+              <BudgetProgress key={b.id} budget={b} />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Add Budget Modal */}
       <AddBudgetModal

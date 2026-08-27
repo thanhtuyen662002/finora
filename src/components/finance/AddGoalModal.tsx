@@ -13,12 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { MockGoalInput } from '@/types/finance';
 import { Sparkles, Check } from 'lucide-react';
 
 interface AddGoalModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (goalData: any) => void;
+  onSuccess?: (goalData: MockGoalInput) => void;
 }
 
 export const AddGoalModal: React.FC<AddGoalModalProps> = ({

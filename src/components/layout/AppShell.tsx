@@ -148,26 +148,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           ))}
         </nav>
 
-        {/* User / Admin Footer */}
-        <div className="p-3 border-t bg-muted/30 space-y-2">
-          <Link
-            href="/admin"
-            className={cn(
-              'flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors',
-              pathname === '/admin'
-                ? 'bg-slate-200 dark:bg-slate-800 text-foreground font-semibold'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-            )}
-          >
-            <span className="flex items-center space-x-2">
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              <span>Quản trị hệ thống</span>
-            </span>
-            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded font-mono">
-              ADMIN
-            </span>
-          </Link>
-
+        {/* User Footer */}
+        <div className="p-3 border-t bg-muted/30">
           <div className="flex items-center justify-between p-2 rounded-lg border bg-card">
             <div className="flex items-center space-x-2.5 min-w-0">
               <Avatar className="h-8 w-8 shrink-0">

@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { MOCK_ACCOUNTS } from '@/lib/mock/accounts';
-import { MockAccount, AccountType } from '@/types/finance';
-import { formatMoney } from '@/lib/money/format';
+import { MockAccount, MockAccountInput } from '@/types/finance';
+import { formatMoney, convertMockToBase } from '@/lib/money/format';
+import { EmptyState } from '@/components/finance/EmptyState';
 import { Plus, Wallet, ArrowRightLeft, Globe } from 'lucide-react';
 
 export default function AccountsPage() {
@@ -32,15 +33,14 @@ export default function AccountsPage() {
   const totalVND = accounts.reduce((sum, a) => sum + a.convertedBalanceVND, 0);
   const foreignAccountsCount = accounts.filter((a) => a.currency !== 'VND').length;
 
-  const handleCreateAccount = (newAcc: any) => {
+  const handleCreateAccount = (newAcc: MockAccountInput) => {
     const created: MockAccount = {
       id: `acc-${Date.now()}`,
       name: newAcc.name,
       type: newAcc.type,
       currency: newAcc.currency,
       balance: newAcc.balance,
-      convertedBalanceVND:
-        newAcc.currency === 'USD' ? newAcc.balance * 26200 : newAcc.balance,
+      convertedBalanceVND: convertMockToBase(newAcc.balance, newAcc.currency, 'VND'),
       color: newAcc.color,
       institution: newAcc.institution,
       isDefault: false,
@@ -124,20 +124,36 @@ export default function AccountsPage() {
         </span>
       </div>
 
-      {/* Account Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredAccounts.map((acc) => (
-          <AccountCard
-            key={acc.id}
-            account={acc}
-            variant="detailed"
-            onClick={() => {
-              setSelectedAccount(acc);
-              setDetailOpen(true);
-            }}
-          />
-        ))}
-      </div>
+      {/* Account Cards Grid or Empty States */}
+      {accounts.length === 0 ? (
+        <EmptyState
+          title="Bạn chưa có tài khoản nào"
+          description="Thêm tài khoản đầu tiên để bắt đầu theo dõi tài chính."
+          actionLabel="+ Thêm tài khoản"
+          onAction={() => setAddAccountOpen(true)}
+        />
+      ) : filteredAccounts.length === 0 ? (
+        <EmptyState
+          title="Không tìm thấy tài khoản phù hợp"
+          description="Không có tài khoản nào thuộc bộ lọc hiện tại."
+          actionLabel="Hiển thị tất cả"
+          onAction={() => setFilterType('ALL')}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredAccounts.map((acc) => (
+            <AccountCard
+              key={acc.id}
+              account={acc}
+              variant="detailed"
+              onClick={() => {
+                setSelectedAccount(acc);
+                setDetailOpen(true);
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Add Account Modal */}
       <AddAccountModal

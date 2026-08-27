@@ -8,13 +8,16 @@ import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { MOCK_TRANSACTIONS } from '@/lib/mock/transactions';
-import { MockTransaction } from '@/types/finance';
-import { formatMoney } from '@/lib/money/format';
-import { Plus, Download, ArrowDownLeft, ArrowUpRight, ArrowRightLeft } from 'lucide-react';
+import { MockTransaction, MockTransactionInput } from '@/types/finance';
+import { formatMoney, convertMockToBase, getMockExchangeRate } from '@/lib/money/format';
+import { MOCK_ACCOUNTS } from '@/lib/mock/accounts';
+import { MOCK_CATEGORIES } from '@/lib/mock/transactions';
+import { Plus, Download, ArrowDownLeft, ArrowUpRight, ArrowRightLeft, Check } from 'lucide-react';
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<MockTransaction[]>(MOCK_TRANSACTIONS);
   const [addTxOpen, setAddTxOpen] = useState(false);
+  const [exported, setExported] = useState(false);
 
   const totalIncomeVND = transactions
     .filter((t) => t.type === 'INCOME')
@@ -24,21 +27,24 @@ export default function TransactionsPage() {
     .filter((t) => t.type === 'EXPENSE')
     .reduce((sum, t) => sum + (t.baseAmountVND || t.amount), 0);
 
-  const handleAddTransaction = (newTx: any) => {
+  const handleAddTransaction = (newTx: MockTransactionInput) => {
+    const acc = MOCK_ACCOUNTS.find((a) => a.id === newTx.accountId);
+    const cat = MOCK_CATEGORIES.find((c) => c.id === newTx.categoryId);
+
     const created: MockTransaction = {
       id: `tx-${Date.now()}`,
       userId: 'user-demo-1',
       accountId: newTx.accountId,
-      accountName: 'Vietcombank Lương',
+      accountName: acc?.name || 'Tài khoản chính',
       categoryId: newTx.categoryId,
-      categoryName: newTx.type === 'INCOME' ? 'Thu nhập khác' : 'Ăn uống & Cà phê',
-      categoryIcon: newTx.type === 'INCOME' ? 'Briefcase' : 'Utensils',
-      categoryColor: newTx.type === 'INCOME' ? '#10b981' : '#f59e0b',
+      categoryName: cat?.name || (newTx.type === 'INCOME' ? 'Thu nhập khác' : 'Ăn uống & Cà phê'),
+      categoryIcon: cat?.icon || (newTx.type === 'INCOME' ? 'Briefcase' : 'Utensils'),
+      categoryColor: cat?.color || (newTx.type === 'INCOME' ? '#10b981' : '#f59e0b'),
       type: newTx.type,
       amount: newTx.amount,
       currency: newTx.currency,
-      exchangeRate: newTx.currency === 'USD' ? 26200 : 1,
-      baseAmountVND: newTx.currency === 'USD' ? newTx.amount * 26200 : newTx.amount,
+      exchangeRate: getMockExchangeRate(newTx.currency),
+      baseAmountVND: convertMockToBase(newTx.amount, newTx.currency, 'VND'),
       baseCurrency: 'VND',
       merchant: newTx.merchant,
       occurredAt: newTx.occurredAt,
@@ -47,6 +53,11 @@ export default function TransactionsPage() {
       updatedAt: new Date().toISOString(),
     };
     setTransactions([created, ...transactions]);
+  };
+
+  const handleExportCSV = () => {
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
   };
 
   return (
@@ -58,11 +69,20 @@ export default function TransactionsPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => alert('Xuất file CSV giao dịch mẫu thành công.')}
+          onClick={handleExportCSV}
           className="hidden sm:inline-flex"
         >
-          <Download className="h-4 w-4 mr-1.5" />
-          Xuất CSV
+          {exported ? (
+            <>
+              <Check className="h-4 w-4 mr-1.5 text-emerald-600" />
+              Đã xuất CSV
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4 mr-1.5" />
+              Xuất CSV
+            </>
+          )}
         </Button>
         <Button size="sm" onClick={() => setAddTxOpen(true)}>
           <Plus className="h-4 w-4 mr-1.5" />

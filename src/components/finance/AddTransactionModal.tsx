@@ -17,13 +17,13 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MOCK_ACCOUNTS } from '@/lib/mock/accounts';
 import { MOCK_CATEGORIES } from '@/lib/mock/transactions';
 import { MOCK_INCOME_SOURCES } from '@/lib/mock/reports';
-import { TransactionType, CurrencyCode } from '@/types/finance';
+import { TransactionType, CurrencyCode, MockTransactionInput } from '@/types/finance';
 import { CheckCircle2, ArrowRightLeft, Plus } from 'lucide-react';
 
 interface AddTransactionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (txData: any) => void;
+  onSuccess?: (txData: MockTransactionInput) => void;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({

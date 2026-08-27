@@ -8,8 +8,9 @@ import { AddGoalModal } from '@/components/finance/AddGoalModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { MOCK_GOALS } from '@/lib/mock/goals';
-import { MockGoal } from '@/types/finance';
+import { MockGoal, MockGoalInput } from '@/types/finance';
 import { formatMoney } from '@/lib/money/format';
+import { EmptyState } from '@/components/finance/EmptyState';
 import { Plus, Target, TrendingUp, Sparkles } from 'lucide-react';
 
 export default function GoalsPage() {
@@ -19,16 +20,16 @@ export default function GoalsPage() {
   const totalTargetVND = goals.reduce((sum, g) => sum + g.targetAmount, 0);
   const totalSavedVND = goals.reduce((sum, g) => sum + g.currentAmount, 0);
   const totalMonthlyPace = goals.reduce((sum, g) => sum + g.monthlyContribution, 0);
-  const averageProgress = Math.round((totalSavedVND / totalTargetVND) * 100);
+  const averageProgress = totalTargetVND > 0 ? Math.round((totalSavedVND / totalTargetVND) * 100) : 0;
 
-  const handleAddGoal = (newG: any) => {
+  const handleAddGoal = (newG: MockGoalInput) => {
     const created: MockGoal = {
       id: `goal-${Date.now()}`,
       userId: 'user-demo-1',
       name: newG.name,
       targetAmount: newG.targetAmount,
       currentAmount: newG.currentAmount,
-      currency: 'VND',
+      currency: newG.currency || 'VND',
       targetDate: newG.targetDate,
       color: newG.color,
       icon: newG.icon,
@@ -110,12 +111,21 @@ export default function GoalsPage() {
         </Card>
       </div>
 
-      {/* Goals Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {goals.map((g) => (
-          <GoalCard key={g.id} goal={g} />
-        ))}
-      </div>
+      {/* Goals Grid or Empty State */}
+      {goals.length === 0 ? (
+        <EmptyState
+          title="Chưa có mục tiêu tài chính"
+          description="Tạo mục tiêu tiết kiệm mới (mua nhà, du lịch, quỹ khẩn cấp) để theo dõi tiến độ."
+          actionLabel="+ Tạo mục tiêu mới"
+          onAction={() => setAddGoalOpen(true)}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {goals.map((g) => (
+            <GoalCard key={g.id} goal={g} />
+          ))}
+        </div>
+      )}
 
       {/* Add Goal Modal */}
       <AddGoalModal

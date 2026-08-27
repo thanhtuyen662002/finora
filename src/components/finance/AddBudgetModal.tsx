@@ -14,12 +14,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { MOCK_CATEGORIES } from '@/lib/mock/transactions';
+import { MockBudgetInput } from '@/types/finance';
 import { Target } from 'lucide-react';
 
 interface AddBudgetModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (budgetData: any) => void;
+  onSuccess?: (budgetData: MockBudgetInput & { categoryName: string; spent: number }) => void;
 }
 
 export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({

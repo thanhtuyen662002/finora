@@ -13,13 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { AccountType, CurrencyCode } from '@/types/finance';
+import { AccountType, CurrencyCode, MockAccountInput } from '@/types/finance';
 import { PlusCircle, Check } from 'lucide-react';
 
 interface AddAccountModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (accountData: any) => void;
+  onSuccess?: (accountData: MockAccountInput) => void;
 }
 
 export const AddAccountModal: React.FC<AddAccountModalProps> = ({

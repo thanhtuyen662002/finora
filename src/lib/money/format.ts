@@ -18,6 +18,22 @@ export const MOCK_EXCHANGE_RATES: Record<CurrencyCode, number> = {
   KRW: 19.5,
 };
 
+export function getMockExchangeRate(currency: CurrencyCode): number {
+  return MOCK_EXCHANGE_RATES[currency] ?? 1;
+}
+
+export function convertMockToBase(
+  amount: number,
+  fromCurrency: CurrencyCode = 'VND',
+  toCurrency: CurrencyCode = 'VND'
+): number {
+  if (fromCurrency === toCurrency) return amount;
+  const fromRate = MOCK_EXCHANGE_RATES[fromCurrency] ?? 1;
+  const toRate = MOCK_EXCHANGE_RATES[toCurrency] ?? 1;
+  const amountInVND = amount * fromRate;
+  return Math.round((amountInVND / toRate) * 100) / 100;
+}
+
 export function formatMoney(
   amount: number,
   currency: CurrencyCode = 'VND',

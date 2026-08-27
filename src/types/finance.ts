@@ -159,3 +159,46 @@ export interface MockFeatureFlag {
   enabled: boolean;
   category: 'AI' | 'FINANCE' | 'SYSTEM';
 }
+
+// Presentation input models for Phase 1 mock creation flows
+export interface MockAccountInput {
+  name: string;
+  type: AccountType;
+  currency: CurrencyCode;
+  balance: number;
+  institution?: string;
+  color: string;
+}
+
+export interface MockTransactionInput {
+  type: TransactionType;
+  amount: number;
+  currency: CurrencyCode;
+  accountId: string;
+  toAccountId?: string;
+  categoryId: string;
+  merchant: string;
+  note?: string;
+  occurredAt: string;
+  incomeSourceId?: string;
+}
+
+export interface MockGoalInput {
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  currency?: CurrencyCode;
+  targetDate: string;
+  color: string;
+  icon: string;
+  category: string;
+  monthlyContribution: number;
+}
+
+export interface MockBudgetInput {
+  categoryId: string;
+  categoryName?: string;
+  limit: number;
+  period?: string;
+}
+
