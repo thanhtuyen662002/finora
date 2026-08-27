@@ -167,11 +167,11 @@ export const MOCK_FEATURE_FLAGS: MockFeatureFlag[] = [
 ];
 
 export const MOCK_FX_RATES = [
-  { from: 'USD', to: 'VND', rate: 26200, source: 'Vietcombank FX API', updatedAt: 'Hôm nay 08:30' },
-  { from: 'EUR', to: 'VND', rate: 28450, source: 'European Central Bank', updatedAt: 'Hôm nay 08:30' },
-  { from: 'JPY', to: 'VND', rate: 176, source: 'Bank of Tokyo', updatedAt: 'Hôm nay 08:30' },
-  { from: 'CNY', to: 'VND', rate: 3680, source: 'People’s Bank of China', updatedAt: 'Hôm nay 08:30' },
-  { from: 'KRW', to: 'VND', rate: 19.4, source: 'Bank of Korea', updatedAt: 'Hôm nay 08:30' },
+  { from: 'USD', to: 'VND', rate: 26200, source: 'Vietcombank (Mô phỏng)', updatedAt: 'Hôm nay 08:30 (Mock)' },
+  { from: 'EUR', to: 'VND', rate: 28450, source: 'ECB (Mô phỏng)', updatedAt: 'Hôm nay 08:30 (Mock)' },
+  { from: 'JPY', to: 'VND', rate: 176, source: 'Bank of Japan (Mô phỏng)', updatedAt: 'Hôm nay 08:30 (Mock)' },
+  { from: 'CNY', to: 'VND', rate: 3680, source: 'PBOC (Mô phỏng)', updatedAt: 'Hôm nay 08:30 (Mock)' },
+  { from: 'KRW', to: 'VND', rate: 19.4, source: 'Bank of Korea (Mô phỏng)', updatedAt: 'Hôm nay 08:30 (Mock)' },
 ];
 
 export const MOCK_SUPPORTED_CURRENCIES: Array<{

@@ -10,17 +10,10 @@ import {
   Target,
   PieChart,
   Repeat,
-  SlidersHorizontal,
   Plus,
-  ShieldCheck,
-  Menu,
-  X,
-  Sparkles,
   TrendingUp,
   Settings,
-  HelpCircle,
   LogOut,
-  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -33,7 +26,6 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [addTxOpen, setAddTxOpen] = useState(false);
 
   const navGroups = [

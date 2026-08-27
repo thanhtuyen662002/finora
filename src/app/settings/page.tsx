@@ -53,7 +53,6 @@ export default function SettingsPage() {
   // AI Configuration
   const [aiEnabled, setAiEnabled] = useState(true);
   const [aiCredentialSource, setAiCredentialSource] = useState<'ADMIN' | 'PERSONAL'>('ADMIN');
-  const [personalApiKey, setPersonalApiKey] = useState('AIzaSyD892kLqP098234KlmnOpQrStUvWxYz');
 
   // Security
   const [currentPassword, setCurrentPassword] = useState('');
@@ -404,21 +403,25 @@ export default function SettingsPage() {
                 </div>
 
                 {aiCredentialSource === 'PERSONAL' && (
-                  <div className="space-y-1.5 p-3.5 rounded-lg border bg-muted/20">
-                    <Label htmlFor="apiKey" className="flex items-center space-x-1.5">
-                      <KeyRound className="h-3.5 w-3.5 text-primary" />
-                      <span>Google Gemini API Key (Mô phỏng giao diện)</span>
-                    </Label>
+                  <div className="space-y-2 p-3.5 rounded-lg border bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="apiKey" className="flex items-center space-x-1.5">
+                        <KeyRound className="h-3.5 w-3.5 text-primary" />
+                        <span>Google Gemini API Key (Bản xem trước giao diện)</span>
+                      </Label>
+                      <span className="text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-2 py-0.5 rounded">
+                        Preview only
+                      </span>
+                    </div>
                     <Input
                       id="apiKey"
                       type="password"
-                      value={personalApiKey}
-                      onChange={(e) => setPersonalApiKey(e.target.value)}
-                      placeholder="AIzaSy..."
-                      className="font-mono text-xs"
+                      value="••••••••••••••••••••••••"
+                      disabled
+                      className="font-mono text-xs bg-muted text-muted-foreground cursor-not-allowed"
                     />
-                    <p className="text-[11px] text-muted-foreground">
-                      Khóa API được mã hóa và chỉ lưu trữ trên server-side. Không bao giờ gửi về client bundle.
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      UI preview only — Finora không lưu trữ khóa API cá nhân trong Phase 1. Cơ chế mã hóa và lưu trữ an toàn trên server-side sẽ được triển khai ở Phase 11 (AI Credentials).
                     </p>
                   </div>
                 )}

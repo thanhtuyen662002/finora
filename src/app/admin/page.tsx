@@ -126,7 +126,7 @@ export default function AdminPage() {
                   {MOCK_ADMIN_METRICS.totalTransactions} GD
                 </p>
                 <span className="text-xs text-muted-foreground">
-                  Ghi nhận an toàn & cô lập
+                  Số liệu mô phỏng Phase 1
                 </span>
               </CardContent>
             </Card>
@@ -154,7 +154,7 @@ export default function AdminPage() {
                   {MOCK_ADMIN_METRICS.aiTokensConsumed.toLocaleString()}
                 </p>
                 <span className="text-xs text-muted-foreground">
-                  {MOCK_ADMIN_METRICS.aiRequestsCount} lượt phân tích
+                  {MOCK_ADMIN_METRICS.aiRequestsCount} lượt mô phỏng
                 </span>
               </CardContent>
             </Card>
@@ -162,22 +162,27 @@ export default function AdminPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-semibold">
-                Kiến trúc cô lập dữ liệu (Data Isolation Status)
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold">
+                  Kiến trúc cô lập dữ liệu (Data Isolation — Planned for Phase 2)
+                </CardTitle>
+                <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800">
+                  Backend chưa kết nối
+                </Badge>
+              </div>
               <CardDescription>
-                Mọi tài khoản và giao dịch đều tuân thủ nguyên tắc RLS Invariant: User A không bao giờ thấy User B.
+                Thẻ này minh họa nguyên tắc RLS Invariant: User A không bao giờ thấy dữ liệu của User B (Dự kiến triển khai ở Phase 2).
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="p-4 rounded-xl border bg-muted/30 flex items-start space-x-3">
-                <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="text-xs text-muted-foreground space-y-1">
                   <p className="font-semibold text-foreground">
-                    Supabase Row Level Security (RLS) & PostgreSQL
+                    Kế hoạch bảo mật Supabase Row Level Security (RLS) & PostgreSQL
                   </p>
                   <p>
-                    Finora áp dụng chính sách bảo mật đa tầng. Bảng điều khiển quản trị không cho phép xem trộm số dư chi tiết của các tài khoản riêng tư mà chỉ tổng hợp các chỉ số vận hành hệ thống.
+                    Thẻ này minh họa kiến trúc cô lập dữ liệu dự kiến ở Phase 2. Hiện tại hệ thống đang chạy trên giao diện thử nghiệm Phase 1 và chưa kết nối cơ sở dữ liệu thực tế.
                   </p>
                 </div>
               </div>
@@ -281,20 +286,20 @@ export default function AdminPage() {
 
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <Label htmlFor="systemKey">Khóa API mặc định hệ thống (System Key)</Label>
+                    <Label htmlFor="systemKey">Khóa API mặc định hệ thống (System Key — Preview)</Label>
                     <span className="text-xs text-muted-foreground font-mono flex items-center">
                       <Lock className="h-3 w-3 mr-1" />
-                      Server Secret Encrypted
+                      Credential management preview
                     </span>
                   </div>
                   <Input
                     id="systemKey"
-                    value="AIzaSyA8••••••••••••••••••••••••92K"
+                    value="AIzaSy••••••••••••••••••••••••••••"
                     disabled
                     className="font-mono bg-muted"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Khóa hệ thống được bảo mật trong môi trường server, không bao giờ lộ về trình duyệt.
+                    Bản xem trước quản lý khóa — Cơ chế mã hóa và lưu trữ an toàn server-side chưa được triển khai ở Phase 1.
                   </p>
                 </div>
 
@@ -330,7 +335,7 @@ export default function AdminPage() {
                   {savedSuccess ? (
                     <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center">
                       <CheckCircle2 className="h-4 w-4 mr-1" />
-                      Đã lưu cấu hình AI
+                      Đã cập nhật cấu hình mô phỏng (Preview only — Chưa lưu backend)
                     </span>
                   ) : (
                     <span />
@@ -348,16 +353,16 @@ export default function AdminPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-base font-semibold">
-                  Tỷ giá tiền tệ hiện tại (FX Rates Engine)
+                  Tỷ giá tiền tệ mô phỏng (Mock FX Rates Engine)
                 </CardTitle>
                 <CardDescription>
-                  Quy đổi ngoại tệ phục vụ định giá tài sản và báo cáo theo tỷ giá thời gian thực.
+                  Tỷ giá cố định phục vụ hiển thị giao diện Phase 1. Chưa kết nối API tỷ giá thời gian thực.
                 </CardDescription>
               </div>
               <div className="flex items-center space-x-2">
                 {fxSyncFeedback && (
                   <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                    Đã đồng bộ tỷ giá mới nhất!
+                    Đã làm mới dữ liệu mô phỏng (Mock refresh complete)
                   </span>
                 )}
                 <Button
@@ -366,7 +371,7 @@ export default function AdminPage() {
                   onClick={handleSyncFx}
                 >
                   <RefreshCw className="h-4 w-4 mr-1.5" />
-                  Cập nhật tỷ giá
+                  Làm mới tỷ giá
                 </Button>
               </div>
             </CardHeader>
@@ -376,7 +381,7 @@ export default function AdminPage() {
                   <thead>
                     <tr className="border-b text-muted-foreground">
                       <th className="pb-3 font-semibold">Cặp tiền</th>
-                      <th className="pb-3 font-semibold">Tỷ giá hiện tại (VND)</th>
+                      <th className="pb-3 font-semibold">Tỷ giá mô phỏng (VND)</th>
                       <th className="pb-3 font-semibold">Nguồn dữ liệu</th>
                       <th className="pb-3 font-semibold">Cập nhật lúc</th>
                     </tr>
