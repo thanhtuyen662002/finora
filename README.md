@@ -6,9 +6,7 @@ Its goal is to provide a lightweight **Personal Finance OS** with accurate finan
 
 ## Status
 
-Finora is currently at **Phase 0 — Foundation**.
-
-Application code has not yet been initialized.
+Finora has completed **Phase 0 — Foundation**.
 
 See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the authoritative progress ledger.
 
@@ -22,6 +20,37 @@ See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the authoritative pro
 - Supabase PostgreSQL/Auth/Storage
 - Google Gemini API
 - Progressive Web App
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ (tested on Node 22+)
+- npm
+
+### Installation & Development
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment (optional in Phase 0)
+cp .env.example .env.local
+
+# 3. Start development server
+npm run dev
+
+# 4. Typecheck codebase
+npm run typecheck
+
+# 5. Run linter
+npm run lint
+
+# 6. Production build
+npm run build
+```
+
+The application will be accessible at `http://localhost:3000`.
 
 ## Project Governance
 

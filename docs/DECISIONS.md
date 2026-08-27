@@ -98,3 +98,20 @@ This file records decisions with architectural consequences. New decisions shoul
 - AI requests pass through server-controlled application code.
 - Saved credentials are masked in UI and full values are not returned after saving.
 - Client-visible environment variables are restricted to intentionally public configuration.
+
+---
+
+## ADR-007 — Supabase SSR Architecture in Next.js App Router
+
+**Status:** Accepted
+
+**Decision:** Use `@supabase/ssr` with separate browser client (`createBrowserClient`), server client (`createServerClient` using `next/headers` cookies), and middleware session refresh (`updateSession`).
+
+**Reason:** Next.js App Router requires separate cookie handling semantics for Client Components, Server Components/Actions, and Middleware to preserve secure authentication sessions without exposing server secrets.
+
+**Consequences:**
+
+- `src/lib/supabase/client.ts` is restricted to public publishable credentials.
+- `src/lib/supabase/server.ts` provides async cookie-aware client for Server Components, Route Handlers, and Server Actions.
+- `src/middleware.ts` handles active cookie refresh before Server Components run.
+- `src/config/env.ts` provides explicit runtime boundaries preventing server credentials from leaking to client contexts.
