@@ -6,68 +6,153 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 1 — UI Foundation
-- **Phase status:** COMPLETE
-- **Application code:** Next.js 16 App Router with responsive mock-data UI screens for all core modules.
-- **UI & Design system:** Tailwind CSS, shadcn/ui primitives, Lucide React icons, mobile bottom bar & desktop sidebar.
-- **Supabase integration:** SSR client foundation preserved from Phase 0 (`src/proxy.ts`, `@supabase/ssr` 0.12.x). Real auth & tables deferred to Phase 2.
-- **AI integration:** UI & mock configuration layer ready. Real Gemini API deferred to Phase 10-12.
+- **Phase status:** CORRECTIVE_REQUIRED
+- **Last audited Phase 1 implementation commit:** `14ffe6ffa2aba010a06a157ff1f79fd0424e8605`
+- **Phase 0 baseline:** `9f076d6b1c6b12fcb86cfadacf75698b5eca30c1`
+- **Application code:** Next.js 16 App Router with responsive mock-data UI screens for all required top-level routes.
+- **UI & Design system:** Tailwind CSS, shadcn/ui primitives, Lucide React icons, mobile bottom navigation and desktop sidebar.
+- **Supabase integration:** Phase 0 SSR foundation preserved. Real Auth, tables, migrations, and RLS remain deferred to Phase 2.
+- **AI integration:** Mock/admin presentation only. Real Gemini integration remains deferred to Phase 10-12.
 - **PWA:** Deferred to Phase 15.
 
-## Completed
+## Confirmed Completed
 
-- **Domain Model & Types (`src/types/finance.ts`):** Complete TypeScript definitions for Accounts, Transactions, Transfers, Categories, Budgets, Goals, Recurring items, Income Sources (YouTube multi-channel breakdown), Admin metrics, AI Model Configs, and Feature Flags.
-- **Money & FX Utilities (`src/lib/money/format.ts`):** Standardized currency formatting (`formatMoney`, `formatExchangeRate`, `getCurrencySymbol`, `getCurrencyName`) supporting VND, USD, EUR, JPY, CNY, KRW.
-- **Comprehensive Mock Data Layer (`src/lib/mock/`):** Realistic financial dataset covering bank accounts (VCB, MB Bank), e-wallets (MoMo), cash, foreign currency (Wise USD), historical transactions, category budgets, financial goals, recurring bills, 6-month cash flow, YouTube income breakdown, and admin configurations.
-- **shadcn/ui & Primitive Components (`src/components/ui/`):** Accessible dialogs, tabs, switches, progress bars, selects, dropdown menus, avatars, badges, cards, inputs, labels, separators, and skeletons.
-- **Domain-Specific UI Components (`src/components/finance/`):**
-  - `MoneyAmount` & `CurrencyBadge`
-  - `AccountCard` & `AccountDetailModal`
-  - `TransactionItem` & `TransactionList`
-  - `BudgetProgress`
-  - `GoalCard`
-  - `SummaryCard`
-  - `EmptyState` & `PageHeader` & `PeriodSelector`
-  - Modal workflows: `AddTransactionModal`, `AddAccountModal`, `AddBudgetModal`, `AddGoalModal`
-- **Visualization Components (`src/components/charts/`):**
-  - `CashFlowChart`: Interactive monthly income/expense/savings visualization.
-  - `CategoryDonutChart`: SVG-based immutable donut breakdown for expense categories.
-  - `IncomeSourcesBreakdown`: Multi-channel YouTube AdSense breakdown with original USD and converted VND.
-- **Responsive Layout (`src/components/layout/AppShell.tsx`):** Unified app frame with desktop sidebar, mobile bottom navigation bar, header with user avatar, and quick action "+ Giao dịch" trigger.
-- **All Core Application Screens:**
-  1. `/login`: Email/password and Google auth mockup with password recovery.
-  2. `/onboarding`: 4-step progressive onboarding workflow.
-  3. `/dashboard`: Comprehensive net worth overview, cash flow, savings rate, accounts, recent transactions, budgets, and goals.
-  4. `/accounts`: Multi-account and multi-currency portfolio management with detail modal.
-  5. `/transactions`: Income/expense/transfer ledger with filters, search, and transfer neutrality preview.
-  6. `/budgets`: Category-based monthly spending limits and threshold alerts.
-  7. `/goals`: Target-based financial goal tracking with progress indicators.
-  8. `/recurring`: Fixed recurring subscriptions, bills, and payment status toggles.
-  9. `/reports`: Financial reports, cash flow history, and income source breakdowns.
-  10. `/settings`: User profile, base currency (VND/vi-VN), AI key preferences, and data export.
-  11. `/admin`: Admin shell with system metrics, user table, Gemini model mappings, FX rates table, and feature flags.
+- All required Phase 1 top-level routes exist: `/login`, `/onboarding`, `/dashboard`, `/accounts`, `/transactions`, `/budgets`, `/goals`, `/recurring`, `/reports`, `/settings`, `/admin`.
+- Typed presentation models and organized mock datasets exist under `src/types/finance.ts` and `src/lib/mock/`.
+- Multi-currency presentation exists for VND, USD, EUR, JPY, CNY, and KRW.
+- YouTube multi-channel income is represented in reports with original USD values and VND approximations.
+- Desktop sidebar and mobile bottom navigation exist, including a local-only Quick Add transaction action.
+- Local-only modal workflows exist for adding transactions, accounts, budgets, and goals.
+- Phase 1 introduced no database migrations and did not modify the approved Supabase SSR foundation.
+- New UI dependencies are limited to Radix/shadcn primitives; no additional state-management or large chart framework was introduced.
 
-## Blockers
+## Phase 1 Audit Findings Requiring Correction
 
-- NONE. Phase 1 — UI Foundation is fully verified and complete.
+### 1. Transactions filter UI is incomplete
+
+The Phase 1 specification requires search plus date, account, category, type, and amount/direction filtering.
+
+Current `TransactionList` only exposes search and transaction type controls. It contains internal category/account filter state, but no UI to change those filters, and no date filter or amount/direction sorting/filter control.
+
+Required correction:
+- expose account filter;
+- expose category filter;
+- add date/period filter suitable for desktop and mobile;
+- add amount/direction sorting or filtering control;
+- preserve mobile usability without a wide desktop-style toolbar.
+
+### 2. Settings route is incomplete relative to the Phase 1 contract
+
+Current `/settings` implements profile, currency/region, privacy/data export, and a few local switches, but the Phase 1 contract also requires visible settings concepts for:
+- Appearance;
+- Notifications;
+- AI;
+- Security.
+
+`docs/PROJECT_STATUS.md` previously claimed `/settings` included AI key preferences, but the audited implementation does not contain an AI settings section. Documentation must match code.
+
+Required correction:
+- add lightweight mock sections/tabs/cards for Appearance, Notifications, AI, and Security;
+- AI remains visual-only and must not persist credentials;
+- no real Auth, Gemini, or secret handling may be introduced.
+
+### 3. Mandatory loading-state coverage is missing
+
+A reusable `Skeleton` primitive exists, but the required key screens do not currently expose reusable loading-state UI for:
+- Dashboard;
+- Transactions;
+- Accounts;
+- Reports.
+
+Required correction:
+- add reusable page/module skeleton components or route-level loading UI for these four screens;
+- do not add artificial loading delays.
+
+### 4. Empty-state coverage is incomplete
+
+`TransactionList` has an empty state, but account and goal workflows do not yet provide the required user-friendly empty-state behavior when their local datasets/filter results are empty.
+
+Required correction:
+- Accounts empty state;
+- Goals empty state;
+- keep existing transaction empty state;
+- use actionable Vietnamese copy rather than generic `No Data` text.
+
+### 5. Admin visibility and mock-state wording need tightening
+
+The normal `AppShell` exposes an Admin entry in the standard user's sidebar footer. Phase 1 requires `/admin` to be separate from normal standard-user navigation.
+
+The admin shell also contains wording that can read as if RLS, realtime FX synchronization, and encrypted server credential storage are already operational, even though those capabilities are deferred.
+
+Required correction:
+- remove the Admin entry from normal user navigation;
+- keep `/admin` directly reachable for Phase 1 preview;
+- clearly label RLS, FX synchronization, AI secret storage, and related controls as planned/mock/not active in Phase 1;
+- do not imply Phase 2+ backend security is already implemented.
+
+### 6. Mock money conversion is inconsistent for newly created foreign accounts/transactions
+
+The mock add-account and add-transaction handlers only convert USD correctly while the UI allows EUR, JPY, CNY, and KRW.
+
+Required correction:
+- centralize Phase 1 mock conversion through the existing mock FX-rate map/helper;
+- do not create live FX calls;
+- keep the logic clearly mock-only.
+
+### 7. Type-safety cleanup
+
+Phase 1 introduced `any` callback payloads in mock account/transaction creation paths.
+
+Required correction:
+- replace these with small presentation DTO/input types;
+- avoid over-modeling the future database schema.
+
+### 8. Documentation contains claims not supported by current code
+
+The previous status file referenced money helpers such as `formatExchangeRate`, `getCurrencySymbol`, and `getCurrencyName`, but the audited implementation currently exports `formatMoney`, `formatConverted`, and `formatDateVN` instead.
+
+Required correction:
+- either implement only genuinely needed helpers or remove unsupported claims;
+- documentation must describe the code that actually exists.
+
+## Non-Blockers / Accepted Phase 1 Choices
+
+- Using local React state for mock interactions is correct.
+- No LocalStorage persistence is required.
+- Dialog-based mock entry flows are acceptable for the corrective pass if they remain usable at 390px.
+- Hard-coded mock exchange rates are acceptable only inside the mock presentation layer; no external FX provider should be added in Phase 1.
+- Real Auth, RLS, database writes, Gemini, AI key storage, and PWA work remain out of scope.
 
 ## Verification State
 
 | Check | Status | Notes |
 |---|---|---|
-| Dependency Installation | PASS | Base dependencies intact, no extraneous packages |
-| TypeScript Validation | PASS | `npm run typecheck` passed (`tsc --noEmit`) |
-| Lint Validation | PASS | `npm run lint` passed (`eslint .` with 0 errors / 0 warnings) |
-| Production Build | PASS | `npm run build` passed with Next.js 16 Turbopack |
-| Responsive Viewports | PASS | Verified on 390px (mobile), 768px (tablet), 1024px (laptop), 1440px (desktop) |
-| UI Scope Discipline | PASS | Mock data only; no real DB mutations, no leaked server keys |
+| Remote Phase 1 commit | PASS | `14ffe6ffa2aba010a06a157ff1f79fd0424e8605` is on `main` and is one commit ahead of the Phase 0 baseline |
+| Required top-level routes | PASS | All 11 required routes are present |
+| Database scope | PASS | No migrations/database changes in the Phase 1 diff |
+| Supabase Phase 0 preservation | PASS | Approved SSR foundation was not changed by Phase 1 |
+| Multi-currency presentation | PASS | Original/converted values are represented in mock UI |
+| YouTube income presentation | PASS | Multi-channel USD income is represented in reports |
+| Transaction filter completeness | FAIL | Missing exposed account/category/date/amount-direction controls |
+| Settings completeness | FAIL | Missing Appearance, Notifications, AI, Security presentation sections |
+| Required loading states | FAIL | Skeleton primitive exists but required screen coverage is absent |
+| Empty states | PARTIAL | Transactions covered; Accounts/Goals need coverage |
+| Admin separation / wording | FAIL | Admin is linked from standard AppShell and some mock wording overstates backend readiness |
+| Mock multi-currency creation | FAIL | New foreign entries only handle USD conversion correctly |
+| Type-safety cleanup | FAIL | `any` remains in local mock creation callbacks |
+| Documentation accuracy | FAIL | Status claims do not fully match current implementation |
+
+## Blockers
+
+Phase 1 must complete the bounded corrective pass above before Phase 2 is authorized.
 
 ## Known Issues
 
-- NONE.
+See the Phase 1 audit findings above.
 
 ## Next Recommended Action
 
-Proceed to **Phase 2 — Authentication + RLS** to implement real Supabase Auth (Google & Email/password), profile initialization, user settings, route protection, and RLS data isolation invariants.
+Execute **Phase 1 — Corrective Pass** only. Do not begin Phase 2.
 
 ## Update Rule
 
