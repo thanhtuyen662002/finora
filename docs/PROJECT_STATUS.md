@@ -6,8 +6,9 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 2 — Authentication + RLS
-- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_PASS / AUTH_CORE_E2E_PASS / EMAIL_AND_GOOGLE_EXTERNAL_CONFIG_BLOCKED
+- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_PASS / AUTH_CORE_E2E_PASS / EMAIL_SIGNUP_PASS / INTERACTIVE_AUTH_E2E_PENDING
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
+- **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql`
 - **Strict structural verifier:** `scripts/verify-phase2-db.sql`
 - **Runtime verification tools:**
@@ -99,37 +100,52 @@ This proves Phase 2 ownership isolation against the live Supabase project withou
 
 ## Live Auth E2E Receipt
 
-A bounded live Auth E2E pass was executed against the actual target project with no code changes.
+A bounded live Auth E2E pass was executed against the actual target project and the live Vercel deployment with no code changes.
 
-| Auth Gate | Status | Evidence / Blocker |
+| Auth Gate | Status | Evidence / Remaining Action |
 |---|---|---|
-| Email/password signup | BLOCKED | Supabase default mailer returned `email rate limit exceeded`; custom SMTP is required for reliable confirmation delivery |
-| Email confirmation | BLOCKED_CONFIG | Requires working outbound email delivery and access to the confirmation email/token-hash link |
+| Email/password signup | PASS | Supabase accepted a real email/password signup against the live Vercel origin |
+| Email confirmation | BLOCKED_CONFIG | Confirmation email delivery is working enough to create the pending user, but full E2E requires the user to open the destination inbox and click the token-hash `/auth/confirm` link interactively |
 | Email/password login | PASS | Existing confirmed user successfully authenticated |
 | Onboarding routing | PASS | Incomplete authenticated user routed to `/onboarding` |
 | Onboarding persistence | PASS | Phase 2 onboarding fields persisted successfully |
 | Settings persistence | PASS | Allowed profile/settings values persisted successfully |
 | Real sign out | PASS | Supabase session sign-out completed |
 | Protected route after sign out | PASS | Protected route redirected to `/login` after sign-out |
-| Password reset E2E | BLOCKED_CONFIG | Default mailer rate limit prevents reliable recovery email delivery; requires custom SMTP and live recovery-link completion |
-| Google OAuth E2E | BLOCKED_CONFIG | Supabase Google provider is disabled; Auth returned `Unsupported provider: provider is not enabled` |
+| Password reset E2E | BLOCKED_CONFIG | Supabase accepted a real password reset request, but completion requires the user to open the recovery email and finish the interactive `/auth/confirm?type=recovery` → `/reset-password` flow |
+| Google OAuth E2E | BLOCKED_CONFIG | Google provider is enabled and generates a valid `accounts.google.com` authorization URL; full PASS requires one interactive browser consent/login round-trip and resulting Finora session |
 
-No application defect was identified by the live Auth E2E run. Remaining blockers are external hosted Auth configuration.
+No application defect was identified by the live Auth E2E run. Remaining blockers are now interactive external-user actions rather than code, database, SMTP acceptance, or provider-enable failures.
 
-## External Configuration Required to Close Phase 2
+## Remaining Interactive Steps to Close Phase 2
 
-### Email Auth / Password Recovery
+### Email Confirmation
 
-Configure a custom SMTP provider in the Supabase project so confirmation and password-recovery emails can be delivered reliably. Then complete one real signup confirmation and one real password reset/recovery flow.
+Use the live site `https://finora-orpin-nu.vercel.app` to create a disposable email/password account if needed, open the confirmation message in the destination inbox, and click the Finora token-hash confirmation link. Required result:
 
-The hosted Supabase email templates must remain compatible with the implemented SSR/PKCE confirmation route:
+- browser reaches Finora `/auth/confirm`;
+- Supabase verifies the token and establishes a valid session;
+- a new/incomplete user is routed to `/onboarding`;
+- Authentication → Users shows the email as confirmed.
 
-- signup confirmation should deliver a token-hash link to Finora `/auth/confirm` with the correct email OTP type;
-- password recovery should deliver a token-hash link to Finora `/auth/confirm?type=recovery&next=/reset-password`.
+### Password Recovery
+
+From the live Finora `/forgot-password` page, request a reset for a confirmed disposable user, open the recovery email, and click the recovery link. Required result:
+
+- browser reaches Finora `/auth/confirm?type=recovery...`;
+- recovery session is established;
+- user lands on `/reset-password`;
+- setting a new password succeeds;
+- subsequent login succeeds with the new password.
 
 ### Google OAuth
 
-Enable Google under Supabase Authentication Providers using a valid Google OAuth Client ID and Client Secret. Google must authorize the Supabase provider callback URI for project `qibfitbnlfgiqctntufr`. After provider setup, perform one real Google login and verify a valid Finora session and onboarding routing.
+From the live Finora `/login` page, click the Google sign-in control and complete one real Google account consent/login. Required result:
+
+- Google redirects through the Supabase callback;
+- Finora `/auth/callback` completes the PKCE/session exchange;
+- a valid Finora authenticated session exists;
+- new/incomplete users are routed to `/onboarding`.
 
 ## Phase Authorization
 
@@ -140,11 +156,13 @@ Enable Google under Supabase Authentication Providers using a valid Google OAuth
 - **Phase 2 Anonymous RLS:** PASS
 - **Phase 2 Two-User Runtime RLS:** PASS
 - **Phase 2 Core Auth E2E:** PASS
-- **Phase 2 Email Confirmation / Password Recovery:** BLOCKED_CONFIG
-- **Phase 2 Google OAuth:** BLOCKED_CONFIG
-- **Phase 2 Overall:** PARTIAL / EXTERNAL_CONFIG_BLOCKED
+- **Phase 2 Email/Password Signup:** PASS
+- **Phase 2 Email Confirmation:** BLOCKED_CONFIG / INTERACTIVE_USER_ACTION_REQUIRED
+- **Phase 2 Password Recovery:** BLOCKED_CONFIG / INTERACTIVE_USER_ACTION_REQUIRED
+- **Phase 2 Google OAuth:** BLOCKED_CONFIG / INTERACTIVE_USER_ACTION_REQUIRED
+- **Phase 2 Overall:** PARTIAL / INTERACTIVE_AUTH_E2E_PENDING
 - **Phase 3:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Configure custom SMTP and Google OAuth in the hosted Supabase project, then rerun only the blocked Email Signup/Confirmation, Password Recovery, and Google OAuth E2E gates. Do not rerun database/RLS gates and do not begin Phase 3 until those externally blocked Phase 2 gates are resolved truthfully.
+Complete only the three interactive browser/inbox flows above on the live Vercel deployment, then report the observed redirect/result for each. Do not rerun database/RLS gates and do not begin Phase 3 until those final Auth E2E gates are resolved truthfully.
