@@ -74,7 +74,7 @@ BEGIN
         NEW.raw_user_meta_data->>'display_name',
         pg_catalog.split_part(NEW.email, '@', 1)
     );
-    
+
     -- Extract avatar URL if present
     v_avatar_url := COALESCE(
         NEW.raw_user_meta_data->>'avatar_url',
@@ -200,8 +200,15 @@ CREATE POLICY "Users can update own settings"
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- 8. Table Grants and Column-Level Privileges
-REVOKE ALL ON TABLE public.profiles FROM anon, public;
-REVOKE ALL ON TABLE public.user_settings FROM anon, public;
+-- Supabase may provide broad default privileges on newly-created public tables.
+-- Revoke them explicitly before granting only the Phase 2 minimum required surface.
+REVOKE ALL ON TABLE public.profiles FROM anon;
+REVOKE ALL ON TABLE public.profiles FROM authenticated;
+REVOKE ALL ON TABLE public.profiles FROM PUBLIC;
+
+REVOKE ALL ON TABLE public.user_settings FROM anon;
+REVOKE ALL ON TABLE public.user_settings FROM authenticated;
+REVOKE ALL ON TABLE public.user_settings FROM PUBLIC;
 
 GRANT SELECT ON TABLE public.profiles TO authenticated;
 GRANT UPDATE (display_name, avatar_url, onboarding_completed) ON TABLE public.profiles TO authenticated;
