@@ -1,15 +1,16 @@
 import React from 'react';
-import { CurrencyCode } from '@/types/finance';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 interface CurrencyBadgeProps {
-  currency: CurrencyCode;
+  currency: string;
   className?: string;
 }
 
 export const CurrencyBadge: React.FC<CurrencyBadgeProps> = ({ currency, className }) => {
-  const isBase = currency === 'VND';
+  const normalizedCurrency = currency.toUpperCase();
+  const isBase = normalizedCurrency === 'VND';
+
   return (
     <Badge
       variant="outline"
@@ -21,7 +22,7 @@ export const CurrencyBadge: React.FC<CurrencyBadgeProps> = ({ currency, classNam
         className
       )}
     >
-      {currency}
+      {normalizedCurrency}
     </Badge>
   );
 };
