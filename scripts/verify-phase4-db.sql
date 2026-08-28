@@ -246,7 +246,7 @@ checks AS (
               AND confdeltype = 'r'
         ),
         COALESCE((
-            SELECT source_columns::text || ' -> ' || referenced_columns::text || ':del=' || confdeltype
+            SELECT source_columns::text || ' -> ' || referenced_columns::text || ':del=' || confdeltype::text
             FROM constraint_columns
             WHERE conrelid = 'public.transactions'::regclass AND conname = 'transactions_account_fkey'
         ), 'missing')
@@ -266,7 +266,7 @@ checks AS (
               AND confdeltype = 'r'
         ),
         COALESCE((
-            SELECT source_columns::text || ' -> ' || referenced_columns::text || ':del=' || confdeltype
+            SELECT source_columns::text || ' -> ' || referenced_columns::text || ':del=' || confdeltype::text
             FROM constraint_columns
             WHERE conrelid = 'public.transactions'::regclass AND conname = 'transactions_category_fkey'
         ), 'missing')
