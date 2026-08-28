@@ -5,13 +5,15 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 3 — Accounts + Categories — CODE CLEANUP COMPLETE
+- **Current phase:** Phase 3 — Accounts + Categories — FINAL SOURCE VERIFICATION
 - **Phase status:** PARTIAL
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
 - **Initial Phase 3 implementation SHA:** `8ebe887ed1e5aee8416dd084bad74a575b8d082d`
 - **First corrective remote SHA audited:** `7c841ea4702ac191573e40ac2b4308913fd1daeb`
+- **AI Studio final-cleanup SHA audited:** `7159363a2d0a20fac9f9621ee531b2d131517d66`
+- **Final source hardening through:** `cbb7b5eb8a2865d03d2d4a01c0e41d56dd7531fe`
 - **Phase 3 implementation prompt:** `prompts/PHASE_3_ACCOUNTS_CATEGORIES.md`
 - **Phase 3 corrective prompt:** `prompts/PHASE_3_CORRECTIVE.md`
 - **Phase 3 final cleanup prompt:** `prompts/PHASE_3_FINAL_CLEANUP.md`
@@ -35,42 +37,36 @@ Accepted gates:
 
 **PHASE_2 = PASS**
 
-## Phase 3 Audit History
+## Phase 3 Source State
 
-The initial Phase 3 implementation moved `/accounts` and category management to real Supabase-backed modules and added source-controlled migration/verifiers, but it was not accepted because the remote database had not been migrated and code audit found mandatory defects.
+The Phase 3 source now contains:
 
-A first corrective pass was later published to remote `main`, but its report was stale about the push state. Exact remote inspection confirmed corrective changes existed while also revealing remaining contract violations.
+- atomic `BEGIN` / `COMMIT` migration for `accounts` and `categories`;
+- idempotent 12-category provisioning for existing and future auth users;
+- explicit RLS ownership policies and least-privilege grants;
+- direct EXECUTE revocation for Phase 3 SECURITY DEFINER helpers;
+- strict structural verifier for schema/RLS/grants/category provisioning;
+- bidirectional two-user runtime RLS verifier for accounts and categories;
+- real account create/edit/archive/unarchive persistence UI;
+- real category create/edit/archive/unarchive persistence UI;
+- extensible 3-5 letter currency codes without mock FX conversion;
+- account opening-balance input preserved as decimal text until PostgREST/PostgreSQL ingestion;
+- temporary corrective helper scripts removed from repository source.
 
-### Remaining mandatory findings at remote SHA `7c841ea4702ac191573e40ac2b4308913fd1daeb`
-
-1. The Phase 3 migration is no longer using the invalid `DO ... SECURITY DEFINER` syntax, but it still lacks the required atomic `BEGIN` / `COMMIT` wrapper.
-2. `public.handle_new_user_categories()` is SECURITY DEFINER but direct EXECUTE is not explicitly revoked from all normal client roles.
-3. `scripts/verify-phase3-db.sql` can still false-PASS because it does not fully prove policy command/role/ownership expressions, provisioning-trigger wiring, anon/PUBLIC column privileges, both helper EXECUTE surfaces, or exact `numeric(20,4)` precision/scale.
-4. `scripts/verify-phase3-rls.mjs` improved foreign UPDATE handling but still does not satisfy the entire required bidirectional matrix and deliberate-error contract strictly enough.
-5. `AddAccountModal` and `AddCategoryModal` still contain `initialData?: any` / `catch (...: any)` and initialize edit state only once, which can show stale values when editing different rows.
-6. Account opening balance is still converted with `parseFloat` before PostgreSQL `numeric(20,4)`.
-7. Real account currency creation UI is still limited to the six Phase 1 mock currencies; AccountCard/CurrencyBadge still rely on `as any` casts for extensible currency codes.
-8. Account/category load/archive failures remain console-only in some paths; visible success/error states are incomplete.
-9. Account type filtering does not expose all supported account types.
-10. `docs/DATABASE.md` still contains the lossy Phase 3 rewrite and has not restored the accepted detailed Phase 2 trigger/RLS/least-privilege contract.
-11. One-off helper scripts (`fix-*.js`, `update-status.js`) and `REPORT.txt` were committed into repository source and should be removed.
-
-These requirements are locked in `prompts/PHASE_3_FINAL_CLEANUP.md`.
+The final runtime verifier has been syntax-checked with `node --check`. The exact current remote HEAD still requires one final `typecheck`, `lint`, and production `build` execution after the last source hardening commits before the code gate is accepted.
 
 ## Remote Phase 3 Database State
 
-The Phase 3 migration has **not** been accepted as applied to the target Supabase project.
+The Phase 3 migration has **not** been applied to the target Supabase project yet.
 
-Do not apply the migration until the final-cleanup source is published and exact-head code verification passes.
+Required order:
 
-Required order after final code cleanup:
-
-1. verify exact remote HEAD with `npm run typecheck`, `npm run lint`, `npm run build`, and `node --check scripts/verify-phase3-rls.mjs`;
-2. audit the exact-head migration and verifiers;
-3. apply the exact accepted Phase 3 migration to the target Supabase project;
-4. run `scripts/verify-phase3-db.sql` and require every mandatory row plus `99_OVERALL = PASS`;
-5. run `node scripts/verify-phase3-rls.mjs` and require exit code `0`;
-6. smoke-test real account/category create/edit/archive/unarchive persistence on the live application;
+1. run exact-head `npm run typecheck`, `npm run lint`, `npm run build`, and `node --check scripts/verify-phase3-rls.mjs`;
+2. require all code checks PASS;
+3. apply the exact accepted Phase 3 migration to Supabase;
+4. run `scripts/verify-phase3-db.sql` and require every row plus `99_OVERALL = PASS`;
+5. run `node scripts/verify-phase3-rls.mjs` with the two disposable test users and require exit code `0`;
+6. smoke-test account/category create/edit/archive/unarchive persistence on the live Vercel application;
 7. only then close Phase 3 and authorize Phase 4.
 
 ## Phase Authorization
@@ -78,7 +74,8 @@ Required order after final code cleanup:
 - **Phase 0:** PASS
 - **Phase 1:** PASS
 - **Phase 2 Overall:** PASS
-- **Phase 3 Source:** PASS
+- **Phase 3 Source Audit:** CLEANUP_COMPLETE_VERIFICATION_PENDING
+- **Phase 3 Exact-Head TypeScript/Lint/Build:** NOT_RUN_AFTER_FINAL_HARDENING
 - **Phase 3 Remote Database:** BLOCKED_NOT_APPLIED
 - **Phase 3 Structural Gate:** NOT_RUN
 - **Phase 3 Two-User Runtime RLS:** NOT_RUN
@@ -88,4 +85,4 @@ Required order after final code cleanup:
 
 ## Next Recommended Action
 
-Review the final code cleanup, apply the exact accepted Phase 3 migration to the target Supabase project, run the verifiers, and test live persistence to fully close Phase 3.
+Run the exact-head code verification only. Do not apply the Supabase migration until those checks pass. Do not begin Phase 4.
