@@ -44,7 +44,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 }) => {
   const [internalAccounts, setInternalAccounts] = useState<AccountRow[]>([]);
   const [internalCategories, setInternalCategories] = useState<CategoryRow[]>([]);
-  
+
   useEffect(() => {
     let active = true;
     if (open && (!propAccounts.length || !propCategories.length)) {
@@ -55,7 +55,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             setInternalCategories(cats);
           }
         })
-        .catch(console.error);
+        .catch((error: unknown) => {
+          console.error(error);
+        });
     }
     return () => {
       active = false;
@@ -76,10 +78,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Reset form when dialog opens
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     if (!open) return;
+
+    setSubmitted(false);
+    setErrorMsg('');
 
     if (initialData) {
       setType(initialData.type);
@@ -92,61 +96,63 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setOccurredOn(initialData.occurred_on || new Date().toISOString().substring(0, 10));
     } else {
       const defaultType = 'EXPENSE';
+      const activeAccounts = accounts.filter((account) => !account.is_archived);
+      const firstActiveAccount = activeAccounts[0];
+      const activeCategories = categories.filter(
+        (category) => !category.is_archived && category.type === defaultType
+      );
+
       setType(defaultType);
       setAmount('');
-      
-      const activeAccs = accounts.filter((a) => !a.is_archived);
-      const firstAcc = activeAccs.length > 0 ? activeAccs[0] : accounts[0];
-      setCurrency(firstAcc ? firstAcc.currency_code : 'VND');
-      setAccountId(firstAcc ? firstAcc.id : '');
-      
+      setCurrency(firstActiveAccount?.currency_code || 'VND');
+      setAccountId(firstActiveAccount?.id || '');
+      setCategoryId(activeCategories[0]?.id || '');
       setMerchant('');
       setNote('');
       setOccurredOn(new Date().toISOString().substring(0, 10));
-      
-      const activeCats = categories.filter((c) => !c.is_archived && c.type === defaultType);
-      setCategoryId(activeCats.length > 0 ? activeCats[0].id : '');
     }
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [open, initialData, accounts, categories]);
 
-  const handleTypeChange = (newTypeVal: string) => {
-    const newType = newTypeVal as 'EXPENSE' | 'INCOME';
+  const handleTypeChange = (newTypeValue: string) => {
+    const newType = newTypeValue as 'EXPENSE' | 'INCOME';
     setType(newType);
-    const availableCats = categories.filter(
-      (c) => c.type === newType && (!c.is_archived || (initialData && c.id === initialData.category_id))
+
+    const availableCategories = categories.filter(
+      (category) =>
+        category.type === newType &&
+        (!category.is_archived || Boolean(initialData && category.id === initialData.category_id))
     );
-    if (availableCats.length > 0) {
-      setCategoryId(availableCats[0].id);
-    } else {
-      setCategoryId('');
-    }
+    setCategoryId(availableCategories[0]?.id || '');
   };
 
-  const handleAccountChange = (newAccId: string) => {
-    setAccountId(newAccId);
-    const acc = accounts.find((a) => a.id === newAccId);
-    if (acc) {
-      setCurrency(acc.currency_code);
-    }
+  const handleAccountChange = (newAccountId: string) => {
+    setAccountId(newAccountId);
+    const account = accounts.find((candidate) => candidate.id === newAccountId);
+    if (account) setCurrency(account.currency_code);
   };
 
-  // Filtered account options: only active, plus currently selected historical account if editing
   const accountOptions = accounts
-    .filter((a) => !a.is_archived || (initialData && a.id === initialData.account_id))
-    .map((a) => ({
-      value: a.id,
-      label: `${a.name} (${a.currency_code})` + (a.is_archived ? ' (Đã lưu trữ)' : ''),
+    .filter(
+      (account) =>
+        !account.is_archived || Boolean(initialData && account.id === initialData.account_id)
+    )
+    .map((account) => ({
+      value: account.id,
+      label: `${account.name} (${account.currency_code})${
+        account.is_archived ? ' (Đã lưu trữ)' : ''
+      }`,
     }));
 
-  // Filtered category options: only active of current type, plus currently selected historical category if editing
   const categoryOptions = categories
     .filter(
-      (c) => c.type === type && (!c.is_archived || (initialData && c.id === initialData.category_id))
+      (category) =>
+        category.type === type &&
+        (!category.is_archived || Boolean(initialData && category.id === initialData.category_id))
     )
-    .map((c) => ({
-      value: c.id,
-      label: c.name + (c.is_archived ? ' (Đã lưu trữ)' : ''),
+    .map((category) => ({
+      value: category.id,
+      label: `${category.name}${category.is_archived ? ' (Đã lưu trữ)' : ''}`,
     }));
 
   const handleVoid = async () => {
@@ -157,9 +163,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       await voidTransaction(initialData.id);
       if (onSuccess) await onSuccess();
       onOpenChange(false);
-    } catch (err: unknown) {
-      console.error(err);
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi hủy giao dịch');
+    } catch (error: unknown) {
+      console.error(error);
+      setErrorMsg(error instanceof Error ? error.message : 'Lỗi khi hủy giao dịch');
       setSubmitted(false);
     }
   };
@@ -172,53 +178,60 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       await restoreTransaction(initialData.id);
       if (onSuccess) await onSuccess();
       onOpenChange(false);
-    } catch (err: unknown) {
-      console.error(err);
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi khôi phục giao dịch');
+    } catch (error: unknown) {
+      console.error(error);
+      setErrorMsg(error instanceof Error ? error.message : 'Lỗi khi khôi phục giao dịch');
       setSubmitted(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || !isPositiveExactDecimal(amount) || !accountId || !categoryId) {
-      setErrorMsg('Vui lòng nhập đầy đủ thông tin bắt buộc và số tiền hợp lệ (> 0).');
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!accountId) {
+      setErrorMsg('Cần có ít nhất một tài khoản đang hoạt động để lưu giao dịch.');
       return;
     }
+    if (!categoryId) {
+      setErrorMsg('Cần có danh mục đang hoạt động phù hợp với loại giao dịch.');
+      return;
+    }
+    if (!amount || !isPositiveExactDecimal(amount)) {
+      setErrorMsg('Số tiền phải lớn hơn 0, tối đa 16 chữ số nguyên và 4 chữ số thập phân.');
+      return;
+    }
+    if (!merchant.trim()) {
+      setErrorMsg('Tên cửa hàng / nguồn tiền không được để trống.');
+      return;
+    }
+
     setErrorMsg('');
     setSubmitted(true);
-    
+
     try {
-      const exactAmountStr = toExactDecimal(amount);
+      const exactAmount = toExactDecimal(amount);
+      const commonFields = {
+        type,
+        amount: exactAmount,
+        currency_code: currency,
+        account_id: accountId,
+        category_id: categoryId,
+        merchant: merchant.trim(),
+        note: note.trim() || null,
+        occurred_on: occurredOn,
+      };
+
       if (initialData) {
-        await updateTransaction(initialData.id, {
-          type,
-          amount: exactAmountStr,
-          currency_code: currency,
-          account_id: accountId,
-          category_id: categoryId,
-          merchant: merchant.trim(),
-          note: note.trim() || null,
-          occurred_on: occurredOn,
-        });
+        await updateTransaction(initialData.id, commonFields);
       } else {
-        await createTransaction({
-          type,
-          amount: exactAmountStr,
-          currency_code: currency,
-          account_id: accountId,
-          category_id: categoryId,
-          merchant: merchant.trim(),
-          note: note.trim() || null,
-          occurred_on: occurredOn,
-        });
+        await createTransaction(commonFields);
       }
-      
+
       if (onSuccess) await onSuccess();
       onOpenChange(false);
-    } catch (err: unknown) {
-      console.error(err);
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi lưu giao dịch');
+    } catch (error: unknown) {
+      console.error(error);
+      setErrorMsg(error instanceof Error ? error.message : 'Lỗi khi lưu giao dịch');
       setSubmitted(false);
     }
   };
@@ -231,31 +244,38 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <Plus className="h-5 w-5 text-primary" />
             <span>{initialData ? 'Sửa giao dịch' : 'Thêm giao dịch mới'}</span>
           </DialogTitle>
-          <DialogDescription>
-            Ghi nhận thu chi.
-          </DialogDescription>
+          <DialogDescription>Ghi nhận thu chi.</DialogDescription>
         </DialogHeader>
+
         {errorMsg && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
             {errorMsg}
           </div>
         )}
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          {/* Transaction Type Tabs */}
-          <div className="w-full">
-            <Tabs
-              value={type}
-              onValueChange={handleTypeChange}
-              className="w-full"
-            >
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="EXPENSE">Chi tiêu (-)</TabsTrigger>
-                <TabsTrigger value="INCOME">Thu nhập (+)</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
 
-          {/* Amount & Currency */}
+        {!initialData && accountOptions.length === 0 && (
+          <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+            Chưa có tài khoản đang hoạt động. Hãy tạo hoặc khôi phục một tài khoản trước.
+          </div>
+        )}
+
+        {!initialData && categoryOptions.length === 0 && (
+          <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+            Chưa có danh mục đang hoạt động phù hợp với loại giao dịch này.
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <Tabs value={type} onValueChange={handleTypeChange} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="EXPENSE">Chi tiêu (-)</TabsTrigger>
+              <TabsTrigger value="INCOME">Thu nhập (+)</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
           <div className="space-y-1.5">
             <Label htmlFor="amount">Số tiền</Label>
             <div className="flex gap-2">
@@ -265,20 +285,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 inputMode="decimal"
                 placeholder={currency === 'VND' ? '50000' : '50.00'}
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(event) => setAmount(event.target.value)}
                 required
                 className="text-lg font-semibold"
                 autoFocus
               />
-              <Input
-                value={currency}
-                disabled
-                className="w-24 font-mono font-semibold bg-muted"
-              />
+              <Input value={currency} disabled className="w-24 font-mono font-semibold bg-muted" />
             </div>
           </div>
 
-          {/* Merchant / Description */}
           <div className="space-y-1.5">
             <Label htmlFor="merchant">Tên cửa hàng / Nguồn tiền</Label>
             <Input
@@ -289,19 +304,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   : 'Ví dụ: Lương công ty, Google AdSense...'
               }
               value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
+              onChange={(event) => setMerchant(event.target.value)}
+              maxLength={200}
               required
             />
           </div>
 
-          {/* Accounts & Categories */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="account">Tài khoản</Label>
               <Select
                 id="account"
                 value={accountId}
-                onChange={(e) => handleAccountChange(e.target.value)}
+                onChange={(event) => handleAccountChange(event.target.value)}
                 options={accountOptions}
               />
             </div>
@@ -311,13 +326,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               <Select
                 id="category"
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
+                onChange={(event) => setCategoryId(event.target.value)}
                 options={categoryOptions}
               />
             </div>
           </div>
 
-          {/* Date & Note */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="occurredOn">Ngày giao dịch</Label>
@@ -325,7 +339,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 id="occurredOn"
                 type="date"
                 value={occurredOn}
-                onChange={(e) => setOccurredOn(e.target.value)}
+                onChange={(event) => setOccurredOn(event.target.value)}
                 required
               />
             </div>
@@ -336,7 +350,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 id="note"
                 placeholder="Thêm chi tiết..."
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(event) => setNote(event.target.value)}
+                maxLength={1000}
               />
             </div>
           </div>
@@ -344,29 +359,39 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <DialogFooter className="pt-3 flex justify-between w-full">
             <div className="flex gap-2">
               {initialData && !initialData.is_voided && (
-                <Button type="button" variant="destructive" onClick={handleVoid} disabled={submitted}>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleVoid}
+                  disabled={submitted}
+                >
                   Hủy giao dịch
                 </Button>
               )}
               {initialData && initialData.is_voided && (
-                <Button type="button" variant="secondary" onClick={handleRestore} disabled={submitted}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleRestore}
+                  disabled={submitted}
+                >
                   Khôi phục
                 </Button>
               )}
             </div>
+
             <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={submitted || !amount}>
+              <Button
+                type="submit"
+                disabled={submitted || !amount || !accountId || !categoryId}
+              >
                 {submitted ? (
                   <span className="flex items-center space-x-1.5">
                     <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                    <span>Đã lưu</span>
+                    <span>Đang lưu</span>
                   </span>
                 ) : (
                   'Lưu giao dịch'
