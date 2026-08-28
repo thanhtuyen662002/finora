@@ -1,113 +1,108 @@
 /**
  * Exact Decimal Money Library
- * 
- * Implements exact decimal arithmetic and formatting using string manipulation
- * and BigInt. Prevents any floating point precision loss for PostgreSQL numeric(20,4).
+ *
+ * Monetary arithmetic is performed with normalized decimal strings and BigInt.
+ * No native floating-point arithmetic is used for persisted finance values.
  */
 
-export function toExactDecimal(amount: number | string): string {
-  let str = String(amount).trim();
-  if (str === '') return '0.0000';
-  let isNeg = str.startsWith('-');
-  if (isNeg) str = str.substring(1);
-  let [intPart, decPart = ''] = str.split('.');
-  intPart = intPart.replace(/^0+(?=\d)/, '') || '0';
-  decPart = decPart.padEnd(4, '0').substring(0, 4);
-  return (isNeg ? '-' : '') + intPart + '.' + decPart;
+const MAX_INTEGER_DIGITS = 16;
+const SCALE = 4;
+const DECIMAL_PATTERN = /^-?\d+(?:\.\d{1,4})?$/;
+
+export function toExactDecimal(amount: string | number): string {
+  const raw = String(amount).trim();
+  if (!DECIMAL_PATTERN.test(raw)) {
+    throw new Error('Invalid decimal value: expected at most 4 fractional digits');
+  }
+
+  const isNegative = raw.startsWith('-');
+  const unsigned = isNegative ? raw.slice(1) : raw;
+  let [integerPart, fractionalPart = ''] = unsigned.split('.');
+  integerPart = integerPart.replace(/^0+(?=\d)/, '') || '0';
+
+  if (integerPart.length > MAX_INTEGER_DIGITS) {
+    throw new Error('Decimal value exceeds numeric(20,4) precision');
+  }
+
+  fractionalPart = fractionalPart.padEnd(SCALE, '0');
+  const normalized = `${integerPart}.${fractionalPart}`;
+  if (isNegative && normalized !== '0.0000') return `-${normalized}`;
+  return normalized;
 }
 
 export function isPositiveExactDecimal(amount: string | number): boolean {
-  if (amount === undefined || amount === null) return false;
-  const str = String(amount).trim();
-  if (!/^\d+(\.\d+)?$/.test(str)) return false;
-  const exact = toExactDecimal(str);
-  return compareExactDecimals(exact, '0.0000') > 0;
+  try {
+    return compareExactDecimals(toExactDecimal(amount), '0.0000') > 0;
+  } catch {
+    return false;
+  }
+}
+
+function toScaledBigInt(value: string): bigint {
+  const normalized = toExactDecimal(value);
+  const isNegative = normalized.startsWith('-');
+  const unsigned = isNegative ? normalized.slice(1) : normalized;
+  const [integerPart, fractionalPart] = unsigned.split('.');
+  const scaled = BigInt(integerPart) * 10000n + BigInt(fractionalPart);
+  return isNegative ? -scaled : scaled;
+}
+
+function fromScaledBigInt(value: bigint): string {
+  const isNegative = value < 0n;
+  const absolute = isNegative ? -value : value;
+  const integerPart = (absolute / 10000n).toString();
+  const fractionalPart = (absolute % 10000n).toString().padStart(SCALE, '0');
+  const normalized = `${integerPart}.${fractionalPart}`;
+  return isNegative && absolute !== 0n ? `-${normalized}` : normalized;
 }
 
 export function addExactDecimals(a: string, b: string): string {
-  const parse = (s: string) => {
-    let str = s.trim();
-    let sign = 1n;
-    if (str.startsWith('-')) {
-      sign = -1n;
-      str = str.substring(1);
-    }
-    const [intP = '0', decP = ''] = str.split('.');
-    const ip = BigInt(intP || '0');
-    const dp = BigInt((decP || '').padEnd(4, '0').substring(0, 4));
-    return sign * (ip * 10000n + dp);
-  };
-  const sum = parse(a) + parse(b);
-  let sign = '';
-  let absSum = sum;
-  if (sum < 0n) {
-    sign = '-';
-    absSum = -sum;
-  }
-  const intStr = (absSum / 10000n).toString();
-  const decStr = (absSum % 10000n).toString().padStart(4, '0');
-  return sign + intStr + '.' + decStr;
+  return fromScaledBigInt(toScaledBigInt(a) + toScaledBigInt(b));
 }
 
 export function subExactDecimals(a: string, b: string): string {
-  let bNeg = b.trim();
-  if (bNeg.startsWith('-')) bNeg = bNeg.substring(1);
-  else bNeg = '-' + bNeg;
-  return addExactDecimals(a, bNeg);
+  return fromScaledBigInt(toScaledBigInt(a) - toScaledBigInt(b));
 }
 
 export function compareExactDecimals(a: string, b: string): number {
-  const parse = (s: string) => {
-    let str = s.trim();
-    let sign = 1n;
-    if (str.startsWith('-')) {
-      sign = -1n;
-      str = str.substring(1);
-    }
-    const [intP = '0', decP = ''] = str.split('.');
-    const ip = BigInt(intP || '0');
-    const dp = BigInt((decP || '').padEnd(4, '0').substring(0, 4));
-    return sign * (ip * 10000n + dp);
-  };
-  const diff = parse(a) - parse(b);
+  const diff = toScaledBigInt(a) - toScaledBigInt(b);
   if (diff > 0n) return 1;
   if (diff < 0n) return -1;
   return 0;
 }
 
 export function groupThousands(intStr: string, separator: string = ','): string {
-  let isNeg = false;
-  let s = intStr.trim();
-  if (s.startsWith('-')) {
-    isNeg = true;
-    s = s.substring(1);
+  let isNegative = false;
+  let value = intStr.trim();
+  if (value.startsWith('-')) {
+    isNegative = true;
+    value = value.slice(1);
   }
-  s = s.replace(/^0+(?=\d)/, '');
-  if (s === '') s = '0';
-  
-  const parts: string[] = [];
-  let len = s.length;
-  while (len > 3) {
-    parts.unshift(s.substring(len - 3, len));
-    len -= 3;
+
+  value = value.replace(/^0+(?=\d)/, '') || '0';
+  const groups: string[] = [];
+  let end = value.length;
+  while (end > 3) {
+    groups.unshift(value.slice(end - 3, end));
+    end -= 3;
   }
-  parts.unshift(s.substring(0, len));
-  const grouped = parts.join(separator);
-  return isNeg ? '-' + grouped : grouped;
+  groups.unshift(value.slice(0, end));
+
+  const grouped = groups.join(separator);
+  return isNegative ? `-${grouped}` : grouped;
 }
 
-export function formatExactDecimal(val: string): string {
-  const str = String(val).trim();
-  let [intP = '0', decP = '0000'] = str.split('.');
-  intP = intP || '0';
-  decP = (decP || '').padEnd(4, '0').substring(0, 4);
-  
-  const trimmedDec = decP.replace(/0+$/, '');
-  const hasDecimals = trimmedDec.length > 0;
-  const formattedInt = groupThousands(intP, ',');
-  
-  if (!hasDecimals) return formattedInt;
-  return formattedInt + '.' + trimmedDec;
+export function formatExactDecimal(value: string): string {
+  const normalized = toExactDecimal(value);
+  const isNegative = normalized.startsWith('-');
+  const unsigned = isNegative ? normalized.slice(1) : normalized;
+  const [integerPart, fractionalPart] = unsigned.split('.');
+  const trimmedFraction = fractionalPart.replace(/0+$/, '');
+  const groupedInteger = groupThousands(integerPart, ',');
+  const formatted = trimmedFraction.length > 0
+    ? `${groupedInteger}.${trimmedFraction}`
+    : groupedInteger;
+  return isNegative ? `-${formatted}` : formatted;
 }
 
 export function formatExactMoney(
@@ -115,39 +110,31 @@ export function formatExactMoney(
   currency: string = 'VND',
   options?: { showSign?: boolean }
 ): string {
-  const normCurrency = (currency || 'VND').toUpperCase();
-  const str = String(amountStr).trim();
-  const isNeg = str.startsWith('-');
-  const absStr = isNeg ? str.substring(1) : str;
-  
-  let [intP = '0', decP = '0000'] = absStr.split('.');
-  intP = intP || '0';
-  decP = (decP || '').padEnd(4, '0').substring(0, 4);
-  const trimmedDec = decP.replace(/0+$/, '');
-  const hasDecimals = trimmedDec.length > 0;
-  
-  const separator = normCurrency === 'VND' ? '.' : ',';
-  const decimalSep = normCurrency === 'VND' ? ',' : '.';
-  
-  const groupedInt = groupThousands(intP, separator);
-  
-  let formattedNumber = '';
-  if (normCurrency === 'VND' || normCurrency === 'JPY' || normCurrency === 'KRW') {
-    if (hasDecimals) {
-      formattedNumber = `${groupedInt}${decimalSep}${trimmedDec}`;
-    } else {
-      formattedNumber = groupedInt;
-    }
+  const normalizedCurrency = (currency || 'VND').toUpperCase();
+  const normalized = toExactDecimal(amountStr);
+  const isNegative = normalized.startsWith('-');
+  const unsigned = isNegative ? normalized.slice(1) : normalized;
+  const [integerPart, fractionalPart] = unsigned.split('.');
+  const trimmedFraction = fractionalPart.replace(/0+$/, '');
+
+  const thousandsSeparator = normalizedCurrency === 'VND' ? '.' : ',';
+  const decimalSeparator = normalizedCurrency === 'VND' ? ',' : '.';
+  const groupedInteger = groupThousands(integerPart, thousandsSeparator);
+
+  let formattedNumber: string;
+  if (normalizedCurrency === 'VND' || normalizedCurrency === 'JPY' || normalizedCurrency === 'KRW') {
+    formattedNumber = trimmedFraction.length > 0
+      ? `${groupedInteger}${decimalSeparator}${trimmedFraction}`
+      : groupedInteger;
   } else {
-    // Show 2 decimal places for USD, EUR, etc. unless more non-zero decimals exist
-    const dec2 = decP.substring(0, 2);
-    const remaining = decP.substring(2).replace(/0+$/, '');
-    const displayDec = remaining.length > 0 ? dec2 + remaining : dec2;
-    formattedNumber = `${groupedInt}${decimalSep}${displayDec}`;
+    const firstTwo = fractionalPart.slice(0, 2);
+    const remaining = fractionalPart.slice(2).replace(/0+$/, '');
+    const displayFraction = remaining.length > 0 ? firstTwo + remaining : firstTwo;
+    formattedNumber = `${groupedInteger}${decimalSeparator}${displayFraction}`;
   }
 
-  let result = '';
-  switch (normCurrency) {
+  let result: string;
+  switch (normalizedCurrency) {
     case 'VND':
       result = `${formattedNumber} ₫`;
       break;
@@ -165,10 +152,10 @@ export function formatExactMoney(
       result = `₩${formattedNumber}`;
       break;
     default:
-      result = `${formattedNumber} ${normCurrency}`;
+      result = `${formattedNumber} ${normalizedCurrency}`;
   }
 
-  if (isNeg) return `-${result}`;
-  if (options?.showSign && compareExactDecimals(toExactDecimal(amountStr), '0.0000') > 0) return `+${result}`;
+  if (isNegative) return `-${result}`;
+  if (options?.showSign && compareExactDecimals(normalized, '0.0000') > 0) return `+${result}`;
   return result;
 }
