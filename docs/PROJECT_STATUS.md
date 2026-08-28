@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 4 — Transactions — FINAL CORRECTIVE IMPLEMENTED
-- **Phase status:** CODE_VERIFIED_PENDING_MIGRATION
+- **Current phase:** Phase 4 — Transactions — FINAL SOURCE VERIFICATION
+- **Phase status:** SOURCE_PATCHED_PENDING_EXACT_HEAD_VERIFICATION
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -17,6 +17,9 @@
 - **Phase 3 closure SHA:** `935a806c15d28b8de412631f48cf2ee067a3af2f`
 - **Phase 4 implementation contract SHA:** `75dd85d4a7b062fb3f8cc2a25570a75c057838ac`
 - **Phase 4 initial implementation SHA:** `399f96327111ebf9abeb7c95d445ce0174f91e6f`
+- **Phase 4 first corrective baseline SHA:** `7a57a27029ffe86185b67bcceeddaac826e4985d`
+- **Phase 4 final-corrective agent SHA audited:** `890184010434e7b88ff8f4050dc6a1d54aae577e`
+- **Phase 4 direct residual patch SHA before ledger receipt:** `8655e9cf839966e0bc8beee5c70443773067d814`
 - **Phase 4 corrective prompt:** `prompts/PHASE_4_CORRECTIVE.md`
 - **Phase 4 final corrective prompt:** `prompts/PHASE_4_FINAL_CORRECTIVE.md`
 
@@ -120,52 +123,34 @@ FINORA_PHASE_3=PASS
 PHASE_4_AUTHORIZED=true
 ```
 
-## Phase 4 — Transactions — Final Corrective Implementation
+## Phase 4 — Transactions — Audited Source State
 
-All mandatory items specified in `prompts/PHASE_4_FINAL_CORRECTIVE.md` have been implemented:
+The final-corrective agent revision `890184010434e7b88ff8f4050dc6a1d54aae577e` materially improved Phase 4: exact-read views, decimal-string handling, current-month summaries, runtime date filters, truthful CSV export, active/historical selection behavior, void/restore UI, and expanded verification scripts were all present.
 
-1. **Exact-Head Source Consistency & Compilation:**
-   - Removed all duplicate imports in `AddTransactionModal.tsx`.
-   - Cleaned up top-level module imports for feature functions.
-   - Verified zero TypeScript and ESLint warnings/errors.
+A repository audit still found bounded residual issues, so that revision was not accepted as the final exact-head source gate. The residuals were corrected directly on `main`:
 
-2. **Exact Decimal Monetary Safety:**
-   - Created `public.transaction_details` exact-read view (`security_invoker = true`) casting `amount` to `TEXT` in database.
-   - Updated `TransactionRow` and `Database` schema types so `amount` is typed and handled as exact `string`.
-   - Implemented pure BigInt/string-based arithmetic in `src/lib/money/index.ts` without native floating point conversions or `parseInt` precision loss.
-   - Added `isPositiveExactDecimal` and validated all modal inputs with exact decimal checks.
-   - Removed all `as any` typecasts across transaction mutation paths (`voidTransaction`, `restoreTransaction`).
+1. transaction reads now fail closed on `public.transaction_details`; there is no fallback to direct numeric table reads;
+2. public transaction mutation contracts accept monetary `amount` as string only;
+3. create/update/void/restore read back through the exact text view;
+4. exact decimal normalization rejects invalid precision instead of silently truncating extra fractional digits;
+5. a new transaction never falls back to an archived account when no active account exists;
+6. the structural verifier now checks exact policy role/qual/with-check semantics, ordered composite FK columns, exact grants, security-invoker views, exact text money read columns, and prior-phase RLS regression;
+7. the runtime verifier now covers full A/B own lifecycle, bidirectional owned-row insertion denial, bidirectional account/category reference denial, bidirectional select/update isolation, ownership mutation, both category-type mismatch directions, currency mismatch, non-positive amounts, TRANSFER rejection, DELETE denial, bidirectional view isolation, deliberate database-error distinction, and verified cleanup.
 
-3. **Current Calendar Month Summaries:**
-   - Summary cards derive the actual current calendar month dynamically from `new Date()` (e.g. `Tháng M/YYYY`).
-   - Active transactions occurring in the current month are grouped and aggregated per `currency_code` using exact decimal addition.
-
-4. **Dynamic Runtime Date Filters:**
-   - Replaced all hardcoded date substrings with dynamic date calculations for `THIS_MONTH`, `LAST_MONTH` (with year rollover), and `LAST_30_DAYS`.
-   - Constrained transaction sorting strictly to `NEWEST` and `OLDEST` (removed cross-currency amount sorting).
-
-5. **Active vs Historical Archived Selection:**
-   - New transactions restrict account and category selection strictly to active rows.
-   - Edit mode preserves the selected historical archived account/category without enabling selection of other archived entities.
-
-6. **Void / Restore Lifecycle:**
-   - Provided clear, synchronous void and restore actions with UI feedback and error handling.
-   - Excluded voided transactions from derived balances and monthly summaries while preserving auditability.
-
-7. **Truthful CSV Export:**
-   - Implemented RFC 4180-compliant CSV field escaping for quotes, commas, and newlines.
-   - Exports the currently loaded transaction records with download feedback and automatic state cleanup.
-
-8. **Strict Structural Database Verifier:**
-   - Rewrote `scripts/verify-phase4-db.sql` into a 26-check PL/pgSQL test suite returning individual `PASS`/`FAIL` rows and a closing `99_OVERALL` gate.
-
-9. **Bidirectional Runtime RLS Matrix:**
-   - Rewrote `scripts/verify-phase4-rls.mjs` into a comprehensive two-user test suite validating CRUD isolation, composite foreign keys, type/currency mismatch rejection, check constraints, immutable column restrictions, and cleanup.
+These direct changes have not yet been accepted as a source PASS because exact-head TypeScript/lint/build/script-syntax verification has not been rerun after them.
 
 ## Remote Phase 4 Database State
 
-The Phase 4 migration is **NOT YET APPLIED** to the target Supabase instance.
-Per the strict protocol, the remote database migration will only be authorized after source review.
+The Phase 4 migration has **NOT** been applied to the target Supabase database.
+
+The required order is:
+
+1. exact-head source verification on current remote `main`;
+2. only if TypeScript/lint/build/runtime-script syntax all PASS, authorize manual Phase 4 migration application;
+3. run `scripts/verify-phase4-db.sql` and require every mandatory row plus `99_OVERALL = PASS`;
+4. run `scripts/verify-phase4-rls.mjs` and require exit code `0`;
+5. perform live create/edit/void/restore/refresh/re-login persistence and derived-balance smoke;
+6. only then close Phase 4 and authorize Phase 5.
 
 ## Phase Authorization
 
@@ -173,18 +158,14 @@ Per the strict protocol, the remote database migration will only be authorized a
 - **Phase 1:** PASS
 - **Phase 2:** PASS
 - **Phase 3:** PASS
-- **Phase 4 Code Gate:** PASS
-- **Phase 4 Remote Database:** PENDING_MANUAL_APPLICATION
-- **Phase 4 Structural Gate:** READY_TO_RUN
-- **Phase 4 Two-User Runtime RLS:** READY_TO_RUN
-- **Phase 4 Live Persistence Smoke:** PENDING_MIGRATION
-- **Phase 4 Overall:** IN_PROGRESS
+- **Phase 4 Code Gate:** PENDING_EXACT_HEAD_VERIFICATION
+- **Phase 4 Remote Database:** NOT_APPLIED
+- **Phase 4 Structural Gate:** NOT_RUN
+- **Phase 4 Two-User Runtime RLS:** NOT_RUN
+- **Phase 4 Live Persistence Smoke:** NOT_RUN
+- **Phase 4 Overall:** PARTIAL
 - **Phase 5 — Transfers:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-1. Verify and commit code-only changes.
-2. Apply Phase 4 migration (`supabase/migrations/20260828000002_phase_4_transactions.sql`) to Supabase.
-3. Run strict structural verifier (`scripts/verify-phase4-db.sql`) in Supabase SQL editor.
-4. Run two-user runtime RLS verifier (`scripts/verify-phase4-rls.mjs`).
-5. Conduct live persistence smoke test on Vercel preview.
+Run verification-only against the exact current remote `main`. Do not modify source and do not apply the Phase 4 migration until that exact-head verification passes.
