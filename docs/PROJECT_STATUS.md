@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 4 — Transactions — REMOTE RUNTIME VERIFICATION
-- **Phase status:** SOURCE_PASS_STRUCTURAL_PASS_RUNTIME_PENDING
+- **Current phase:** Phase 4 — Transactions — LIVE PERSISTENCE SMOKE
+- **Phase status:** SOURCE_PASS_STRUCTURAL_PASS_RUNTIME_PASS_LIVE_PENDING
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -21,6 +21,7 @@
 - **Phase 4 final-corrective agent SHA audited:** `890184010434e7b88ff8f4050dc6a1d54aae577e`
 - **Accepted Phase 4 exact-head source SHA:** `13287e773eeaa65460bd0980d502bd8885c45f9c`
 - **Phase 4 structural-verifier syntax-fix SHA:** `bb6744692f786a0a86602971ee788567c2d44797`
+- **Phase 4 structural receipt SHA:** `182787e142c2cdec4fd4f2bbc94bce2140fcc2fb`
 - **Phase 4 corrective prompt:** `prompts/PHASE_4_CORRECTIVE.md`
 - **Phase 4 final corrective prompt:** `prompts/PHASE_4_FINAL_CORRECTIVE.md`
 
@@ -191,15 +192,33 @@ Accepted remote facts:
 **PHASE_4_REMOTE_DATABASE = PASS**
 **PHASE_4_STRUCTURAL_GATE = PASS**
 
-## Phase 4 — Remaining Gates
+## Phase 4 — Two-User Runtime RLS / Integrity Receipt
 
-The next mandatory gate is the hardened two-user runtime RLS/integrity verifier:
+The hardened runtime verifier was executed against the target Supabase database using only the public Supabase URL/publishable key plus the two disposable test-user credentials. It exited with code `0` and made no source changes.
 
-`node scripts/verify-phase4-rls.mjs`
+Accepted runtime results:
 
-It must use only the public Supabase URL/publishable key plus the two disposable test-user credentials, must not use service-role credentials, and must exit with code `0`.
+- User A authentication: PASS
+- User B authentication: PASS
+- User A own transaction lifecycle: PASS
+- User B own transaction lifecycle: PASS
+- cross-user owned-row INSERT blocked: PASS
+- cross-user account/category references blocked: PASS
+- cross-user SELECT blocked: PASS
+- cross-user UPDATE blocked: PASS
+- ownership change blocked: PASS
+- domain integrity constraints: PASS
+- DELETE blocked: PASS
+- `security_invoker` view isolation: PASS
+- deliberate non-RLS database-error distinction: PASS
+- test-record cleanup: PASS
 
-After runtime PASS, a live application smoke must verify create/edit/void/restore, exact balances, refresh persistence, and logout/login persistence before Phase 4 may close.
+**PHASE_4_TWO_USER_RLS = PASS**
+**PHASE_4_RUNTIME_PROCESS_EXIT_CODE = 0**
+
+## Phase 4 — Remaining Gate
+
+Only the live application smoke remains. It must verify transaction create/edit/void/restore, exact derived balances, persistence after refresh, and persistence after logout/login before Phase 4 may close.
 
 ## Phase Authorization
 
@@ -210,11 +229,11 @@ After runtime PASS, a live application smoke must verify create/edit/void/restor
 - **Phase 4 Source Gate:** PASS
 - **Phase 4 Remote Database:** PASS
 - **Phase 4 Structural Gate:** PASS
-- **Phase 4 Two-User Runtime RLS:** NOT_RUN
+- **Phase 4 Two-User Runtime RLS:** PASS
 - **Phase 4 Live Persistence Smoke:** NOT_RUN
 - **Phase 4 Overall:** PARTIAL
 - **Phase 5 — Transfers:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Run `scripts/verify-phase4-rls.mjs` against the remote Supabase database with the existing disposable User A/User B credentials. Do not begin Phase 5.
+Perform the live Phase 4 persistence and derived-balance smoke on the deployed Finora application. Do not begin Phase 5 until the live smoke passes.
