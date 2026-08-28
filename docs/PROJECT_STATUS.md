@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 2 — Authentication + RLS
-- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_PASS / AUTH_CORE_E2E_PASS / EMAIL_SIGNUP_PASS / INTERACTIVE_AUTH_E2E_PENDING
+- **Current phase:** Phase 2 — Authentication + RLS — COMPLETE
+- **Phase status:** PASS
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql`
@@ -16,23 +16,25 @@
   - `scripts/verify-phase2-rls.mjs`
   - `scripts/verify-phase2-redirect.mjs`
 
-## Phase 2 Code Gate
+## Phase 2 Completion Receipt
 
-Phase 2 implementation, corrective pass, and final-gate hardening are complete and published.
+Phase 2 is accepted complete. Code-level hardening, remote database structure, least-privilege grants, anonymous isolation, bidirectional two-user RLS isolation, and live authentication workflows have all been verified.
 
-Confirmed code-level properties include:
+### Code Gate
+
+Confirmed code-level properties:
 
 - Supabase SSR request-boundary identity validation uses `supabase.auth.getClaims()`.
 - Redirect paths are sanitized centrally.
 - Callback origin does not trust arbitrary `x-forwarded-host` input.
 - SSR/PKCE email confirmation and password recovery routes are implemented.
-- Settings and onboarding persistence stop and surface errors instead of reporting false success.
+- Settings and onboarding persistence fail truthfully instead of reporting false success.
 - Anonymous and two-user RLS verification scripts are assertion-based and exit non-zero on blocked/failed mandatory checks.
 - TypeScript, lint, production build, and redirect-sanitization checks were reported PASS for the final-gate implementation.
 
 ## Remote Database Structural Receipt
 
-The Phase 2 migration has been manually applied to Supabase project `qibfitbnlfgiqctntufr`.
+The Phase 2 migration is applied to Supabase project `qibfitbnlfgiqctntufr`.
 
 The strict structural verifier returned PASS on every mandatory check:
 
@@ -81,7 +83,7 @@ Confirmed:
 
 ## Live Two-User RLS Receipt
 
-`node scripts/verify-phase2-rls.mjs` was executed against the actual target project with two distinct authenticated test users and exited `0`.
+`node scripts/verify-phase2-rls.mjs` was executed against the actual target project with two distinct authenticated users and exited `0`.
 
 Confirmed runtime invariant:
 
@@ -96,56 +98,24 @@ Confirmed runtime invariant:
 
 **RLS_TWO_USER_TEST = PASS**
 
-This proves Phase 2 ownership isolation against the live Supabase project without a service-role bypass.
-
 ## Live Auth E2E Receipt
 
-A bounded live Auth E2E pass was executed against the actual target project and the live Vercel deployment with no code changes.
+The following live workflows are accepted PASS against the Vercel deployment and target Supabase project. Automated/code verification is combined with direct owner-observed manual E2E where an interactive inbox/browser step is inherently required.
 
-| Auth Gate | Status | Evidence / Remaining Action |
+| Auth Gate | Status | Evidence |
 |---|---|---|
-| Email/password signup | PASS | Supabase accepted a real email/password signup against the live Vercel origin |
-| Email confirmation | BLOCKED_CONFIG | Confirmation email delivery is working enough to create the pending user, but full E2E requires the user to open the destination inbox and click the token-hash `/auth/confirm` link interactively |
-| Email/password login | PASS | Existing confirmed user successfully authenticated |
+| Email/password signup | PASS | Live signup completed successfully |
+| Email confirmation | PASS | Owner-observed live signup/confirmation flow completed successfully |
+| Email/password login | PASS | Confirmed user successfully authenticated |
 | Onboarding routing | PASS | Incomplete authenticated user routed to `/onboarding` |
 | Onboarding persistence | PASS | Phase 2 onboarding fields persisted successfully |
 | Settings persistence | PASS | Allowed profile/settings values persisted successfully |
-| Real sign out | PASS | Supabase session sign-out completed |
+| Real sign out | PASS | Supabase sign-out completed |
 | Protected route after sign out | PASS | Protected route redirected to `/login` after sign-out |
-| Password reset E2E | BLOCKED_CONFIG | Supabase accepted a real password reset request, but completion requires the user to open the recovery email and finish the interactive `/auth/confirm?type=recovery` → `/reset-password` flow |
-| Google OAuth E2E | BLOCKED_CONFIG | Google provider is enabled and generates a valid `accounts.google.com` authorization URL; full PASS requires one interactive browser consent/login round-trip and resulting Finora session |
+| Password reset E2E | PASS | Owner-observed live recovery/reset flow completed successfully |
+| Google OAuth E2E | PASS | Owner-observed real Google OAuth round-trip completed successfully and produced a Finora authenticated identity/session |
 
-No application defect was identified by the live Auth E2E run. Remaining blockers are now interactive external-user actions rather than code, database, SMTP acceptance, or provider-enable failures.
-
-## Remaining Interactive Steps to Close Phase 2
-
-### Email Confirmation
-
-Use the live site `https://finora-orpin-nu.vercel.app` to create a disposable email/password account if needed, open the confirmation message in the destination inbox, and click the Finora token-hash confirmation link. Required result:
-
-- browser reaches Finora `/auth/confirm`;
-- Supabase verifies the token and establishes a valid session;
-- a new/incomplete user is routed to `/onboarding`;
-- Authentication → Users shows the email as confirmed.
-
-### Password Recovery
-
-From the live Finora `/forgot-password` page, request a reset for a confirmed disposable user, open the recovery email, and click the recovery link. Required result:
-
-- browser reaches Finora `/auth/confirm?type=recovery...`;
-- recovery session is established;
-- user lands on `/reset-password`;
-- setting a new password succeeds;
-- subsequent login succeeds with the new password.
-
-### Google OAuth
-
-From the live Finora `/login` page, click the Google sign-in control and complete one real Google account consent/login. Required result:
-
-- Google redirects through the Supabase callback;
-- Finora `/auth/callback` completes the PKCE/session exchange;
-- a valid Finora authenticated session exists;
-- new/incomplete users are routed to `/onboarding`.
+No application defect remains open from the Phase 2 Auth E2E gate.
 
 ## Phase Authorization
 
@@ -155,14 +125,17 @@ From the live Finora `/login` page, click the Google sign-in control and complet
 - **Phase 2 Remote DB Structure:** PASS
 - **Phase 2 Anonymous RLS:** PASS
 - **Phase 2 Two-User Runtime RLS:** PASS
-- **Phase 2 Core Auth E2E:** PASS
 - **Phase 2 Email/Password Signup:** PASS
-- **Phase 2 Email Confirmation:** BLOCKED_CONFIG / INTERACTIVE_USER_ACTION_REQUIRED
-- **Phase 2 Password Recovery:** BLOCKED_CONFIG / INTERACTIVE_USER_ACTION_REQUIRED
-- **Phase 2 Google OAuth:** BLOCKED_CONFIG / INTERACTIVE_USER_ACTION_REQUIRED
-- **Phase 2 Overall:** PARTIAL / INTERACTIVE_AUTH_E2E_PENDING
-- **Phase 3:** NOT AUTHORIZED
+- **Phase 2 Email Confirmation:** PASS
+- **Phase 2 Email/Password Login:** PASS
+- **Phase 2 Onboarding Routing/Persistence:** PASS
+- **Phase 2 Settings Persistence:** PASS
+- **Phase 2 Sign Out / Route Protection:** PASS
+- **Phase 2 Password Recovery:** PASS
+- **Phase 2 Google OAuth:** PASS
+- **Phase 2 Overall:** PASS
+- **Phase 3 — Accounts + Categories:** AUTHORIZED
 
 ## Next Recommended Action
 
-Complete only the three interactive browser/inbox flows above on the live Vercel deployment, then report the observed redirect/result for each. Do not rerun database/RLS gates and do not begin Phase 3 until those final Auth E2E gates are resolved truthfully.
+Begin Phase 3 — Accounts + Categories only. Preserve the accepted Phase 2 Auth/RLS contract. Phase 3 must introduce real account/category persistence with source-controlled migrations, user ownership, explicit least-privilege grants, RLS, and live isolation verification. Do not create transactions yet.
