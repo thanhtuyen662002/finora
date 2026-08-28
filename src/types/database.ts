@@ -151,12 +151,12 @@ export interface Database {
           account_id: string;
           category_id: string;
           type: 'INCOME' | 'EXPENSE';
-          amount: number;
+          amount: string;
           currency_code: string;
           merchant: string;
           note: string | null;
           occurred_on: string;
-          is_voided?: boolean;
+          is_voided: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -171,7 +171,7 @@ export interface Database {
           merchant: string;
           note?: string | null;
           occurred_on?: string;
-          
+          is_voided?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -186,7 +186,7 @@ export interface Database {
           merchant?: string;
           note?: string | null;
           occurred_on?: string;
-          
+          is_voided?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -200,6 +200,28 @@ export interface Database {
           user_id: string;
           current_balance: string;
           currency_code: string;
+        };
+        Relationships: [];
+      };
+      transaction_details: {
+        Row: {
+          id: string;
+          user_id: string;
+          account_id: string;
+          category_id: string;
+          type: 'INCOME' | 'EXPENSE';
+          amount: string;
+          currency_code: string;
+          merchant: string;
+          note: string | null;
+          occurred_on: string;
+          is_voided: boolean;
+          created_at: string;
+          updated_at: string;
+          account_name: string;
+          category_name: string;
+          category_icon: string;
+          category_color: string;
         };
         Relationships: [];
       };
@@ -236,3 +258,4 @@ export type TransactionRow = Database['public']['Tables']['transactions']['Row']
 export type TransactionInsert = Omit<Database['public']['Tables']['transactions']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type TransactionUpdate = Omit<Database['public']['Tables']['transactions']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 export type AccountBalanceRow = Database['public']['Views']['account_balances']['Row'];
+export type TransactionDetailRow = Database['public']['Views']['transaction_details']['Row'];

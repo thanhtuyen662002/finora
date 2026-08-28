@@ -70,10 +70,34 @@ FROM public.accounts a
 LEFT JOIN public.transactions t ON a.id = t.account_id AND t.is_voided = FALSE
 GROUP BY a.id, a.user_id, a.currency_code, a.opening_balance;
 
--- 5. Enable Row Level Security (RLS) on transactions
+-- 5. Create derived transaction_details exact-read view
+CREATE OR REPLACE VIEW public.transaction_details WITH (security_invoker = true) AS
+SELECT 
+    t.id,
+    t.user_id,
+    t.account_id,
+    t.category_id,
+    t.type,
+    CAST(t.amount AS TEXT) AS amount,
+    t.currency_code,
+    t.merchant,
+    t.note,
+    t.occurred_on,
+    t.is_voided,
+    t.created_at,
+    t.updated_at,
+    a.name AS account_name,
+    c.name AS category_name,
+    c.icon AS category_icon,
+    c.color AS category_color
+FROM public.transactions t
+JOIN public.accounts a ON t.account_id = a.id
+JOIN public.categories c ON t.category_id = c.id;
+
+-- 6. Enable Row Level Security (RLS) on transactions
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- 6. Row Level Security Policies for transactions
+-- 7. Row Level Security Policies for transactions
 DROP POLICY IF EXISTS "Users can select own transactions" ON public.transactions;
 CREATE POLICY "Users can select own transactions"
     ON public.transactions
@@ -96,7 +120,7 @@ CREATE POLICY "Users can update own transactions"
     USING ((SELECT auth.uid()) = user_id)
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- 7. Table Grants and Column-Level Privileges for transactions
+-- 8. Table Grants and Column-Level Privileges for transactions
 REVOKE ALL ON TABLE public.transactions FROM anon;
 REVOKE ALL ON TABLE public.transactions FROM authenticated;
 REVOKE ALL ON TABLE public.transactions FROM PUBLIC;
@@ -105,10 +129,15 @@ GRANT SELECT ON TABLE public.transactions TO authenticated;
 GRANT INSERT (user_id, account_id, category_id, type, amount, currency_code, merchant, note, occurred_on) ON TABLE public.transactions TO authenticated;
 GRANT UPDATE (account_id, category_id, type, amount, currency_code, merchant, note, occurred_on, is_voided) ON TABLE public.transactions TO authenticated;
 
--- 8. View Grants
+-- 9. View Grants
 REVOKE ALL ON public.account_balances FROM anon;
 REVOKE ALL ON public.account_balances FROM authenticated;
 REVOKE ALL ON public.account_balances FROM PUBLIC;
 GRANT SELECT ON public.account_balances TO authenticated;
+
+REVOKE ALL ON public.transaction_details FROM anon;
+REVOKE ALL ON public.transaction_details FROM authenticated;
+REVOKE ALL ON public.transaction_details FROM PUBLIC;
+GRANT SELECT ON public.transaction_details TO authenticated;
 
 COMMIT;

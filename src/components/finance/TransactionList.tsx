@@ -1,15 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, X, SlidersHorizontal, ArrowUpDown, RotateCcw } from 'lucide-react';
+import { Search, X, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { ExtendedTransaction } from '@/features/transactions';
 import { TransactionItem } from './TransactionItem';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { formatDateVN } from '@/lib/money/format';
-
-
 import { EmptyState } from './EmptyState';
-
 import { AccountRow, CategoryRow } from '@/types/database';
 
 interface TransactionListProps {
@@ -55,10 +52,23 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   const filtered = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNum = now.getMonth() + 1;
+    const thisMonthPrefix = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
+
+    const prevMonthDate = new Date(currentYear, now.getMonth() - 1, 1);
+    const prevYear = prevMonthDate.getFullYear();
+    const prevMonthNum = prevMonthDate.getMonth() + 1;
+    const lastMonthPrefix = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
+
+    const todayMidnight = new Date(currentYear, now.getMonth(), now.getDate()).getTime();
+    const thirtyDaysAgoTime = todayMidnight - 30 * 24 * 60 * 60 * 1000;
+
     return transactions.filter((tx) => {
-      const q = searchTerm.toLowerCase();
+      const q = searchTerm.toLowerCase().trim();
       const matchesSearch =
-        !searchTerm ||
+        !q ||
         (tx.merchant || '').toLowerCase().includes(q) ||
         ((tx.note || '') && (tx.note || '').toLowerCase().includes(q)) ||
         (tx.categoryName || '').toLowerCase().includes(q) ||
@@ -72,41 +82,41 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
       let matchesPeriod = true;
       if (selectedPeriod === 'THIS_MONTH') {
-        matchesPeriod = tx.occurred_on.startsWith('2026-08');
+        matchesPeriod = tx.occurred_on.startsWith(thisMonthPrefix);
       } else if (selectedPeriod === 'LAST_MONTH') {
-        matchesPeriod = tx.occurred_on.startsWith('2026-07');
+        matchesPeriod = tx.occurred_on.startsWith(lastMonthPrefix);
       } else if (selectedPeriod === 'LAST_30_DAYS') {
-        const txDate = new Date(tx.occurred_on).getTime();
-        const thirtyDaysAgo = new Date('2026-08-27').getTime() - 30 * 24 * 60 * 60 * 1000;
-        matchesPeriod = txDate >= thirtyDaysAgo;
+        const parts = tx.occurred_on.split('-');
+        if (parts.length === 3) {
+          const txTime = new Date(
+            parseInt(parts[0], 10),
+            parseInt(parts[1], 10) - 1,
+            parseInt(parts[2], 10)
+          ).getTime();
+          matchesPeriod = txTime >= thirtyDaysAgoTime;
+        }
       }
 
       return matchesSearch && matchesType && matchesCategory && matchesAccount && matchesPeriod;
     });
   }, [transactions, searchTerm, selectedType, selectedCategory, selectedAccount, selectedPeriod]);
 
-  // Sorting
+  // Sorting: newest or oldest only
   const sorted = useMemo(() => {
     const list = [...filtered];
-    switch (sortBy) {
-      case 'OLDEST':
-        return list.sort(
-          (a, b) => new Date(a.occurred_on).getTime() - new Date(b.occurred_on).getTime()
-        );
-      case 'AMOUNT_DESC':
-        return list.sort(
-          (a, b) => (b.amount || b.amount) - (a.amount || a.amount)
-        );
-      case 'AMOUNT_ASC':
-        return list.sort(
-          (a, b) => (a.amount || a.amount) - (b.amount || b.amount)
-        );
-      case 'NEWEST':
-      default:
-        return list.sort(
-          (a, b) => new Date(b.occurred_on).getTime() - new Date(a.occurred_on).getTime()
-        );
+    if (sortBy === 'OLDEST') {
+      return list.sort((a, b) => {
+        const dateCmp = a.occurred_on.localeCompare(b.occurred_on);
+        if (dateCmp !== 0) return dateCmp;
+        return a.created_at.localeCompare(b.created_at);
+      });
     }
+    // NEWEST default
+    return list.sort((a, b) => {
+      const dateCmp = b.occurred_on.localeCompare(a.occurred_on);
+      if (dateCmp !== 0) return dateCmp;
+      return b.created_at.localeCompare(a.created_at);
+    });
   }, [filtered, sortBy]);
 
   const displayedTransactions = limit ? sorted.slice(0, limit) : sorted;
@@ -120,8 +130,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     groupedByDate[tx.occurred_on].push(tx);
   });
 
-  const sortedDates = Object.keys(groupedByDate).sort(
-    (a, b) => (sortBy === 'OLDEST' ? new Date(a).getTime() - new Date(b).getTime() : new Date(b).getTime() - new Date(a).getTime())
+  const sortedDates = Object.keys(groupedByDate).sort((a, b) =>
+    sortBy === 'OLDEST' ? a.localeCompare(b) : b.localeCompare(a)
   );
 
   const activeFilterCount = [
@@ -213,7 +223,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     { value: 'ALL', label: 'Tất cả tài khoản' },
                     ...accounts.map((a) => ({
                       value: a.id,
-                      label: `${a.name} (${a.currency_code})`,
+                      label: `${a.name} (${a.currency_code})` + (a.is_archived ? ' (Đã lưu trữ)' : ''),
                     })),
                   ]}
                 />
@@ -229,7 +239,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     { value: 'ALL', label: 'Tất cả danh mục' },
                     ...categories.map((c) => ({
                       value: c.id,
-                      label: c.name,
+                      label: c.name + (c.is_archived ? ' (Đã lưu trữ)' : ''),
                     })),
                   ]}
                 />
@@ -259,7 +269,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   options={[
                     { value: 'NEWEST', label: 'Mới nhất trước' },
                     { value: 'OLDEST', label: 'Cũ nhất trước' },
-                    
                   ]}
                 />
               </div>
@@ -319,4 +328,3 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     </div>
   );
 };
-

@@ -12,16 +12,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { createTransaction, updateTransaction, voidTransaction, restoreTransaction } from '@/features/transactions';
-
 import { Plus, CheckCircle2 } from 'lucide-react';
-import { AccountRow, CategoryRow, TransactionInsert, TransactionUpdate } from '@/types/database';
-import { createTransaction, updateTransaction, ExtendedTransaction } from '@/features/transactions';
+import { AccountRow, CategoryRow } from '@/types/database';
+import {
+  createTransaction,
+  updateTransaction,
+  voidTransaction,
+  restoreTransaction,
+  ExtendedTransaction,
+} from '@/features/transactions';
+import { getAccounts } from '@/features/accounts/accounts';
+import { getCategories } from '@/features/categories/categories';
+import { isPositiveExactDecimal, toExactDecimal } from '@/lib/money';
 
 interface AddTransactionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
   initialData?: ExtendedTransaction | null;
   accounts?: AccountRow[];
   categories?: CategoryRow[];
@@ -37,18 +44,23 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 }) => {
   const [internalAccounts, setInternalAccounts] = useState<AccountRow[]>([]);
   const [internalCategories, setInternalCategories] = useState<CategoryRow[]>([]);
-  const { getAccounts } = require('@/features/accounts/accounts');
-  const { getCategories } = require('@/features/categories/categories');
   
   useEffect(() => {
+    let active = true;
     if (open && (!propAccounts.length || !propCategories.length)) {
-      Promise.all([getAccounts(), getCategories()]).then(([accs, cats]) => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setInternalAccounts(accs);
-        setInternalCategories(cats);
-      }).catch(console.error);
+      Promise.all([getAccounts(), getCategories()])
+        .then(([accs, cats]) => {
+          if (active) {
+            setInternalAccounts(accs);
+            setInternalCategories(cats);
+          }
+        })
+        .catch(console.error);
     }
-  }, [open, propAccounts.length, propCategories.length, getAccounts, getCategories]);
+    return () => {
+      active = false;
+    };
+  }, [open, propAccounts.length, propCategories.length]);
 
   const accounts = propAccounts.length > 0 ? propAccounts : internalAccounts;
   const categories = propCategories.length > 0 ? propCategories : internalCategories;
@@ -64,68 +76,86 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Reset form when dialog opens
   useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSubmitted(false);
-      setErrorMsg('');
-      if (initialData) {
-        setType(initialData.type as 'EXPENSE' | 'INCOME');
-        setAmount(initialData.amount.toString());
-        setCurrency(initialData.currency_code);
-        setAccountId(initialData.account_id);
-        setCategoryId(initialData.category_id);
-        setMerchant(initialData.merchant || '');
-        setNote(initialData.note || '');
-        setOccurredOn(initialData.occurred_on || new Date().toISOString().substring(0, 10));
-      } else {
-        setType('EXPENSE');
-        setAmount('');
-        setCurrency(accounts.length > 0 ? accounts[0].currency_code : 'VND');
-        setAccountId(accounts.length > 0 ? accounts[0].id : '');
-        setMerchant('');
-        setNote('');
-        setOccurredOn(new Date().toISOString().substring(0, 10));
-        
-        const expCats = categories.filter(c => c.type === 'EXPENSE');
-        setCategoryId(expCats.length > 0 ? expCats[0].id : '');
-      }
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!open) return;
+
+    if (initialData) {
+      setType(initialData.type);
+      setAmount(initialData.amount);
+      setCurrency(initialData.currency_code);
+      setAccountId(initialData.account_id);
+      setCategoryId(initialData.category_id);
+      setMerchant(initialData.merchant || '');
+      setNote(initialData.note || '');
+      setOccurredOn(initialData.occurred_on || new Date().toISOString().substring(0, 10));
+    } else {
+      const defaultType = 'EXPENSE';
+      setType(defaultType);
+      setAmount('');
+      
+      const activeAccs = accounts.filter((a) => !a.is_archived);
+      const firstAcc = activeAccs.length > 0 ? activeAccs[0] : accounts[0];
+      setCurrency(firstAcc ? firstAcc.currency_code : 'VND');
+      setAccountId(firstAcc ? firstAcc.id : '');
+      
+      setMerchant('');
+      setNote('');
+      setOccurredOn(new Date().toISOString().substring(0, 10));
+      
+      const activeCats = categories.filter((c) => !c.is_archived && c.type === defaultType);
+      setCategoryId(activeCats.length > 0 ? activeCats[0].id : '');
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [open, initialData, accounts, categories]);
 
-  // Update category when type changes if current category doesn't match
-  useEffect(() => {
-    if (!open) return;
-    const cat = categories.find(c => c.id === categoryId);
-    if (!cat || cat.type !== type) {
-      const typeCats = categories.filter(c => c.type === type);
-      if (typeCats.length > 0) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setCategoryId(typeCats[0].id);
-      }
-      else setCategoryId('');
+  const handleTypeChange = (newTypeVal: string) => {
+    const newType = newTypeVal as 'EXPENSE' | 'INCOME';
+    setType(newType);
+    const availableCats = categories.filter(
+      (c) => c.type === newType && (!c.is_archived || (initialData && c.id === initialData.category_id))
+    );
+    if (availableCats.length > 0) {
+      setCategoryId(availableCats[0].id);
+    } else {
+      setCategoryId('');
     }
-  }, [type, categories, categoryId, open]);
+  };
 
-  // Update currency when account changes
-  useEffect(() => {
-    if (!open) return;
-    const acc = accounts.find(a => a.id === accountId);
+  const handleAccountChange = (newAccId: string) => {
+    setAccountId(newAccId);
+    const acc = accounts.find((a) => a.id === newAccId);
     if (acc) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrency(acc.currency_code);
     }
-  }, [accountId, accounts, open]);
+  };
 
-  const filteredCategories = categories.filter((c) => c.type === type);
+  // Filtered account options: only active, plus currently selected historical account if editing
+  const accountOptions = accounts
+    .filter((a) => !a.is_archived || (initialData && a.id === initialData.account_id))
+    .map((a) => ({
+      value: a.id,
+      label: `${a.name} (${a.currency_code})` + (a.is_archived ? ' (Đã lưu trữ)' : ''),
+    }));
 
-  
+  // Filtered category options: only active of current type, plus currently selected historical category if editing
+  const categoryOptions = categories
+    .filter(
+      (c) => c.type === type && (!c.is_archived || (initialData && c.id === initialData.category_id))
+    )
+    .map((c) => ({
+      value: c.id,
+      label: c.name + (c.is_archived ? ' (Đã lưu trữ)' : ''),
+    }));
+
   const handleVoid = async () => {
     if (!initialData) return;
     try {
       setSubmitted(true);
+      setErrorMsg('');
       await voidTransaction(initialData.id);
-      if (onSuccess) onSuccess();
+      if (onSuccess) await onSuccess();
       onOpenChange(false);
     } catch (err: unknown) {
       console.error(err);
@@ -138,8 +168,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (!initialData) return;
     try {
       setSubmitted(true);
+      setErrorMsg('');
       await restoreTransaction(initialData.id);
-      if (onSuccess) onSuccess();
+      if (onSuccess) await onSuccess();
       onOpenChange(false);
     } catch (err: unknown) {
       console.error(err);
@@ -150,44 +181,44 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || Number(amount) <= 0 || !accountId || !categoryId) {
-      setErrorMsg('Vui lòng nhập đầy đủ thông tin bắt buộc.');
+    if (!amount || !isPositiveExactDecimal(amount) || !accountId || !categoryId) {
+      setErrorMsg('Vui lòng nhập đầy đủ thông tin bắt buộc và số tiền hợp lệ (> 0).');
       return;
     }
     setErrorMsg('');
     setSubmitted(true);
     
     try {
+      const exactAmountStr = toExactDecimal(amount);
       if (initialData) {
         await updateTransaction(initialData.id, {
           type,
-          amount: amount,
+          amount: exactAmountStr,
           currency_code: currency,
           account_id: accountId,
           category_id: categoryId,
-          merchant,
-          note,
+          merchant: merchant.trim(),
+          note: note.trim() || null,
           occurred_on: occurredOn,
         });
       } else {
         await createTransaction({
           type,
-          amount: amount,
+          amount: exactAmountStr,
           currency_code: currency,
           account_id: accountId,
           category_id: categoryId,
-          merchant,
-          note,
+          merchant: merchant.trim(),
+          note: note.trim() || null,
           occurred_on: occurredOn,
         });
       }
       
-      if (onSuccess) onSuccess();
+      if (onSuccess) await onSuccess();
       onOpenChange(false);
     } catch (err: unknown) {
       console.error(err);
       setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi lưu giao dịch');
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSubmitted(false);
     }
   };
@@ -214,10 +245,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <div className="w-full">
             <Tabs
               value={type}
-              onValueChange={(val) => {
-                const newType = val as 'EXPENSE' | 'INCOME';
-                setType(newType);
-              }}
+              onValueChange={handleTypeChange}
               className="w-full"
             >
               <TabsList className="grid w-full grid-cols-2">
@@ -233,8 +261,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <div className="flex gap-2">
               <Input
                 id="amount"
-                type="number"
-                step="any"
+                type="text"
+                inputMode="decimal"
                 placeholder={currency === 'VND' ? '50000' : '50.00'}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -266,20 +294,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             />
           </div>
 
-          {/* Accounts */}
+          {/* Accounts & Categories */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="account">Tài khoản</Label>
               <Select
                 id="account"
                 value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                options={accounts
-                  .filter((a) => !a.is_archived || a.id === accountId)
-                  .map((a) => ({
-                  value: a.id,
-                  label: `${a.name} (${a.currency_code})` + (a.is_archived ? ' (Đã lưu trữ)' : ''),
-                }))}
+                onChange={(e) => handleAccountChange(e.target.value)}
+                options={accountOptions}
               />
             </div>
 
@@ -289,12 +312,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 id="category"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                options={filteredCategories
-                  .filter((c) => !c.is_archived || c.id === categoryId)
-                  .map((c) => ({
-                  value: c.id,
-                  label: c.name + (c.is_archived ? ' (Đã lưu trữ)' : ''),
-                }))}
+                options={categoryOptions}
               />
             </div>
           </div>
@@ -337,24 +355,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               )}
             </div>
             <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Hủy
-            </Button>
-            <Button type="submit" disabled={submitted || !amount}>
-              {submitted ? (
-                <span className="flex items-center space-x-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                  <span>Đã lưu</span>
-                </span>
-              ) : (
-                'Lưu giao dịch'
-              )}
-            </Button>
-          </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Hủy
+              </Button>
+              <Button type="submit" disabled={submitted || !amount}>
+                {submitted ? (
+                  <span className="flex items-center space-x-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    <span>Đã lưu</span>
+                  </span>
+                ) : (
+                  'Lưu giao dịch'
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

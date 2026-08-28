@@ -1,7 +1,7 @@
 # Finora — Database
 
 ## Status
-**Database implementation:** PHASE_3_ACCOUNTS_CATEGORIES
+**Database implementation:** PHASE_4_TRANSACTIONS (Schema defined, corrective pass ready)
 
 This document records the data model, tables, relationships, and invariants implemented in Finora. Executable Supabase migrations under `supabase/migrations/` are the authoritative schema source of truth.
 
@@ -57,6 +57,51 @@ User financial categories managed under RLS. 12 baseline categories are seeded u
 - `created_at` (timestamptz, default now())
 - `updated_at` (timestamptz, default now())
 
+### `public.transactions` (Phase 4)
+User financial transactions (Income/Expense) managed under RLS.
+- `id` (uuid, primary key, default `gen_random_uuid()`)
+- `user_id` (uuid, not null)
+- `account_id` (uuid, not null)
+- `category_id` (uuid, not null)
+- `type` (text, not null, check in ('INCOME', 'EXPENSE'))
+- `amount` (numeric(20,4), not null, check > 0)
+- `currency_code` (text, not null, check format `^[A-Z]{3,5}$`)
+- `merchant` (text, not null, length 1..200)
+- `note` (text, nullable, max length 1000)
+- `occurred_on` (date, not null, default CURRENT_DATE)
+- `is_voided` (boolean, not null, default false)
+- `created_at` (timestamptz, default now())
+- `updated_at` (timestamptz, default now())
+
+## Views
+
+### `public.account_balances` (Phase 4)
+A `security_invoker = true` view aggregating exact decimal totals per account.
+- `account_id` (uuid)
+- `user_id` (uuid)
+- `currency_code` (text)
+- `current_balance` (text) — Exact string cast: `opening_balance + sum(active INCOME) - sum(active EXPENSE)`.
+
+### `public.transaction_details` (Phase 4)
+A `security_invoker = true` view providing exact decimal string reads and joined metadata.
+- `id` (uuid)
+- `user_id` (uuid)
+- `account_id` (uuid)
+- `category_id` (uuid)
+- `type` (text)
+- `amount` (text) — Cast from `numeric(20,4)` to prevent JS IEEE 754 precision loss at the JSON boundary.
+- `currency_code` (text)
+- `merchant` (text)
+- `note` (text)
+- `occurred_on` (date)
+- `is_voided` (boolean)
+- `created_at` (timestamptz)
+- `updated_at` (timestamptz)
+- `account_name` (text)
+- `category_name` (text)
+- `category_icon` (text)
+- `category_color` (text)
+
 ## Ownership Model & Security Design
 
 Every user-owned record has an explicit foreign key to `auth.users(id)`.
@@ -64,56 +109,20 @@ RLS enforces data isolation at the database level. Frontend filters are not auth
 
 **Invariant 1:** User A cannot SELECT, INSERT, UPDATE, or DELETE User B's financial records.
 
+**Ownership-Safe Composite Foreign Keys:**
+- `transactions_account_fkey` on `(account_id, user_id, currency_code)` references `accounts(id, user_id, currency_code)`
+- `transactions_category_fkey` on `(category_id, user_id, type)` references `categories(id, user_id, type)`
+
 ### Hardened Privileges (Zero-Trust Defaults)
-By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) to `anon`, `authenticated`, and `PUBLIC` roles for all tables created via the dashboard or default migrations. In Finora, we explicitly revoke these blanket privileges.
+By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) to `anon`, `authenticated`, and `PUBLIC` roles. In Finora:
 - Default table grants (`anon`, `authenticated`, `PUBLIC`) are revoked.
-- `SELECT` is granted to `authenticated` only on specific tables with strict RLS.
-- `INSERT` is granted to `authenticated` ONLY for exact allowed columns (e.g. users cannot insert arbitrary `id` values for accounts, they are auto-generated).
-- `UPDATE` is granted to `authenticated` ONLY for exact allowed columns (e.g. users cannot update `user_id`, `id`, `created_at`).
-- `DELETE` is completely withheld from all application roles. Finora uses logical deletion (`is_archived`).
-- Security Definer functions (e.g. `handle_new_user`, `seed_default_categories`) are hardened with `search_path = ''` to prevent search path hijacking.
-- `EXECUTE` privilege on Security Definer functions is explicitly revoked from `PUBLIC`, `anon`, and `authenticated` so they cannot be invoked manually.
+- `SELECT` is granted to `authenticated` only on specific tables and views with strict RLS (`security_invoker = true`).
+- `INSERT` is granted to `authenticated` ONLY for exact allowed columns.
+- `UPDATE` is granted to `authenticated` ONLY for exact allowed columns (immutable columns like `id`, `user_id`, `created_at` cannot be updated).
+- `DELETE` is completely withheld. Logical deletion (`is_archived` / `is_voided`) is enforced.
+- Security Definer functions use `search_path = ''` and `EXECUTE` is revoked.
 
 ## Migration Ledger
 1. `supabase/migrations/20260828000000_phase_2_auth_rls.sql` — Phase 2: Profiles, user_settings, auth triggers, hardened search path & invoker permissions, explicit removal of Supabase default table grants, minimum column-level update grants, and RLS policies.
 2. `supabase/migrations/20260828000001_phase_3_accounts_categories.sql` — Phase 3: Accounts, Categories, seeding triggers, hardened `INSERT`/`UPDATE` column grants, explicit `EXECUTE` revocation, atomic transaction block.
-
-## Phase 4 — Transactions
-
-Transactions schema tracks income and expense logic. 
-
-**Table:** `transactions`
-- `id` (UUID, primary key)
-- `user_id` (UUID, NOT NULL)
-- `account_id` (UUID, NOT NULL)
-- `category_id` (UUID, NOT NULL)
-- `type` (TEXT, NOT NULL) — Limited to `INCOME`, `EXPENSE`.
-- `amount` (NUMERIC(20,4), NOT NULL) — Exact monetary storage.
-- `currency_code` (TEXT, NOT NULL)
-- `merchant` (TEXT, NOT NULL) — Length bounds 1..200.
-- `note` (TEXT) — Max length 1000.
-- `occurred_on` (DATE, NOT NULL)
-- `is_voided` (BOOLEAN, NOT NULL, DEFAULT FALSE)
-- `created_at`, `updated_at`
-
-**Ownership-safe composite FKs:**
-To prevent cross-user spoofing where User A inserts a transaction referencing User B's account or category:
-- `transactions_account_fkey` on `(account_id, user_id, currency_code)`
-- `transactions_category_fkey` on `(category_id, user_id, type)`
-
-**Account Balances:**
-`public.account_balances` is a `security_invoker=true` view aggregating exact decimal totals per account.
-Calculated as: `opening_balance + sum(active INCOME) - sum(active EXPENSE)`.
-Returns `current_balance` as exact decimal text to prevent JS native floating point logic.
-
-**Void Semantics:**
-Transactions are not hard-deleted. They are marked `is_voided=TRUE` which excludes them from exact view summaries and dashboards. `is_voided` is mutable for authenticated clients.
-
-**Exact Money Strategy:**
-Floating point money arithmetic (`parseFloat`) is strictly forbidden in application summary logic. Values are accumulated via the exact database view or using a string-based exact exact `addExactDecimals` bounded library on the client.
-
-**Grants and RLS:**
-- RLS enabled on `transactions`.
-- INSERT only allows subset of user-provided columns (defaults handles `is_voided`, `id`, `user_id`).
-- UPDATE explicitly denies identity/ownership manipulation.
-- DELETE is forbidden for normal clients.
+3. `supabase/migrations/20260828000002_phase_4_transactions.sql` — Phase 4: Transactions table, composite FKs, updated_at trigger, derived `account_balances` and `transaction_details` views with `security_invoker = true`, RLS policies, least-privilege column grants.

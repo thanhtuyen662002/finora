@@ -1,4 +1,5 @@
 import { CurrencyCode } from '@/types/finance';
+import { formatExactMoney } from './index';
 
 export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
   VND: '₫',
@@ -35,58 +36,18 @@ export function convertMockToBase(
 }
 
 export function formatMoney(
-  amount: number,
+  amount: number | string,
   currency: string = 'VND',
   options?: {
     showSign?: boolean;
     compact?: boolean;
   }
 ): string {
-  const normalizedCurrency = currency.toUpperCase();
-  const isNegative = amount < 0;
-  const absAmount = Math.abs(amount);
-  let formattedNumber = '';
-
-  if (normalizedCurrency === 'VND' || normalizedCurrency === 'JPY' || normalizedCurrency === 'KRW') {
-    formattedNumber = new Intl.NumberFormat('vi-VN', {
-      maximumFractionDigits: 0,
-    }).format(absAmount);
-  } else {
-    formattedNumber = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(absAmount);
-  }
-
-  let result = '';
-  switch (normalizedCurrency) {
-    case 'VND':
-      result = `${formattedNumber} ₫`;
-      break;
-    case 'USD':
-      result = `$${formattedNumber}`;
-      break;
-    case 'EUR':
-      result = `€${formattedNumber}`;
-      break;
-    case 'JPY':
-    case 'CNY':
-      result = `¥${formattedNumber}`;
-      break;
-    case 'KRW':
-      result = `₩${formattedNumber}`;
-      break;
-    default:
-      result = `${formattedNumber} ${normalizedCurrency}`;
-  }
-
-  if (isNegative) return `-${result}`;
-  if (options?.showSign && amount > 0) return `+${result}`;
-  return result;
+  return formatExactMoney(String(amount), currency, options);
 }
 
 export function formatConverted(
-  baseAmountVND: number,
+  baseAmountVND: number | string,
   baseCurrency: string = 'VND'
 ): string {
   return `≈ ${formatMoney(baseAmountVND, baseCurrency)}`;
