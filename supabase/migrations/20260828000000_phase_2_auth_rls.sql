@@ -66,8 +66,9 @@ DECLARE
     v_display_name TEXT;
     v_avatar_url TEXT;
 BEGIN
-    -- Extract display name if present in OAuth/Signup metadata
-    v_display_name := pg_catalog.coalesce(
+    -- COALESCE is a SQL special form, not a schema-qualified function.
+    -- Regular catalog functions remain explicitly qualified because search_path is empty.
+    v_display_name := COALESCE(
         NEW.raw_user_meta_data->>'full_name',
         NEW.raw_user_meta_data->>'name',
         NEW.raw_user_meta_data->>'display_name',
@@ -75,7 +76,7 @@ BEGIN
     );
     
     -- Extract avatar URL if present
-    v_avatar_url := pg_catalog.coalesce(
+    v_avatar_url := COALESCE(
         NEW.raw_user_meta_data->>'avatar_url',
         NEW.raw_user_meta_data->>'picture'
     );
@@ -133,13 +134,13 @@ CREATE TRIGGER on_auth_user_created
 INSERT INTO public.profiles (id, display_name, avatar_url, onboarding_completed, created_at, updated_at)
 SELECT
     u.id,
-    pg_catalog.coalesce(
+    COALESCE(
         u.raw_user_meta_data->>'full_name',
         u.raw_user_meta_data->>'name',
         u.raw_user_meta_data->>'display_name',
         pg_catalog.split_part(u.email, '@', 1)
     ),
-    pg_catalog.coalesce(
+    COALESCE(
         u.raw_user_meta_data->>'avatar_url',
         u.raw_user_meta_data->>'picture'
     ),
