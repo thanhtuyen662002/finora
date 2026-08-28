@@ -13,7 +13,8 @@
 - **Initial Phase 3 implementation SHA:** `8ebe887ed1e5aee8416dd084bad74a575b8d082d`
 - **First corrective remote SHA audited:** `7c841ea4702ac191573e40ac2b4308913fd1daeb`
 - **AI Studio final-cleanup SHA audited:** `7159363a2d0a20fac9f9621ee531b2d131517d66`
-- **Accepted Phase 3 source SHA:** `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5`
+- **Phase 3 code verification SHA:** `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5`
+- **Accepted Phase 3 migration-source SHA:** `529d1d42ab50d62b2327fadc7a9ac0b2122798fa`
 - **Phase 3 implementation prompt:** `prompts/PHASE_3_ACCOUNTS_CATEGORIES.md`
 - **Phase 3 corrective prompt:** `prompts/PHASE_3_CORRECTIVE.md`
 - **Phase 3 final cleanup prompt:** `prompts/PHASE_3_FINAL_CLEANUP.md`
@@ -39,7 +40,7 @@ Accepted gates:
 
 ## Phase 3 Accepted Source Gate
 
-The exact remote source at `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5` was verified with a clean worktree and matching local/remote HEAD.
+The application/runtime source at `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5` was verified with a clean worktree and matching local/remote HEAD.
 
 Accepted exact-head verification:
 
@@ -49,6 +50,8 @@ Accepted exact-head verification:
 - `node --check scripts/verify-phase3-rls.mjs`: PASS
 - Temporary corrective files removed: PASS
 - Code changes during verification: NONE
+
+A subsequent SQL-only migration correction at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` replaced invalid PostgreSQL `REVOKE ALL EXECUTE ON FUNCTION ...` syntax with valid `REVOKE EXECUTE ON FUNCTION ...` statements for the two Phase 3 SECURITY DEFINER helpers. This does not change application TypeScript/runtime code.
 
 The accepted Phase 3 source contains:
 
@@ -65,11 +68,11 @@ The accepted Phase 3 source contains:
 
 ## Remote Phase 3 Database State
 
-The Phase 3 migration is now **AUTHORIZED FOR MANUAL APPLICATION** to the target Supabase project, but it has not yet been accepted as applied.
+The first manual migration attempt failed on invalid `REVOKE ALL EXECUTE` syntax before `COMMIT`. The migration is transaction-wrapped, so that failed attempt is not accepted as applied. The corrected migration source at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` is now **AUTHORIZED FOR MANUAL RE-APPLICATION**.
 
 Required order:
 
-1. apply `supabase/migrations/20260828000001_phase_3_accounts_categories.sql` from the accepted Phase 3 source;
+1. re-apply `supabase/migrations/20260828000001_phase_3_accounts_categories.sql` from the accepted migration-source SHA;
 2. run `scripts/verify-phase3-db.sql` and require every mandatory row plus `99_OVERALL = PASS`;
 3. run `node scripts/verify-phase3-rls.mjs` with the two disposable test users and require exit code `0`;
 4. smoke-test account/category create/edit/archive/unarchive persistence on the live Vercel application;
@@ -82,7 +85,8 @@ Required order:
 - **Phase 2 Overall:** PASS
 - **Phase 3 Source Audit:** PASS
 - **Phase 3 Exact-Head TypeScript/Lint/Build:** PASS
-- **Phase 3 Migration Application:** AUTHORIZED_PENDING_OWNER_EXECUTION
+- **Phase 3 Migration Source Syntax Correction:** PASS
+- **Phase 3 Migration Application:** AUTHORIZED_PENDING_OWNER_RETRY
 - **Phase 3 Remote Database:** NOT_APPLIED_OR_NOT_YET_ATTESTED
 - **Phase 3 Structural Gate:** NOT_RUN
 - **Phase 3 Two-User Runtime RLS:** NOT_RUN
@@ -92,4 +96,4 @@ Required order:
 
 ## Next Recommended Action
 
-Apply the accepted Phase 3 migration in the Supabase SQL Editor, then run the strict structural verifier. Do not begin Phase 4 until all remote Phase 3 gates pass.
+Re-run the corrected Phase 3 migration from SHA `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` in the Supabase SQL Editor, then run the strict structural verifier. Do not begin Phase 4 until all remote Phase 3 gates pass.
