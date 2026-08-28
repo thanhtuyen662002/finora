@@ -36,17 +36,18 @@ export function convertMockToBase(
 
 export function formatMoney(
   amount: number,
-  currency: CurrencyCode = 'VND',
+  currency: string = 'VND',
   options?: {
     showSign?: boolean;
     compact?: boolean;
   }
 ): string {
+  const normalizedCurrency = currency.toUpperCase();
   const isNegative = amount < 0;
   const absAmount = Math.abs(amount);
   let formattedNumber = '';
 
-  if (currency === 'VND' || currency === 'JPY' || currency === 'KRW') {
+  if (normalizedCurrency === 'VND' || normalizedCurrency === 'JPY' || normalizedCurrency === 'KRW') {
     formattedNumber = new Intl.NumberFormat('vi-VN', {
       maximumFractionDigits: 0,
     }).format(absAmount);
@@ -58,7 +59,7 @@ export function formatMoney(
   }
 
   let result = '';
-  switch (currency) {
+  switch (normalizedCurrency) {
     case 'VND':
       result = `${formattedNumber} ₫`;
       break;
@@ -69,8 +70,6 @@ export function formatMoney(
       result = `€${formattedNumber}`;
       break;
     case 'JPY':
-      result = `¥${formattedNumber}`;
-      break;
     case 'CNY':
       result = `¥${formattedNumber}`;
       break;
@@ -78,21 +77,17 @@ export function formatMoney(
       result = `₩${formattedNumber}`;
       break;
     default:
-      result = `${formattedNumber} ${currency}`;
+      result = `${formattedNumber} ${normalizedCurrency}`;
   }
 
-  if (isNegative) {
-    return `-${result}`;
-  }
-  if (options?.showSign && amount > 0) {
-    return `+${result}`;
-  }
+  if (isNegative) return `-${result}`;
+  if (options?.showSign && amount > 0) return `+${result}`;
   return result;
 }
 
 export function formatConverted(
   baseAmountVND: number,
-  baseCurrency: CurrencyCode = 'VND'
+  baseCurrency: string = 'VND'
 ): string {
   return `≈ ${formatMoney(baseAmountVND, baseCurrency)}`;
 }
