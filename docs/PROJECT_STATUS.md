@@ -5,7 +5,7 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 3 — Accounts + Categories — REMOTE DATABASE VERIFICATION
+- **Current phase:** Phase 3 — Accounts + Categories — RUNTIME RLS VERIFICATION
 - **Phase status:** PARTIAL
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
@@ -51,32 +51,36 @@ Accepted exact-head verification:
 - Temporary corrective files removed: PASS
 - Code changes during verification: NONE
 
-A subsequent SQL-only migration correction at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` replaced invalid PostgreSQL `REVOKE ALL EXECUTE ON FUNCTION ...` syntax with valid `REVOKE EXECUTE ON FUNCTION ...` statements for the two Phase 3 SECURITY DEFINER helpers. This does not change application TypeScript/runtime code.
+A subsequent SQL-only migration correction at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` replaced invalid PostgreSQL `REVOKE ALL EXECUTE ON FUNCTION ...` syntax with valid `REVOKE EXECUTE ON FUNCTION ...` statements for the two Phase 3 SECURITY DEFINER helpers. This did not change application TypeScript/runtime code.
 
-The accepted Phase 3 source contains:
+## Phase 3 Remote Database Structural Receipt
 
-- atomic `BEGIN` / `COMMIT` migration for `accounts` and `categories`;
-- idempotent 12-category provisioning for existing and future auth users;
-- explicit RLS ownership policies and least-privilege grants;
-- direct EXECUTE revocation for Phase 3 SECURITY DEFINER helpers;
-- strict structural verifier for schema/RLS/grants/category provisioning;
-- bidirectional two-user runtime RLS verifier for accounts and categories;
-- real account create/edit/archive/unarchive persistence UI;
-- real category create/edit/archive/unarchive persistence UI;
-- extensible 3-5 letter currency codes without mock FX conversion;
-- account opening-balance input preserved as decimal text until PostgREST/PostgreSQL ingestion.
+The corrected Phase 3 migration was manually applied to the target Supabase project and the strict structural verifier completed with every mandatory check PASS and `99_OVERALL = PASS`.
 
-## Remote Phase 3 Database State
+Accepted verifier evidence:
 
-The first manual migration attempt failed on invalid `REVOKE ALL EXECUTE` syntax before `COMMIT`. The migration is transaction-wrapped, so that failed attempt is not accepted as applied. The corrected migration source at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` is now **AUTHORIZED FOR MANUAL RE-APPLICATION**.
+- `01_tables_exist`: PASS (`accounts`, `categories`)
+- `02_rls_enabled`: PASS on both tables
+- `03_rls_policies_exact`: PASS for exactly six authenticated ownership policies
+- `04_b_on_auth_user_created_categories_trigger`: PASS
+- `04_updated_at_triggers`: PASS on accounts and categories
+- `05_function_security`: PASS; both Phase 3 helper functions are SECURITY DEFINER with empty search path
+- `06_anon_public_no_privileges`: PASS; no anon/PUBLIC table or column privileges
+- `07_authenticated_table_privileges_exact`: PASS; table-level SELECT only on accounts/categories
+- `08_authenticated_insert_columns_exact`: PASS
+- `09_authenticated_update_columns_exact`: PASS
+- `10_opening_balance_type`: PASS; `numeric(20,4)`
+- `11_categories_backfill_complete`: PASS; `auth_users=3`, `categories=36`, proving all 12 baseline categories per current auth user
+- `12_execute_privileges_revoked`: PASS
+- `99_OVERALL`: PASS — Phase 3 database structural gate passed with least-privilege grants
+
+## Remaining Phase 3 Gates
 
 Required order:
 
-1. re-apply `supabase/migrations/20260828000001_phase_3_accounts_categories.sql` from the accepted migration-source SHA;
-2. run `scripts/verify-phase3-db.sql` and require every mandatory row plus `99_OVERALL = PASS`;
-3. run `node scripts/verify-phase3-rls.mjs` with the two disposable test users and require exit code `0`;
-4. smoke-test account/category create/edit/archive/unarchive persistence on the live Vercel application;
-5. only then close Phase 3 and authorize Phase 4.
+1. run `node scripts/verify-phase3-rls.mjs` with the two disposable test users and require exit code `0`;
+2. smoke-test account/category create/edit/archive/unarchive persistence on the live Vercel application;
+3. only then close Phase 3 and authorize Phase 4.
 
 ## Phase Authorization
 
@@ -86,9 +90,9 @@ Required order:
 - **Phase 3 Source Audit:** PASS
 - **Phase 3 Exact-Head TypeScript/Lint/Build:** PASS
 - **Phase 3 Migration Source Syntax Correction:** PASS
-- **Phase 3 Migration Application:** AUTHORIZED_PENDING_OWNER_RETRY
-- **Phase 3 Remote Database:** NOT_APPLIED_OR_NOT_YET_ATTESTED
-- **Phase 3 Structural Gate:** NOT_RUN
+- **Phase 3 Migration Application:** PASS
+- **Phase 3 Remote Database:** PASS
+- **Phase 3 Structural Gate:** PASS
 - **Phase 3 Two-User Runtime RLS:** NOT_RUN
 - **Phase 3 Live Persistence Smoke:** NOT_RUN
 - **Phase 3 Overall:** PARTIAL
@@ -96,4 +100,4 @@ Required order:
 
 ## Next Recommended Action
 
-Re-run the corrected Phase 3 migration from SHA `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` in the Supabase SQL Editor, then run the strict structural verifier. Do not begin Phase 4 until all remote Phase 3 gates pass.
+Run the Phase 3 two-user runtime RLS verifier against the target Supabase project. Do not begin Phase 4 until runtime isolation and live persistence smoke tests pass.
