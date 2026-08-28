@@ -10,11 +10,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/finance/EmptyState';
 import { Plus, Wallet, Globe } from 'lucide-react';
-import { getAccounts, createAccount, updateAccount } from '@/features/accounts/accounts';
+import { getAccounts, createAccount, updateAccount, getAccountBalances } from '@/features/accounts/accounts';
 import type { AccountRow, AccountInsert, AccountUpdate } from '@/types/database';
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [balances, setBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
@@ -26,8 +27,12 @@ export default function AccountsPage() {
     try {
       setLoading(true);
       setErrorMessage('');
-      const data = await getAccounts();
-      setAccounts(data);
+      const [accountsData, balancesData] = await Promise.all([
+        getAccounts(),
+        getAccountBalances(),
+      ]);
+      setAccounts(accountsData);
+      setBalances(balancesData);
     } catch (err: unknown) {
       console.error('Failed to load accounts', err);
       setErrorMessage(err instanceof Error ? err.message : 'Không thể tải danh sách tài khoản');
@@ -175,7 +180,7 @@ export default function AccountsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredAccounts.map((account) => (
             <div key={account.id} className="relative group">
-              <AccountCard account={account} variant="detailed" />
+              <AccountCard account={account} currentBalance={balances[account.id]} variant="detailed" />
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
                   variant="ghost"

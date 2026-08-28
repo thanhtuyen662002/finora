@@ -1,6 +1,4 @@
-"use client";
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,66 +12,153 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MOCK_ACCOUNTS } from '@/lib/mock/accounts';
-import { MOCK_CATEGORIES } from '@/lib/mock/transactions';
-import { MOCK_INCOME_SOURCES } from '@/lib/mock/reports';
-import { TransactionType, CurrencyCode, MockTransactionInput } from '@/types/finance';
-import { CheckCircle2, ArrowRightLeft, Plus } from 'lucide-react';
+import { Plus, CheckCircle2 } from 'lucide-react';
+import { AccountRow, CategoryRow, TransactionInsert, TransactionUpdate } from '@/types/database';
+import { createTransaction, updateTransaction, ExtendedTransaction } from '@/features/transactions';
 
 interface AddTransactionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (txData: MockTransactionInput) => void;
+  onSuccess?: () => void;
+  initialData?: ExtendedTransaction | null;
+  accounts?: AccountRow[];
+  categories?: CategoryRow[];
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   open,
   onOpenChange,
   onSuccess,
+  initialData,
+  accounts: propAccounts = [],
+  categories: propCategories = [],
 }) => {
-  const [type, setType] = useState<TransactionType>('EXPENSE');
+  const [internalAccounts, setInternalAccounts] = useState<AccountRow[]>([]);
+  const [internalCategories, setInternalCategories] = useState<CategoryRow[]>([]);
+  const { getAccounts } = require('@/features/accounts/accounts');
+  const { getCategories } = require('@/features/categories/categories');
+  
+  useEffect(() => {
+    if (open && (!propAccounts.length || !propCategories.length)) {
+      Promise.all([getAccounts(), getCategories()]).then(([accs, cats]) => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setInternalAccounts(accs);
+        setInternalCategories(cats);
+      }).catch(console.error);
+    }
+  }, [open, propAccounts.length, propCategories.length, getAccounts, getCategories]);
+
+  const accounts = propAccounts.length > 0 ? propAccounts : internalAccounts;
+  const categories = propCategories.length > 0 ? propCategories : internalCategories;
+
+  const [type, setType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState<CurrencyCode>('VND');
-  const [accountId, setAccountId] = useState(MOCK_ACCOUNTS[0]?.id || '');
-  const [toAccountId, setToAccountId] = useState(MOCK_ACCOUNTS[1]?.id || '');
-  const [categoryId, setCategoryId] = useState('cat-food');
+  const [currency, setCurrency] = useState('VND');
+  const [accountId, setAccountId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [merchant, setMerchant] = useState('');
   const [note, setNote] = useState('');
-  const [occurredAt, setOccurredAt] = useState(
-    new Date().toISOString().split('T')[0]
-  );
-  const [incomeSourceId, setIncomeSourceId] = useState('inc-sal');
+  const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().substring(0, 10));
   const [submitted, setSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const filteredCategories = MOCK_CATEGORIES.filter((c) =>
-    type === 'INCOME' ? c.type === 'INCOME' : c.type === 'EXPENSE'
-  );
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || parseFloat(amount) <= 0) return;
-
-    setSubmitted(true);
-    setTimeout(() => {
-      onSuccess?.({
-        type,
-        amount: parseFloat(amount),
-        currency,
-        accountId,
-        toAccountId: type === 'TRANSFER' ? toAccountId : undefined,
-        categoryId,
-        merchant: merchant || (type === 'TRANSFER' ? 'Chuyển tiền nội bộ' : 'Giao dịch mới'),
-        note,
-        occurredAt,
-        incomeSourceId: type === 'INCOME' ? incomeSourceId : undefined,
-      });
+  useEffect(() => {
+    if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSubmitted(false);
+      setErrorMsg('');
+      if (initialData) {
+        setType(initialData.type as 'EXPENSE' | 'INCOME');
+        setAmount(initialData.amount.toString());
+        setCurrency(initialData.currency_code);
+        setAccountId(initialData.account_id);
+        setCategoryId(initialData.category_id);
+        setMerchant(initialData.merchant || '');
+        setNote(initialData.note || '');
+        setOccurredOn(initialData.occurred_on || new Date().toISOString().substring(0, 10));
+      } else {
+        setType('EXPENSE');
+        setAmount('');
+        setCurrency(accounts.length > 0 ? accounts[0].currency_code : 'VND');
+        setAccountId(accounts.length > 0 ? accounts[0].id : '');
+        setMerchant('');
+        setNote('');
+        setOccurredOn(new Date().toISOString().substring(0, 10));
+        
+        const expCats = categories.filter(c => c.type === 'EXPENSE');
+        setCategoryId(expCats.length > 0 ? expCats[0].id : '');
+      }
+    }
+  }, [open, initialData, accounts, categories]);
+
+  // Update category when type changes if current category doesn't match
+  useEffect(() => {
+    if (!open) return;
+    const cat = categories.find(c => c.id === categoryId);
+    if (!cat || cat.type !== type) {
+      const typeCats = categories.filter(c => c.type === type);
+      if (typeCats.length > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setCategoryId(typeCats[0].id);
+      }
+      else setCategoryId('');
+    }
+  }, [type, categories, categoryId, open]);
+
+  // Update currency when account changes
+  useEffect(() => {
+    if (!open) return;
+    const acc = accounts.find(a => a.id === accountId);
+    if (acc) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCurrency(acc.currency_code);
+    }
+  }, [accountId, accounts, open]);
+
+  const filteredCategories = categories.filter((c) => c.type === type);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amount || parseFloat(amount) <= 0 || !accountId || !categoryId) {
+      setErrorMsg('Vui lòng nhập đầy đủ thông tin bắt buộc.');
+      return;
+    }
+    setErrorMsg('');
+    setSubmitted(true);
+    
+    try {
+      if (initialData) {
+        await updateTransaction(initialData.id, {
+          type,
+          amount: parseFloat(amount),
+          currency_code: currency,
+          account_id: accountId,
+          category_id: categoryId,
+          merchant,
+          note,
+          occurred_on: occurredOn,
+        });
+      } else {
+        await createTransaction({
+          type,
+          amount: parseFloat(amount),
+          currency_code: currency,
+          account_id: accountId,
+          category_id: categoryId,
+          merchant,
+          note,
+          occurred_on: occurredOn,
+        });
+      }
+      
+      if (onSuccess) onSuccess();
       onOpenChange(false);
-      // Reset form
-      setAmount('');
-      setMerchant('');
-      setNote('');
-    }, 400);
+    } catch (err: unknown) {
+      console.error(err);
+      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi lưu giao dịch');
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSubmitted(false);
+    }
   };
 
   return (
@@ -82,31 +167,31 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-lg">
             <Plus className="h-5 w-5 text-primary" />
-            <span>Thêm giao dịch mới</span>
+            <span>{initialData ? 'Sửa giao dịch' : 'Thêm giao dịch mới'}</span>
           </DialogTitle>
           <DialogDescription>
-            Ghi nhận thu chi hoặc chuyển tiền giữa các tài khoản.
+            Ghi nhận thu chi.
           </DialogDescription>
         </DialogHeader>
-
+        {errorMsg && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {errorMsg}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           {/* Transaction Type Tabs */}
           <div className="w-full">
             <Tabs
               value={type}
               onValueChange={(val) => {
-                const newType = val as TransactionType;
+                const newType = val as 'EXPENSE' | 'INCOME';
                 setType(newType);
-                if (newType === 'INCOME') setCategoryId('cat-salary');
-                if (newType === 'EXPENSE') setCategoryId('cat-food');
-                if (newType === 'TRANSFER') setCategoryId('cat-transfer');
               }}
               className="w-full"
             >
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="EXPENSE">Chi tiêu (-)</TabsTrigger>
                 <TabsTrigger value="INCOME">Thu nhập (+)</TabsTrigger>
-                <TabsTrigger value="TRANSFER">Chuyển tiền</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -119,131 +204,75 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 id="amount"
                 type="number"
                 step="any"
-                placeholder={currency === 'VND' ? '50.000' : '50.00'}
+                placeholder={currency === 'VND' ? '50000' : '50.00'}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
                 className="text-lg font-semibold"
                 autoFocus
               />
-              <Select
+              <Input
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
-                className="w-24 font-mono font-semibold"
-                options={[
-                  { value: 'VND', label: 'VND' },
-                  { value: 'USD', label: 'USD' },
-                  { value: 'EUR', label: 'EUR' },
-                  { value: 'JPY', label: 'JPY' },
-                  { value: 'CNY', label: 'CNY' },
-                  { value: 'KRW', label: 'KRW' },
-                ]}
+                disabled
+                className="w-24 font-mono font-semibold bg-muted"
               />
             </div>
           </div>
 
           {/* Merchant / Description */}
-          {type !== 'TRANSFER' && (
-            <div className="space-y-1.5">
-              <Label htmlFor="merchant">Tên cửa hàng / Nguồn tiền</Label>
-              <Input
-                id="merchant"
-                placeholder={
-                  type === 'EXPENSE'
-                    ? 'Ví dụ: Highlands Coffee, Grab, Tiền điện...'
-                    : 'Ví dụ: Lương công ty, Google AdSense...'
-                }
-                value={merchant}
-                onChange={(e) => setMerchant(e.target.value)}
-              />
-            </div>
-          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="merchant">Tên cửa hàng / Nguồn tiền</Label>
+            <Input
+              id="merchant"
+              placeholder={
+                type === 'EXPENSE'
+                  ? 'Ví dụ: Highlands Coffee, Grab, Tiền điện...'
+                  : 'Ví dụ: Lương công ty, Google AdSense...'
+              }
+              value={merchant}
+              onChange={(e) => setMerchant(e.target.value)}
+              required
+            />
+          </div>
 
           {/* Accounts */}
-          {type === 'TRANSFER' ? (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="fromAccount">Từ tài khoản</Label>
-                <Select
-                  id="fromAccount"
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  options={MOCK_ACCOUNTS.map((a) => ({
-                    value: a.id,
-                    label: `${a.name} (${a.currency})`,
-                  }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="toAccount">Đến tài khoản</Label>
-                <Select
-                  id="toAccount"
-                  value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
-                  options={MOCK_ACCOUNTS.filter((a) => a.id !== accountId).map(
-                    (a) => ({
-                      value: a.id,
-                      label: `${a.name} (${a.currency})`,
-                    })
-                  )}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="account">Tài khoản</Label>
-                <Select
-                  id="account"
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  options={MOCK_ACCOUNTS.map((a) => ({
-                    value: a.id,
-                    label: `${a.name} (${a.currency})`,
-                  }))}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="category">Danh mục</Label>
-                <Select
-                  id="category"
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                  options={filteredCategories.map((c) => ({
-                    value: c.id,
-                    label: c.name,
-                  }))}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Income Source (If Income) */}
-          {type === 'INCOME' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="incomeSource">Nguồn thu nhập chi tiết</Label>
+              <Label htmlFor="account">Tài khoản</Label>
               <Select
-                id="incomeSource"
-                value={incomeSourceId}
-                onChange={(e) => setIncomeSourceId(e.target.value)}
-                options={MOCK_INCOME_SOURCES.map((s) => ({
-                  value: s.id,
-                  label: s.name,
+                id="account"
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                options={accounts.map((a) => ({
+                  value: a.id,
+                  label: `${a.name} (${a.currency_code})`,
                 }))}
               />
             </div>
-          )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="category">Danh mục</Label>
+              <Select
+                id="category"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                options={filteredCategories.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                }))}
+              />
+            </div>
+          </div>
 
           {/* Date & Note */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="occurredAt">Ngày giao dịch</Label>
+              <Label htmlFor="occurredOn">Ngày giao dịch</Label>
               <Input
-                id="occurredAt"
+                id="occurredOn"
                 type="date"
-                value={occurredAt}
-                onChange={(e) => setOccurredAt(e.target.value)}
+                value={occurredOn}
+                onChange={(e) => setOccurredOn(e.target.value)}
                 required
               />
             </div>

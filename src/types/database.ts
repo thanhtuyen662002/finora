@@ -144,9 +144,64 @@ export interface Database {
         };
         Relationships: [];
       };
+      transactions: {
+        Row: {
+          id: string;
+          user_id: string;
+          account_id: string;
+          category_id: string;
+          type: 'INCOME' | 'EXPENSE';
+          amount: number;
+          currency_code: string;
+          merchant: string;
+          note: string | null;
+          occurred_on: string;
+          is_voided: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          account_id: string;
+          category_id: string;
+          type: 'INCOME' | 'EXPENSE';
+          amount: number | string;
+          currency_code: string;
+          merchant: string;
+          note?: string | null;
+          occurred_on?: string;
+          is_voided?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          account_id?: string;
+          category_id?: string;
+          type?: 'INCOME' | 'EXPENSE';
+          amount?: number | string;
+          currency_code?: string;
+          merchant?: string;
+          note?: string | null;
+          occurred_on?: string;
+          is_voided?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
-      [_ in never]: never;
+      account_balances: {
+        Row: {
+          account_id: string;
+          user_id: string;
+          current_balance: number;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       [_ in never]: never;
@@ -175,3 +230,8 @@ export type CategoryUpdate = Omit<Database['public']['Tables']['categories']['Up
 
 export type AccountType = 'CASH' | 'BANK' | 'EWALLET' | 'SAVINGS' | 'CREDIT_CARD' | 'INVESTMENT' | 'OTHER';
 export type CategoryType = 'INCOME' | 'EXPENSE';
+
+export type TransactionRow = Database['public']['Tables']['transactions']['Row'];
+export type TransactionInsert = Omit<Database['public']['Tables']['transactions']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type TransactionUpdate = Omit<Database['public']['Tables']['transactions']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
+export type AccountBalanceRow = Database['public']['Views']['account_balances']['Row'];

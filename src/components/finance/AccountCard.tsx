@@ -15,6 +15,7 @@ import { formatMoney } from '@/lib/money/format';
 
 interface AccountCardProps {
   account: AccountRow;
+  currentBalance?: number | string;
   onClick?: () => void;
   variant?: 'compact' | 'detailed';
 }
@@ -31,6 +32,7 @@ const ACCOUNT_TYPE_LABELS: Record<string, string> = {
 
 export const AccountCard: React.FC<AccountCardProps> = ({
   account,
+  currentBalance,
   onClick,
   variant = 'detailed',
 }) => {
@@ -72,7 +74,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </div>
         <div className="text-right shrink-0 pl-2">
-          <p className="text-sm font-semibold text-foreground">{formatMoney(account.opening_balance, account.currency_code)}</p>
+          <p className="text-sm font-semibold text-foreground">{formatMoney(Number(currentBalance !== undefined ? currentBalance : account.opening_balance), account.currency_code)}</p>
         </div>
       </div>
     );
@@ -110,9 +112,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
         <div className="mt-5 flex items-baseline justify-between pt-2 border-t border-border/60">
           <div>
-            <span className="text-xs text-muted-foreground">Số dư khởi tạo</span>
+            <span className="text-xs text-muted-foreground">{currentBalance !== undefined ? 'Số dư hiện tại' : 'Số dư khởi tạo'}</span>
             <p className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
-              {formatMoney(account.opening_balance, account.currency_code)}
+              {formatMoney(Number(currentBalance !== undefined ? currentBalance : account.opening_balance), account.currency_code)}
             </p>
           </div>
         </div>

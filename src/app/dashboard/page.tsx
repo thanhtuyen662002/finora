@@ -16,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { MOCK_DASHBOARD_METRICS, MOCK_CASH_FLOW_6M } from '@/lib/mock/reports';
 import { MOCK_ACCOUNTS } from '@/lib/mock/accounts';
-import { MOCK_TRANSACTIONS } from '@/lib/mock/transactions';
 import { MOCK_BUDGETS } from '@/lib/mock/budgets';
 import { MOCK_GOALS } from '@/lib/mock/goals';
 import { MockAccount } from '@/types/finance';
@@ -40,7 +39,7 @@ export default function DashboardPage() {
   const [addTxOpen, setAddTxOpen] = useState(false);
 
   const metrics = MOCK_DASHBOARD_METRICS;
-  const recentTransactions = MOCK_TRANSACTIONS.slice(0, 6);
+  const recentTransactions: any[] = [];
   const topBudgets = MOCK_BUDGETS.slice(0, 3);
   const activeGoals = MOCK_GOALS.slice(0, 2);
 
@@ -146,7 +145,7 @@ export default function DashboardPage() {
                 href="/transactions"
                 className="text-xs font-medium text-primary hover:underline flex items-center"
               >
-                Xem tất cả ({MOCK_TRANSACTIONS.length})
+                Xem tất cả ({0})
                 <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Link>
             </CardHeader>

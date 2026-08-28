@@ -1,23 +1,29 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Filter, X, SlidersHorizontal, ArrowUpDown, RotateCcw } from 'lucide-react';
-import { MockTransaction } from '@/types/finance';
+import { ExtendedTransaction } from '@/features/transactions';
 import { TransactionItem } from './TransactionItem';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { formatDateVN } from '@/lib/money/format';
-import { MOCK_ACCOUNTS } from '@/lib/mock/accounts';
-import { MOCK_CATEGORIES } from '@/lib/mock/transactions';
+
+
 import { EmptyState } from './EmptyState';
 
+import { AccountRow, CategoryRow } from '@/types/database';
+
 interface TransactionListProps {
-  transactions: MockTransaction[];
+  accounts?: AccountRow[];
+  categories?: CategoryRow[];
+  transactions: ExtendedTransaction[];
   showFilters?: boolean;
   limit?: number;
-  onSelectTransaction?: (tx: MockTransaction) => void;
+  onSelectTransaction?: (tx: ExtendedTransaction) => void;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({
+  accounts = [],
+  categories = [],
   transactions,
   showFilters = true,
   limit,
@@ -53,24 +59,24 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       const q = searchTerm.toLowerCase();
       const matchesSearch =
         !searchTerm ||
-        tx.merchant.toLowerCase().includes(q) ||
-        (tx.note && tx.note.toLowerCase().includes(q)) ||
-        tx.categoryName.toLowerCase().includes(q) ||
-        tx.accountName.toLowerCase().includes(q);
+        (tx.merchant || '').toLowerCase().includes(q) ||
+        ((tx.note || '') && (tx.note || '').toLowerCase().includes(q)) ||
+        (tx.categoryName || '').toLowerCase().includes(q) ||
+        (tx.accountName || '').toLowerCase().includes(q);
 
       const matchesType = selectedType === 'ALL' || tx.type === selectedType;
       const matchesCategory =
-        selectedCategory === 'ALL' || tx.categoryId === selectedCategory;
+        selectedCategory === 'ALL' || tx.category_id === selectedCategory;
       const matchesAccount =
-        selectedAccount === 'ALL' || tx.accountId === selectedAccount;
+        selectedAccount === 'ALL' || tx.account_id === selectedAccount;
 
       let matchesPeriod = true;
       if (selectedPeriod === 'THIS_MONTH') {
-        matchesPeriod = tx.occurredAt.startsWith('2026-08');
+        matchesPeriod = tx.occurred_on.startsWith('2026-08');
       } else if (selectedPeriod === 'LAST_MONTH') {
-        matchesPeriod = tx.occurredAt.startsWith('2026-07');
+        matchesPeriod = tx.occurred_on.startsWith('2026-07');
       } else if (selectedPeriod === 'LAST_30_DAYS') {
-        const txDate = new Date(tx.occurredAt).getTime();
+        const txDate = new Date(tx.occurred_on).getTime();
         const thirtyDaysAgo = new Date('2026-08-27').getTime() - 30 * 24 * 60 * 60 * 1000;
         matchesPeriod = txDate >= thirtyDaysAgo;
       }
@@ -85,20 +91,20 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     switch (sortBy) {
       case 'OLDEST':
         return list.sort(
-          (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
+          (a, b) => new Date(a.occurred_on).getTime() - new Date(b.occurred_on).getTime()
         );
       case 'AMOUNT_DESC':
         return list.sort(
-          (a, b) => (b.baseAmountVND || b.amount) - (a.baseAmountVND || a.amount)
+          (a, b) => (b.amount || b.amount) - (a.amount || a.amount)
         );
       case 'AMOUNT_ASC':
         return list.sort(
-          (a, b) => (a.baseAmountVND || a.amount) - (b.baseAmountVND || b.amount)
+          (a, b) => (a.amount || a.amount) - (b.amount || b.amount)
         );
       case 'NEWEST':
       default:
         return list.sort(
-          (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+          (a, b) => new Date(b.occurred_on).getTime() - new Date(a.occurred_on).getTime()
         );
     }
   }, [filtered, sortBy]);
@@ -106,12 +112,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const displayedTransactions = limit ? sorted.slice(0, limit) : sorted;
 
   // Group by date
-  const groupedByDate: Record<string, MockTransaction[]> = {};
+  const groupedByDate: Record<string, ExtendedTransaction[]> = {};
   displayedTransactions.forEach((tx) => {
-    if (!groupedByDate[tx.occurredAt]) {
-      groupedByDate[tx.occurredAt] = [];
+    if (!groupedByDate[tx.occurred_on]) {
+      groupedByDate[tx.occurred_on] = [];
     }
-    groupedByDate[tx.occurredAt].push(tx);
+    groupedByDate[tx.occurred_on].push(tx);
   });
 
   const sortedDates = Object.keys(groupedByDate).sort(
@@ -160,7 +166,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   { value: 'ALL', label: 'Tất cả loại thu/chi' },
                   { value: 'EXPENSE', label: 'Chi tiêu (-)' },
                   { value: 'INCOME', label: 'Thu nhập (+)' },
-                  { value: 'TRANSFER', label: 'Chuyển tiền' },
                 ]}
               />
 
@@ -206,9 +211,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   className="w-full bg-card text-xs"
                   options={[
                     { value: 'ALL', label: 'Tất cả tài khoản' },
-                    ...MOCK_ACCOUNTS.map((a) => ({
+                    ...accounts.map((a) => ({
                       value: a.id,
-                      label: `${a.name} (${a.currency})`,
+                      label: `${a.name} (${a.currency_code})`,
                     })),
                   ]}
                 />
@@ -222,7 +227,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   className="w-full bg-card text-xs"
                   options={[
                     { value: 'ALL', label: 'Tất cả danh mục' },
-                    ...MOCK_CATEGORIES.map((c) => ({
+                    ...categories.map((c) => ({
                       value: c.id,
                       label: c.name,
                     })),
