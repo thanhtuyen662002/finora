@@ -28,7 +28,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   open,
   onOpenChange,
   onSuccess,
-  initialData
+  initialData,
 }) => {
   const [name, setName] = useState('');
   const [type, setType] = useState<AccountType>('BANK');
@@ -39,84 +39,74 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-    useEffect(() => {
-    if (open) {
-            if (initialData) {
-        setName(initialData.name);
-        setType(initialData.type as AccountType);
-        setCurrencyCode(initialData.currency_code);
-        setBalance(initialData.opening_balance?.toString() || '');
-        setInstitution(initialData.institution || '');
-        setColor(initialData.color);
-      } else {
-        setName('');
-        setType('BANK');
-        setCurrencyCode('VND');
-        setBalance('');
-        setInstitution('');
-        setColor('#005a3c');
-      }
-      setErrorMsg('');
-      setSubmitted(false);
+  useEffect(() => {
+    if (!open) return;
+
+    if (initialData) {
+      setName(initialData.name);
+      setType(initialData.type as AccountType);
+      setCurrencyCode(initialData.currency_code);
+      setBalance(initialData.opening_balance?.toString() || '');
+      setInstitution(initialData.institution || '');
+      setColor(initialData.color);
+    } else {
+      setName('');
+      setType('BANK');
+      setCurrencyCode('VND');
+      setBalance('');
+      setInstitution('');
+      setColor('#005a3c');
     }
+
+    setErrorMsg('');
+    setSubmitted(false);
   }, [open, initialData]);
 
   const colors = [
-    '#005a3c', // Green
-    '#002f6c', // MB Blue
-    '#16a34a', // Emerald
-    '#a50064', // MoMo Pink
-    '#003087', // PayPal Blue
-    '#37517e', // Wise Navy
-    '#dc2626', // Red
-    '#7c3aed', // Purple
+    '#005a3c',
+    '#002f6c',
+    '#16a34a',
+    '#a50064',
+    '#003087',
+    '#37517e',
+    '#dc2626',
+    '#7c3aed',
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
-    
-    const upperCurrency = currencyCode.toUpperCase();
+    if (!name.trim()) return;
+
+    const upperCurrency = currencyCode.trim().toUpperCase();
     if (!/^[A-Z]{3,5}$/.test(upperCurrency)) {
       setErrorMsg('Mã tiền tệ phải từ 3-5 ký tự chữ cái (VD: VND, USD)');
       return;
     }
-    
-    // Numeric validation
-    if (balance !== '' && isNaN(Number(balance))) {
-      setErrorMsg('Số dư khởi tạo không hợp lệ');
+
+    const normalizedBalance = balance.trim() === '' ? '0' : balance.trim();
+    if (!/^-?\d+(?:\.\d{1,4})?$/.test(normalizedBalance)) {
+      setErrorMsg('Số dư khởi tạo phải là số hợp lệ và tối đa 4 chữ số thập phân');
       return;
     }
 
     setSubmitted(true);
-    
+    setErrorMsg('');
+
     try {
-      setErrorMsg('');
       if (onSuccess) {
         await onSuccess({
-          name,
+          name: name.trim(),
           type,
           currency_code: upperCurrency,
-          // Passing as any since Supabase JS client handles string -> numeric implicitly. Or just pass number.
-          // Wait, typescript type requires number. So we must cast it to number, but without losing precision before JSON serialization.
-          // In TypeScript, Number() or parseFloat() keeps full precision up to 53 bits (safe integer), which is plenty for 20,4.
-          // But the prompt says "preserve opening-balance decimal input as a string until it is sent to Supabase/PostgreSQL instead of parseFloat where practical"
-          // We can cast the payload object to `any` before sending to supabase, or modify `AccountInsert` to allow string.
-          // Actually, if we just use `Number(balance)`, it is a JS number.
-          // Let's use `balance as any` to bypass TS type check for `number`, so it sends the string.
-          opening_balance: (balance === '' ? 0 : balance) as any,
-          institution: institution || null,
+          opening_balance: normalizedBalance,
+          institution: institution.trim() || null,
           color,
         });
       }
-      setSubmitted(false);
       onOpenChange(false);
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setErrorMsg(err.message);
-      } else {
-        setErrorMsg('Có lỗi xảy ra');
-      }
+      setErrorMsg(err instanceof Error ? err.message : 'Có lỗi xảy ra');
+    } finally {
       setSubmitted(false);
     }
   };
@@ -127,10 +117,10 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <PlusCircle className="h-5 w-5 text-primary" />
-            <span>{initialData ? "Sửa tài khoản" : "Thêm tài khoản / ví"}</span>
+            <span>{initialData ? 'Sửa tài khoản' : 'Thêm tài khoản / ví'}</span>
           </DialogTitle>
           <DialogDescription>
-            {initialData ? "Chỉnh sửa thông tin tài khoản." : "Tạo tài khoản ngân hàng, ví điện tử hoặc quỹ tiền mặt để quản lý."}
+            {initialData ? 'Chỉnh sửa thông tin tài khoản.' : 'Tạo tài khoản ngân hàng, ví điện tử hoặc quỹ tiền mặt để quản lý.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
@@ -182,6 +172,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
             <Input
               id="accBalance"
               type="text"
+              inputMode="decimal"
               placeholder="0"
               value={balance}
               onChange={(e) => setBalance(e.target.value)}
@@ -213,15 +204,11 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
             </div>
           </div>
           <DialogFooter className="pt-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Hủy
             </Button>
-            <Button type="submit" disabled={submitted || !name}>
-              {submitted ? (initialData ? 'Đang lưu...' : 'Đang tạo...') : (initialData ? "Lưu thay đổi" : "Tạo tài khoản")}
+            <Button type="submit" disabled={submitted || !name.trim()}>
+              {submitted ? (initialData ? 'Đang lưu...' : 'Đang tạo...') : (initialData ? 'Lưu thay đổi' : 'Tạo tài khoản')}
             </Button>
           </DialogFooter>
         </form>
