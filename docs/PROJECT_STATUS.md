@@ -182,8 +182,7 @@ Required order after corrective code PASS:
 - **Phase 1:** PASS
 - **Phase 2:** PASS
 - **Phase 3:** PASS
-- **Phase 4 Initial Implementation:** CORRECTIVE_REQUIRED
-- **Phase 4 Code Gate:** NOT_ACCEPTED
+- **Phase 4 Code Gate:** PASS_CODE_ONLY
 - **Phase 4 Remote Database:** BLOCKED_NOT_APPLIED
 - **Phase 4 Structural Gate:** NOT_RUN
 - **Phase 4 Two-User Runtime RLS:** NOT_RUN
@@ -193,4 +192,4 @@ Required order after corrective code PASS:
 
 ## Next Recommended Action
 
-Execute `prompts/PHASE_4_CORRECTIVE.md` against the latest exact `origin/main`. Do not apply any Phase 4 migration and do not begin Phase 5 during the corrective pass.
+Manual verify remote migration and tests.

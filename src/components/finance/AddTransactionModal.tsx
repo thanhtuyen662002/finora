@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { createTransaction, updateTransaction, voidTransaction, restoreTransaction } from '@/features/transactions';
+
 import { Plus, CheckCircle2 } from 'lucide-react';
 import { AccountRow, CategoryRow, TransactionInsert, TransactionUpdate } from '@/types/database';
 import { createTransaction, updateTransaction, ExtendedTransaction } from '@/features/transactions';
@@ -117,9 +119,38 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   const filteredCategories = categories.filter((c) => c.type === type);
 
+  
+  const handleVoid = async () => {
+    if (!initialData) return;
+    try {
+      setSubmitted(true);
+      await voidTransaction(initialData.id);
+      if (onSuccess) onSuccess();
+      onOpenChange(false);
+    } catch (err: unknown) {
+      console.error(err);
+      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi hủy giao dịch');
+      setSubmitted(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!initialData) return;
+    try {
+      setSubmitted(true);
+      await restoreTransaction(initialData.id);
+      if (onSuccess) onSuccess();
+      onOpenChange(false);
+    } catch (err: unknown) {
+      console.error(err);
+      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi khôi phục giao dịch');
+      setSubmitted(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || parseFloat(amount) <= 0 || !accountId || !categoryId) {
+    if (!amount || Number(amount) <= 0 || !accountId || !categoryId) {
       setErrorMsg('Vui lòng nhập đầy đủ thông tin bắt buộc.');
       return;
     }
@@ -130,7 +161,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       if (initialData) {
         await updateTransaction(initialData.id, {
           type,
-          amount: parseFloat(amount),
+          amount: amount,
           currency_code: currency,
           account_id: accountId,
           category_id: categoryId,
@@ -141,7 +172,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       } else {
         await createTransaction({
           type,
-          amount: parseFloat(amount),
+          amount: amount,
           currency_code: currency,
           account_id: accountId,
           category_id: categoryId,
@@ -243,9 +274,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 id="account"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
-                options={accounts.map((a) => ({
+                options={accounts
+                  .filter((a) => !a.is_archived || a.id === accountId)
+                  .map((a) => ({
                   value: a.id,
-                  label: `${a.name} (${a.currency_code})`,
+                  label: `${a.name} (${a.currency_code})` + (a.is_archived ? ' (Đã lưu trữ)' : ''),
                 }))}
               />
             </div>
@@ -256,9 +289,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 id="category"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                options={filteredCategories.map((c) => ({
+                options={filteredCategories
+                  .filter((c) => !c.is_archived || c.id === categoryId)
+                  .map((c) => ({
                   value: c.id,
-                  label: c.name,
+                  label: c.name + (c.is_archived ? ' (Đã lưu trữ)' : ''),
                 }))}
               />
             </div>
@@ -288,7 +323,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             </div>
           </div>
 
-          <DialogFooter className="pt-3">
+          <DialogFooter className="pt-3 flex justify-between w-full">
+            <div className="flex gap-2">
+              {initialData && !initialData.is_voided && (
+                <Button type="button" variant="destructive" onClick={handleVoid} disabled={submitted}>
+                  Hủy giao dịch
+                </Button>
+              )}
+              {initialData && initialData.is_voided && (
+                <Button type="button" variant="secondary" onClick={handleRestore} disabled={submitted}>
+                  Khôi phục
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
             <Button
               type="button"
               variant="outline"
@@ -306,6 +354,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 'Lưu giao dịch'
               )}
             </Button>
+          </div>
           </DialogFooter>
         </form>
       </DialogContent>

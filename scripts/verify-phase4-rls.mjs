@@ -1,4 +1,3 @@
-// scripts/verify-phase4-rls.mjs
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,114 +15,93 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !USER_A_EMAIL || !USER_B_EMAIL) {
 const clientA = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const clientB = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+function assert(condition, message) {
+  if (!condition) {
+    console.error(`FAIL: ${message}`);
+    process.exit(1);
+  }
+}
+
 async function run() {
-  const { error: errA } = await clientA.auth.signInWithPassword({ email: USER_A_EMAIL, password: USER_A_PASSWORD });
-  if (errA) throw new Error("A auth fail");
-  console.log("USER_A_AUTH\nPASS");
-
-  const { error: errB } = await clientB.auth.signInWithPassword({ email: USER_B_EMAIL, password: USER_B_PASSWORD });
-  if (errB) throw new Error("B auth fail");
-  console.log("USER_B_AUTH\nPASS");
-
-  // Create a category for A
-  const { data: catA, error: catAErr } = await clientA.from('categories').insert({
-    name: 'Test Cat A',
-    type: 'EXPENSE',
-    icon: 'Car',
-    color: '#000',
-  }).select().single();
-  if (catAErr) throw catAErr;
-
-  // Create an account for A
-  const { data: accA, error: accAErr } = await clientA.from('accounts').insert({
-    name: 'Test Acc A',
-    type: 'CASH',
-    currency_code: 'VND',
-    opening_balance: 1000,
-    color: '#000'
-  }).select().single();
-  if (accAErr) throw accAErr;
-
-  // Create a transaction for A
-  const { data: txA, error: txAErr } = await clientA.from('transactions').insert({
-    account_id: accA.id,
-    category_id: catA.id,
-    type: 'EXPENSE',
-    amount: 100,
-    currency_code: 'VND',
-    merchant: 'Merchant A',
-    occurred_on: '2026-08-28'
-  }).select().single();
-  if (txAErr) {
-    console.log("TRANSACTION_OWN_INSERT_SELECT_UPDATE\nFAIL");
-    throw txAErr;
-  }
+  const { data: authA, error: errA } = await clientA.auth.signInWithPassword({ email: USER_A_EMAIL, password: USER_A_PASSWORD });
+  assert(!errA, "A auth fail");
   
-  // Select it
-  const { data: selTxA, error: selTxAErr } = await clientA.from('transactions').select().eq('id', txA.id).single();
-  if (selTxAErr || !selTxA) throw new Error("Could not select own tx");
+  const { data: authB, error: errB } = await clientB.auth.signInWithPassword({ email: USER_B_EMAIL, password: USER_B_PASSWORD });
+  assert(!errB, "B auth fail");
 
-  // Update it
-  const { error: upTxAErr } = await clientA.from('transactions').update({ merchant: 'Updated A' }).eq('id', txA.id);
-  if (upTxAErr) throw new Error("Could not update own tx");
+  const uidA = authA.user.id;
+  const uidB = authB.user.id;
 
-  console.log("TRANSACTION_OWN_INSERT_SELECT_UPDATE\nPASS");
+  // Setup A
+  const { data: catA, error: catErrA } = await clientA.from('categories').insert({
+    user_id: uidA, name: 'Phase4CatA', type: 'EXPENSE', icon: 'Car', color: '#111111'
+  }).select().single();
+  assert(!catErrA, "A cat insert fail: " + catErrA?.message);
 
-  // B tries to select A's transaction
-  const { data: bSelTxA } = await clientB.from('transactions').select().eq('id', txA.id);
-  if (bSelTxA && bSelTxA.length > 0) {
-    console.log("TRANSACTION_CROSS_USER_SELECT_BLOCKED\nFAIL");
-  } else {
-    console.log("TRANSACTION_CROSS_USER_SELECT_BLOCKED\nPASS");
-  }
+  const { data: accA, error: accErrA } = await clientA.from('accounts').insert({
+    user_id: uidA, name: 'Phase4AccA', type: 'CASH', currency_code: 'VND', opening_balance: 1000, color: '#111111'
+  }).select().single();
+  assert(!accErrA, "A acc insert fail: " + accErrA?.message);
 
-  // B tries to update A's transaction
-  const { error: bUpTxAErr } = await clientB.from('transactions').update({ merchant: 'Hacked by B' }).eq('id', txA.id);
-  if (!bUpTxAErr) {
-    // If it succeeds silently but doesn't update, it's also blocked. Let's check if it actually updated.
-    const { data: checkTxA } = await clientA.from('transactions').select().eq('id', txA.id).single();
-    if (checkTxA.merchant === 'Hacked by B') {
-      console.log("TRANSACTION_CROSS_USER_UPDATE_BLOCKED\nFAIL");
-    } else {
-      console.log("TRANSACTION_CROSS_USER_UPDATE_BLOCKED\nPASS");
-    }
-  } else {
-    console.log("TRANSACTION_CROSS_USER_UPDATE_BLOCKED\nPASS");
-  }
+  // Setup B
+  const { data: catB, error: catErrB } = await clientB.from('categories').insert({
+    user_id: uidB, name: 'Phase4CatB', type: 'EXPENSE', icon: 'Car', color: '#222222'
+  }).select().single();
+  assert(!catErrB, "B cat insert fail");
+
+  const { data: accB, error: accErrB } = await clientB.from('accounts').insert({
+    user_id: uidB, name: 'Phase4AccB', type: 'CASH', currency_code: 'VND', opening_balance: 1000, color: '#222222'
+  }).select().single();
+  assert(!accErrB, "B acc insert fail");
+
+  // A insert own transaction
+  const { data: txA, error: txErrA } = await clientA.from('transactions').insert({
+    account_id: accA.id, category_id: catA.id, type: 'EXPENSE', amount: 100, currency_code: 'VND', merchant: 'M'
+  }).select().single();
+  assert(!txErrA, "A tx insert fail");
+
+  // Read balance
+  let { data: bal1 } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
+  assert(bal1 && bal1.current_balance === '900.0000', "Balance exact read fail (expected 900.0000, got " + bal1?.current_balance + ")");
+
+  // A update own
+  const { error: upErrA } = await clientA.from('transactions').update({ merchant: 'M2' }).eq('id', txA.id);
+  assert(!upErrA, "A tx update fail");
+
+  // A void own
+  await clientA.from('transactions').update({ is_voided: true }).eq('id', txA.id);
+  let { data: bal2 } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
+  assert(bal2 && bal2.current_balance === '1000.0000', "Void balance fail");
+
+  // A restore own
+  await clientA.from('transactions').update({ is_voided: false }).eq('id', txA.id);
+  let { data: bal3 } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
+  assert(bal3 && bal3.current_balance === '900.0000', "Restore balance fail");
+
+  // B tries to select A's tx
+  const { data: bSel } = await clientB.from('transactions').select().eq('id', txA.id);
+  assert(bSel && bSel.length === 0, "B selected A's tx");
+
+  // B tries to update A's tx
+  await clientB.from('transactions').update({ merchant: 'Hacked' }).eq('id', txA.id);
+  const { data: checkTx } = await clientA.from('transactions').select().eq('id', txA.id).single();
+  assert(checkTx.merchant !== 'Hacked', "B updated A's tx");
 
   // A tries to insert with B's account
-  // Create an account for B
-  const { data: accB } = await clientB.from('accounts').insert({
-    name: 'Test Acc B', type: 'CASH', currency_code: 'VND', opening_balance: 1000, color: '#000'
-  }).select().single();
-  
-  const { error: aInsTxBErr } = await clientA.from('transactions').insert({
-    account_id: accB.id,
-    category_id: catA.id,
-    type: 'EXPENSE',
-    amount: 100,
-    currency_code: 'VND',
-    merchant: 'Hacked by A'
+  const { error: crossAcc } = await clientA.from('transactions').insert({
+    account_id: accB.id, category_id: catA.id, type: 'EXPENSE', amount: 100, currency_code: 'VND', merchant: 'M'
   });
-  if (aInsTxBErr) {
-    console.log("TRANSACTION_CROSS_USER_INSERT_BLOCKED\nPASS");
-  } else {
-    console.log("TRANSACTION_CROSS_USER_INSERT_BLOCKED\nFAIL");
-  }
+  assert(crossAcc, "A inserted with B's account");
 
-  // Check account balances view
-  const { data: balA, error: balAErr } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
-  if (balAErr || !balA) {
-    console.log("ACCOUNT_BALANCES_VIEW_INVOKER\nFAIL");
-  } else {
-    if (balA.current_balance === 900) {
-      console.log("ACCOUNT_BALANCES_VIEW_INVOKER\nPASS");
-    } else {
-      console.log("ACCOUNT_BALANCES_VIEW_INVOKER\nFAIL");
-    }
-  }
+  // Clean up
+  await clientA.from('transactions').update({ is_voided: true }).eq('id', txA.id);
+  await clientA.from('accounts').update({ is_archived: true }).eq('id', accA.id);
+  await clientA.from('categories').update({ is_archived: true }).eq('id', catA.id);
+  await clientB.from('accounts').update({ is_archived: true }).eq('id', accB.id);
+  await clientB.from('categories').update({ is_archived: true }).eq('id', catB.id);
 
-  console.log("RUNTIME_RLS_SCRIPT_SYNTAX\nPASS");
+  console.log("PASS");
+  process.exit(0);
 }
 
 run().catch(err => {

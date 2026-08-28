@@ -243,8 +243,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   className="w-full bg-card text-xs"
                   options={[
                     { value: 'ALL', label: 'Tất cả thời gian' },
-                    { value: 'THIS_MONTH', label: 'Tháng 8/2026 (Hiện tại)' },
-                    { value: 'LAST_MONTH', label: 'Tháng 7/2026' },
+                    { value: 'THIS_MONTH', label: 'Tháng này' },
+                    { value: 'LAST_MONTH', label: 'Tháng trước' },
                     { value: 'LAST_30_DAYS', label: '30 ngày gần đây' },
                   ]}
                 />
@@ -259,8 +259,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   options={[
                     { value: 'NEWEST', label: 'Mới nhất trước' },
                     { value: 'OLDEST', label: 'Cũ nhất trước' },
-                    { value: 'AMOUNT_DESC', label: 'Số tiền giảm dần' },
-                    { value: 'AMOUNT_ASC', label: 'Số tiền tăng dần' },
+                    
                   ]}
                 />
               </div>

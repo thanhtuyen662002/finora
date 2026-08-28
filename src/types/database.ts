@@ -156,7 +156,7 @@ export interface Database {
           merchant: string;
           note: string | null;
           occurred_on: string;
-          is_voided: boolean;
+          is_voided?: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -171,7 +171,7 @@ export interface Database {
           merchant: string;
           note?: string | null;
           occurred_on?: string;
-          is_voided?: boolean;
+          
           created_at?: string;
           updated_at?: string;
         };
@@ -186,7 +186,7 @@ export interface Database {
           merchant?: string;
           note?: string | null;
           occurred_on?: string;
-          is_voided?: boolean;
+          
           created_at?: string;
           updated_at?: string;
         };
@@ -198,7 +198,8 @@ export interface Database {
         Row: {
           account_id: string;
           user_id: string;
-          current_balance: number;
+          current_balance: string;
+          currency_code: string;
         };
         Relationships: [];
       };

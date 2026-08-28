@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     -- Constraints
     CONSTRAINT check_transaction_amount_positive CHECK (amount > 0),
     CONSTRAINT check_transaction_type CHECK (type IN ('INCOME', 'EXPENSE')),
-    CONSTRAINT check_merchant_not_empty CHECK (trim(merchant) <> ''),
+    CONSTRAINT check_merchant_length CHECK (char_length(trim(merchant)) BETWEEN 1 AND 200),
+    CONSTRAINT check_note_length CHECK (note IS NULL OR char_length(note) <= 1000),
     CONSTRAINT check_currency_code_format CHECK (currency_code ~ '^[A-Z]{3,5}$'),
 
     -- Ownership-safe foreign keys
@@ -57,16 +58,17 @@ CREATE OR REPLACE VIEW public.account_balances WITH (security_invoker = true) AS
 SELECT 
     a.id AS account_id,
     a.user_id,
-    a.opening_balance + COALESCE(SUM(
+    a.currency_code,
+    CAST(a.opening_balance + COALESCE(SUM(
         CASE 
             WHEN t.type = 'INCOME' THEN t.amount
             WHEN t.type = 'EXPENSE' THEN -t.amount
             ELSE 0
         END
-    ), 0) AS current_balance
+    ), 0) AS TEXT) AS current_balance
 FROM public.accounts a
 LEFT JOIN public.transactions t ON a.id = t.account_id AND t.is_voided = FALSE
-GROUP BY a.id, a.user_id, a.opening_balance;
+GROUP BY a.id, a.user_id, a.currency_code, a.opening_balance;
 
 -- 5. Enable Row Level Security (RLS) on transactions
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
@@ -100,7 +102,7 @@ REVOKE ALL ON TABLE public.transactions FROM authenticated;
 REVOKE ALL ON TABLE public.transactions FROM PUBLIC;
 
 GRANT SELECT ON TABLE public.transactions TO authenticated;
-GRANT INSERT (user_id, account_id, category_id, type, amount, currency_code, merchant, note, occurred_on, is_voided) ON TABLE public.transactions TO authenticated;
+GRANT INSERT (user_id, account_id, category_id, type, amount, currency_code, merchant, note, occurred_on) ON TABLE public.transactions TO authenticated;
 GRANT UPDATE (account_id, category_id, type, amount, currency_code, merchant, note, occurred_on, is_voided) ON TABLE public.transactions TO authenticated;
 
 -- 8. View Grants

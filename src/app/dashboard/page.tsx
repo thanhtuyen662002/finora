@@ -55,15 +55,7 @@ export default function DashboardPage() {
         title="Tổng quan tài chính"
         subtitle="Theo dõi tài sản ròng, dòng tiền và ngân sách tháng 8/2026."
       >
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setAddTxOpen(true)}
-          className="hidden sm:inline-flex"
-        >
-          <ArrowRightLeft className="h-4 w-4 mr-1.5" />
-          Chuyển khoản
-        </Button>
+        
         <Button size="sm" onClick={() => setAddTxOpen(true)}>
           <Plus className="h-4 w-4 mr-1.5" />
           Giao dịch mới
@@ -183,7 +175,7 @@ export default function DashboardPage() {
               {MOCK_ACCOUNTS.map((acc) => (
                 <AccountCard
                   key={acc.id}
-                  account={{ ...acc, user_id: 'mock', currency_code: acc.currency, opening_balance: acc.balance, is_archived: false, created_at: '', updated_at: '' } as any}
+                  account={{ id: acc.id, user_id: 'mock', name: acc.name, type: acc.type, currency_code: acc.currency, opening_balance: acc.balance, institution: acc.institution || null, color: acc.color, is_archived: false, created_at: '', updated_at: '' }}
                   variant="compact"
                   onClick={() => handleAccountClick(acc)}
                 />

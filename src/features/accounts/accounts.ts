@@ -51,7 +51,7 @@ export async function updateAccount(id: string, updates: AccountUpdate): Promise
   return data;
 }
 
-export async function getAccountBalances(): Promise<Record<string, number>> {
+export async function getAccountBalances(): Promise<Record<string, string>> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('account_balances')
@@ -61,7 +61,7 @@ export async function getAccountBalances(): Promise<Record<string, number>> {
     throw new Error(error.message);
   }
 
-  const balances: Record<string, number> = {};
+  const balances: Record<string, string> = {};
   for (const row of data || []) {
     balances[row.account_id] = row.current_balance;
   }

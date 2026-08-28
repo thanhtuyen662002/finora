@@ -77,3 +77,43 @@ By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, 
 ## Migration Ledger
 1. `supabase/migrations/20260828000000_phase_2_auth_rls.sql` — Phase 2: Profiles, user_settings, auth triggers, hardened search path & invoker permissions, explicit removal of Supabase default table grants, minimum column-level update grants, and RLS policies.
 2. `supabase/migrations/20260828000001_phase_3_accounts_categories.sql` — Phase 3: Accounts, Categories, seeding triggers, hardened `INSERT`/`UPDATE` column grants, explicit `EXECUTE` revocation, atomic transaction block.
+
+## Phase 4 — Transactions
+
+Transactions schema tracks income and expense logic. 
+
+**Table:** `transactions`
+- `id` (UUID, primary key)
+- `user_id` (UUID, NOT NULL)
+- `account_id` (UUID, NOT NULL)
+- `category_id` (UUID, NOT NULL)
+- `type` (TEXT, NOT NULL) — Limited to `INCOME`, `EXPENSE`.
+- `amount` (NUMERIC(20,4), NOT NULL) — Exact monetary storage.
+- `currency_code` (TEXT, NOT NULL)
+- `merchant` (TEXT, NOT NULL) — Length bounds 1..200.
+- `note` (TEXT) — Max length 1000.
+- `occurred_on` (DATE, NOT NULL)
+- `is_voided` (BOOLEAN, NOT NULL, DEFAULT FALSE)
+- `created_at`, `updated_at`
+
+**Ownership-safe composite FKs:**
+To prevent cross-user spoofing where User A inserts a transaction referencing User B's account or category:
+- `transactions_account_fkey` on `(account_id, user_id, currency_code)`
+- `transactions_category_fkey` on `(category_id, user_id, type)`
+
+**Account Balances:**
+`public.account_balances` is a `security_invoker=true` view aggregating exact decimal totals per account.
+Calculated as: `opening_balance + sum(active INCOME) - sum(active EXPENSE)`.
+Returns `current_balance` as exact decimal text to prevent JS native floating point logic.
+
+**Void Semantics:**
+Transactions are not hard-deleted. They are marked `is_voided=TRUE` which excludes them from exact view summaries and dashboards. `is_voided` is mutable for authenticated clients.
+
+**Exact Money Strategy:**
+Floating point money arithmetic (`parseFloat`) is strictly forbidden in application summary logic. Values are accumulated via the exact database view or using a string-based exact exact `addExactDecimals` bounded library on the client.
+
+**Grants and RLS:**
+- RLS enabled on `transactions`.
+- INSERT only allows subset of user-provided columns (defaults handles `is_voided`, `id`, `user_id`).
+- UPDATE explicitly denies identity/ownership manipulation.
+- DELETE is forbidden for normal clients.

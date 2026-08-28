@@ -15,7 +15,7 @@ import type { AccountRow, AccountInsert, AccountUpdate } from '@/types/database'
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
-  const [balances, setBalances] = useState<Record<string, number>>({});
+  const [balances, setBalances] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');

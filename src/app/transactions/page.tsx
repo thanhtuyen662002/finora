@@ -12,6 +12,7 @@ import { Plus, Download, ArrowDownLeft, ArrowUpRight, ArrowRightLeft, Check } fr
 import { getTransactions, ExtendedTransaction } from '@/features/transactions';
 import { getAccounts } from '@/features/accounts/accounts';
 import { getCategories } from '@/features/categories/categories';
+import { addExactDecimals, subExactDecimals, formatExactDecimal } from '@/lib/money';
 import { AccountRow, CategoryRow, TransactionRow } from '@/types/database';
 
 export default function TransactionsPage() {
@@ -66,8 +67,26 @@ export default function TransactionsPage() {
   }, []);
 
   const handleExportCSV = () => {
-    setExported(true);
-    setTimeout(() => setExported(false), 2000);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Ngày,Loại,Danh mục,Tài khoản,Số tiền,Tiền tệ,Đơn vị,Ghi chú,Trạng thái\n"
+      + transactions.map(t => [
+          t.occurred_on,
+          t.type === 'INCOME' ? 'Thu' : 'Chi',
+          `"${t.categoryName}"`,
+          `"${t.accountName}"`,
+          t.amount,
+          t.currency_code,
+          `"${t.merchant}"`,
+          `"${t.note || ''}"`,
+          t.is_voided ? 'Đã hủy' : 'Hoạt động'
+        ].join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'finora-transactions.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Group active transactions by currency for truthful summaries
@@ -76,13 +95,13 @@ export default function TransactionsPage() {
   // Build a summary string. For simplicity, just show VND or multiple.
   const summaryByCurrency = activeTxs.reduce((acc, tx) => {
     if (!acc[tx.currency_code]) {
-      acc[tx.currency_code] = { income: 0, expense: 0 };
+      acc[tx.currency_code] = { income: '0', expense: '0' };
     }
-    const val = typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount;
-    if (tx.type === 'INCOME') acc[tx.currency_code].income += val;
-    else if (tx.type === 'EXPENSE') acc[tx.currency_code].expense += val;
+    const val = String(tx.amount);
+    if (tx.type === 'INCOME') acc[tx.currency_code].income = addExactDecimals(acc[tx.currency_code].income, val);
+    else if (tx.type === 'EXPENSE') acc[tx.currency_code].expense = addExactDecimals(acc[tx.currency_code].expense, val);
     return acc;
-  }, {} as Record<string, { income: number, expense: number }>);
+  }, {} as Record<string, { income: string, expense: string }>);
 
   return (
     <AppShell>
@@ -133,10 +152,10 @@ export default function TransactionsPage() {
                   <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">+0 ₫</p>
                 ) : (
                   Object.entries(summaryByCurrency).map(([curr, v]) => {
-                  const vals = v as { income: number, expense: number };
+                  const vals = v;
                   return (
                     <p key={curr} className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                      +{formatMoney(vals.income, curr)}
+                      +{formatExactDecimal(vals.income)} {curr}
                     </p>
                   );
                 })
@@ -160,10 +179,10 @@ export default function TransactionsPage() {
                   <p className="text-xl font-bold text-foreground">-0 ₫</p>
                 ) : (
                   Object.entries(summaryByCurrency).map(([curr, v]) => {
-                  const vals = v as { income: number, expense: number };
+                  const vals = v;
                   return (
                     <p key={curr} className="text-xl font-bold text-foreground">
-                      -{formatMoney(vals.expense, curr)}
+                      -{formatExactDecimal(vals.expense)} {curr}
                     </p>
                   );
                 })
@@ -187,11 +206,12 @@ export default function TransactionsPage() {
                   <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">+0 ₫</p>
                 ) : (
                   Object.entries(summaryByCurrency).map(([curr, v]) => {
-                  const vals = v as { income: number, expense: number };
-                    const diff = vals.income - vals.expense;
+                  const vals = v;
+                    const diffStr = subExactDecimals(vals.income, vals.expense);
+                    const isPositive = !diffStr.startsWith('-') && diffStr !== '0.0000';
                     return (
-                      <p key={curr} className={`text-xl font-bold ${diff >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
-                        {diff > 0 ? '+' : ''}{formatMoney(diff, curr)}
+                      <p key={curr} className={`text-xl font-bold ${!diffStr.startsWith('-') ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
+                        {isPositive ? '+' : ''}{formatExactDecimal(diffStr)} {curr}
                       </p>
                     );
                   })

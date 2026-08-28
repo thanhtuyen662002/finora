@@ -43,13 +43,16 @@ export async function updateTransaction(id: string, updates: TransactionUpdate):
   return data;
 }
 
+export type ActualTransactionUpdate = TransactionUpdate & { is_voided?: boolean };
+
 export async function voidTransaction(id: string): Promise<TransactionRow> {
-  return updateTransaction(id, { is_voided: true });
+  return updateTransaction(id, { is_voided: true } as any);
 }
 
 export async function restoreTransaction(id: string): Promise<TransactionRow> {
-  return updateTransaction(id, { is_voided: false });
+  return updateTransaction(id, { is_voided: false } as any);
 }
+
 
 export type ExtendedTransaction = TransactionRow & {
   accountName?: string;
