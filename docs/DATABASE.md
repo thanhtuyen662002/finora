@@ -35,9 +35,10 @@ Stores user profile information associated with the Supabase Auth user.
 - `Users can update own profile`: `FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = id) WITH CHECK ((SELECT auth.uid()) = id)`
 
 **Privileges:**
-- `REVOKE ALL ON TABLE public.profiles FROM anon, public;`
+- Explicitly revoke all table privileges from `anon`, `authenticated`, and `PUBLIC` first to remove Supabase default grants.
 - `GRANT SELECT ON TABLE public.profiles TO authenticated;`
 - `GRANT UPDATE (display_name, avatar_url, onboarding_completed) ON TABLE public.profiles TO authenticated;`
+- No authenticated table-level `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, or `TRIGGER` privilege remains.
 
 ---
 
@@ -63,9 +64,10 @@ Stores user-specific localization, default currency, and appearance preferences.
 - `Users can update own settings`: `FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id)`
 
 **Privileges:**
-- `REVOKE ALL ON TABLE public.user_settings FROM anon, public;`
+- Explicitly revoke all table privileges from `anon`, `authenticated`, and `PUBLIC` first to remove Supabase default grants.
 - `GRANT SELECT ON TABLE public.user_settings TO authenticated;`
 - `GRANT UPDATE (base_currency, locale, timezone, theme) ON TABLE public.user_settings TO authenticated;`
+- No authenticated table-level `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, or `TRIGGER` privilege remains.
 
 ---
 
@@ -73,7 +75,7 @@ Stores user-specific localization, default currency, and appearance preferences.
 
 - Function: `public.handle_new_user()` (`SECURITY DEFINER`, `SET search_path = ''`)
 - Trigger: `on_auth_user_created` on `auth.users` `AFTER INSERT FOR EACH ROW`
-- Action: Automatically creates matching row in `public.profiles` (extracting `display_name` via `pg_catalog.coalesce` from `full_name`, `name`, `display_name`, or email prefix) and `public.user_settings` (with defaults `VND`, `vi-VN`, `Asia/Ho_Chi_Minh`, `system`).
+- Action: Automatically creates matching row in `public.profiles` (extracting `display_name` via SQL `COALESCE` from `full_name`, `name`, `display_name`, or email prefix) and `public.user_settings` (with defaults `VND`, `vi-VN`, `Asia/Ho_Chi_Minh`, `system`).
 
 ---
 
@@ -100,4 +102,4 @@ User A cannot SELECT, UPDATE, or DELETE User B's financial records.
 
 ## Migration Ledger
 
-1. `supabase/migrations/20260828000000_phase_2_auth_rls.sql` — Phase 2: Profiles, user_settings, auth triggers, hardened search path & invoker permissions, column-level update grants, RLS policies.
+1. `supabase/migrations/20260828000000_phase_2_auth_rls.sql` — Phase 2: Profiles, user_settings, auth triggers, hardened search path & invoker permissions, explicit removal of Supabase default table grants, minimum column-level update grants, and RLS policies.
