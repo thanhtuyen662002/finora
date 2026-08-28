@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 4 — Transactions — LIVE PERSISTENCE SMOKE
-- **Phase status:** SOURCE_PASS_STRUCTURAL_PASS_RUNTIME_PASS_LIVE_PENDING
+- **Current phase:** Phase 5 — Transfers — AUTHORIZED
+- **Phase status:** PHASE_4_COMPLETE_PHASE_5_AUTHORIZED
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -22,6 +22,7 @@
 - **Accepted Phase 4 exact-head source SHA:** `13287e773eeaa65460bd0980d502bd8885c45f9c`
 - **Phase 4 structural-verifier syntax-fix SHA:** `bb6744692f786a0a86602971ee788567c2d44797`
 - **Phase 4 structural receipt SHA:** `182787e142c2cdec4fd4f2bbc94bce2140fcc2fb`
+- **Phase 4 runtime RLS receipt SHA:** `802addec082d0aa4366b2f70d1e6e20f5432827b`
 - **Phase 4 corrective prompt:** `prompts/PHASE_4_CORRECTIVE.md`
 - **Phase 4 final corrective prompt:** `prompts/PHASE_4_FINAL_CORRECTIVE.md`
 
@@ -46,7 +47,7 @@ Accepted gates:
 
 ## Phase 3 — Accounts + Categories — Final Receipt
 
-Phase 3 is accepted COMPLETE and is the immutable baseline for Phase 4.
+Phase 3 is accepted COMPLETE and remains the immutable baseline for later phases.
 
 ### Source gate
 
@@ -162,7 +163,7 @@ Exact-head verification against source SHA `13287e773eeaa65460bd0980d502bd8885c4
 
 ## Phase 4 — Remote Database Structural Receipt
 
-The Phase 4 migration `supabase/migrations/20260828000002_phase_4_transactions.sql` has been applied to the target Supabase database.
+The Phase 4 migration `supabase/migrations/20260828000002_phase_4_transactions.sql` was applied to the target Supabase database.
 
 The strict read-only structural verifier was executed after a verifier-only PostgreSQL type-cast correction at `bb6744692f786a0a86602971ee788567c2d44797`.
 
@@ -194,7 +195,7 @@ Accepted remote facts:
 
 ## Phase 4 — Two-User Runtime RLS / Integrity Receipt
 
-The hardened runtime verifier was executed against the target Supabase database using only the public Supabase URL/publishable key plus the two disposable test-user credentials. It exited with code `0` and made no source changes.
+The hardened runtime verifier was executed against the target Supabase database using only the public Supabase URL/publishable key plus two disposable test-user credentials. It exited with code `0` and made no source changes.
 
 Accepted runtime results:
 
@@ -216,9 +217,42 @@ Accepted runtime results:
 **PHASE_4_TWO_USER_RLS = PASS**
 **PHASE_4_RUNTIME_PROCESS_EXIT_CODE = 0**
 
-## Phase 4 — Remaining Gate
+## Phase 4 — Live Application Persistence Receipt
 
-Only the live application smoke remains. It must verify transaction create/edit/void/restore, exact derived balances, persistence after refresh, and persistence after logout/login before Phase 4 may close.
+Owner-attested live smoke on the deployed Finora application returned PASS for every required Phase 4 behavior:
+
+- transaction create: PASS
+- transaction edit: PASS
+- transaction void: PASS
+- voided transaction excluded from derived account balance: PASS
+- transaction restore: PASS
+- restored transaction included in derived account balance: PASS
+- exact decimal persistence: PASS
+- refresh persistence: PASS
+- logout/login persistence: PASS
+- current-month summary: PASS
+- real CSV export: PASS
+- unexpected live errors: NONE
+
+**PHASE_4_LIVE_PERSISTENCE_SMOKE = PASS**
+
+## Phase 4 — Final Authorization Receipt
+
+```text
+PHASE_0=PASS
+PHASE_1=PASS
+PHASE_2=PASS
+PHASE_3=PASS
+PHASE_4_SOURCE_GATE=PASS
+PHASE_4_REMOTE_DATABASE=PASS
+PHASE_4_STRUCTURAL_GATE=PASS
+PHASE_4_TWO_USER_RLS=PASS
+PHASE_4_LIVE_PERSISTENCE_SMOKE=PASS
+FINORA_PHASE_4=PASS
+PHASE_5_AUTHORIZED=true
+```
+
+Phase 4 is CLOSED. Reopen it only if a regression is found.
 
 ## Phase Authorization
 
@@ -226,14 +260,10 @@ Only the live application smoke remains. It must verify transaction create/edit/
 - **Phase 1:** PASS
 - **Phase 2:** PASS
 - **Phase 3:** PASS
-- **Phase 4 Source Gate:** PASS
-- **Phase 4 Remote Database:** PASS
-- **Phase 4 Structural Gate:** PASS
-- **Phase 4 Two-User Runtime RLS:** PASS
-- **Phase 4 Live Persistence Smoke:** NOT_RUN
-- **Phase 4 Overall:** PARTIAL
-- **Phase 5 — Transfers:** NOT AUTHORIZED
+- **Phase 4 — Transactions:** PASS
+- **Phase 5 — Transfers:** AUTHORIZED
+- **Phase 6 — Dashboard + Reports:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Perform the live Phase 4 persistence and derived-balance smoke on the deployed Finora application. Do not begin Phase 5 until the live smoke passes.
+Prepare and execute the Phase 5 — Transfers implementation contract. Preserve all Phase 2/3/4 security, decimal-safety, RLS, and derived-balance invariants. Transfers must remain separate from income/expense transactions and must not change net worth.
