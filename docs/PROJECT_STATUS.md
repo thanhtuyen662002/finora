@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 2 — Authentication + RLS
-- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_PASS / AUTH_E2E_PENDING
+- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_PASS / AUTH_CORE_E2E_PASS / EMAIL_AND_GOOGLE_EXTERNAL_CONFIG_BLOCKED
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql`
 - **Strict structural verifier:** `scripts/verify-phase2-db.sql`
@@ -97,24 +97,39 @@ Confirmed runtime invariant:
 
 This proves Phase 2 ownership isolation against the live Supabase project without a service-role bypass.
 
-## Remaining Mandatory Auth E2E Gate
+## Live Auth E2E Receipt
 
-Phase 2 is not yet marked COMPLETE because the original Phase 2 contract also requires live authentication workflow verification against the actual target project.
+A bounded live Auth E2E pass was executed against the actual target project with no code changes.
 
-Still to verify and record:
+| Auth Gate | Status | Evidence / Blocker |
+|---|---|---|
+| Email/password signup | BLOCKED | Supabase default mailer returned `email rate limit exceeded`; custom SMTP is required for reliable confirmation delivery |
+| Email confirmation | BLOCKED_CONFIG | Requires working outbound email delivery and access to the confirmation email/token-hash link |
+| Email/password login | PASS | Existing confirmed user successfully authenticated |
+| Onboarding routing | PASS | Incomplete authenticated user routed to `/onboarding` |
+| Onboarding persistence | PASS | Phase 2 onboarding fields persisted successfully |
+| Settings persistence | PASS | Allowed profile/settings values persisted successfully |
+| Real sign out | PASS | Supabase session sign-out completed |
+| Protected route after sign out | PASS | Protected route redirected to `/login` after sign-out |
+| Password reset E2E | BLOCKED_CONFIG | Default mailer rate limit prevents reliable recovery email delivery; requires custom SMTP and live recovery-link completion |
+| Google OAuth E2E | BLOCKED_CONFIG | Supabase Google provider is disabled; Auth returned `Unsupported provider: provider is not enabled` |
 
-- email/password signup;
-- confirmation flow as configured;
-- email/password login;
-- incomplete user is routed to `/onboarding`;
-- onboarding persistence;
-- settings persistence;
-- real sign out;
-- protected route redirects to `/login` after sign out;
-- password reset email and successful recovery completion;
-- Google OAuth E2E if provider configuration is available; otherwise record the exact external configuration blocker.
+No application defect was identified by the live Auth E2E run. Remaining blockers are external hosted Auth configuration.
 
-Do not begin Phase 3 until the mandatory Phase 2 Auth E2E status is resolved truthfully.
+## External Configuration Required to Close Phase 2
+
+### Email Auth / Password Recovery
+
+Configure a custom SMTP provider in the Supabase project so confirmation and password-recovery emails can be delivered reliably. Then complete one real signup confirmation and one real password reset/recovery flow.
+
+The hosted Supabase email templates must remain compatible with the implemented SSR/PKCE confirmation route:
+
+- signup confirmation should deliver a token-hash link to Finora `/auth/confirm` with the correct email OTP type;
+- password recovery should deliver a token-hash link to Finora `/auth/confirm?type=recovery&next=/reset-password`.
+
+### Google OAuth
+
+Enable Google under Supabase Authentication Providers using a valid Google OAuth Client ID and Client Secret. Google must authorize the Supabase provider callback URI for project `qibfitbnlfgiqctntufr`. After provider setup, perform one real Google login and verify a valid Finora session and onboarding routing.
 
 ## Phase Authorization
 
@@ -124,9 +139,12 @@ Do not begin Phase 3 until the mandatory Phase 2 Auth E2E status is resolved tru
 - **Phase 2 Remote DB Structure:** PASS
 - **Phase 2 Anonymous RLS:** PASS
 - **Phase 2 Two-User Runtime RLS:** PASS
-- **Phase 2 Auth E2E:** PENDING
+- **Phase 2 Core Auth E2E:** PASS
+- **Phase 2 Email Confirmation / Password Recovery:** BLOCKED_CONFIG
+- **Phase 2 Google OAuth:** BLOCKED_CONFIG
+- **Phase 2 Overall:** PARTIAL / EXTERNAL_CONFIG_BLOCKED
 - **Phase 3:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Run a bounded live Auth E2E verification against `qibfitbnlfgiqctntufr` only. Do not modify application code unless an actual E2E defect is found, and do not begin Phase 3.
+Configure custom SMTP and Google OAuth in the hosted Supabase project, then rerun only the blocked Email Signup/Confirmation, Password Recovery, and Google OAuth E2E gates. Do not rerun database/RLS gates and do not begin Phase 3 until those externally blocked Phase 2 gates are resolved truthfully.
