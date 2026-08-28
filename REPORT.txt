@@ -1,0 +1,45 @@
+TASK
+Finora Phase 3 — Accounts + Categories
+
+STATUS
+PARTIAL (Code complete, remote DB blocked)
+
+CHANGED
+- `src/types/database.ts` (added AccountRow, CategoryRow, Insert/Update types)
+- `src/features/accounts/accounts.ts` (created feature module)
+- `src/features/categories/categories.ts` (created feature module)
+- `src/app/accounts/page.tsx` (switched to real accounts)
+- `src/components/finance/AccountCard.tsx` (updated to accept AccountRow, removed `convertedBalanceVND`)
+- `src/components/finance/AddAccountModal.tsx` (updated mapping to AccountInsert)
+- `src/app/settings/page.tsx` (added categories card)
+- `src/app/settings/categories/page.tsx` (created categories management page)
+- `src/components/finance/AddCategoryModal.tsx` (created AddCategoryModal)
+- `src/components/ui/DynamicIcon.tsx` (created helper for lucide-react dynamic loading)
+- `scripts/verify-phase3-db.sql` (created structural verifier)
+- `scripts/verify-phase3-rls.mjs` (created runtime two-user verifier)
+
+DATABASE
+- Created `supabase/migrations/20260828000001_phase_3_accounts_categories.sql`
+- Added `public.accounts` table with constraints and RLS policies
+- Added `public.categories` table with constraints and RLS policies
+- Added `public.seed_default_categories` function and trigger on `auth.users`
+- Enabled RLS on both tables with explicit SELECT/INSERT/UPDATE ownership policies
+
+SECURITY
+- `seed_default_categories` is `SECURITY DEFINER` with empty `search_path = ''`
+- RLS policies use `(SELECT auth.uid()) = user_id` for both `accounts` and `categories`
+- Explicit minimum surface area grants established for both tables via `GRANT/REVOKE`
+- Anonymous block confirmed
+
+VERIFICATION
+TypeScript: PASS
+Lint: PASS
+Build: PASS
+Tests: BLOCKED (Remote database push is required before runtime `verify-phase3-rls.mjs` can succeed)
+
+KNOWN ISSUES
+- The Phase 3 Supabase migration needs to be executed manually on the remote database.
+- Git push was blocked by authentication failure to GitHub.
+
+PROJECT STATUS
+Phase 3 — Accounts + Categories — Code complete; next action is manual migration execution on Supabase, then proceed to Phase 4 — Transactions.

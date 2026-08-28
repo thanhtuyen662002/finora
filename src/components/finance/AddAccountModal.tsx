@@ -13,13 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { AccountType, CurrencyCode, MockAccountInput } from '@/types/finance';
 import { PlusCircle, Check } from 'lucide-react';
 
 interface AddAccountModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (accountData: MockAccountInput) => void;
+  onSuccess?: (accountData: any) => void;
 }
 
 export const AddAccountModal: React.FC<AddAccountModalProps> = ({
@@ -28,8 +27,8 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   onSuccess,
 }) => {
   const [name, setName] = useState('');
-  const [type, setType] = useState<AccountType>('BANK');
-  const [currency, setCurrency] = useState<CurrencyCode>('VND');
+  const [type, setType] = useState('BANK');
+  const [currencyCode, setCurrencyCode] = useState('VND');
   const [balance, setBalance] = useState('');
   const [institution, setInstitution] = useState('');
   const [color, setColor] = useState('#005a3c');
@@ -49,23 +48,28 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-
     setSubmitted(true);
-    setTimeout(() => {
-      onSuccess?.({
-        name,
-        type,
-        currency,
-        balance: parseFloat(balance) || 0,
-        institution,
-        color,
-      });
+    
+    try {
+      if (onSuccess) {
+        onSuccess({
+          name,
+          type,
+          currency_code: currencyCode,
+          opening_balance: parseFloat(balance) || 0,
+          institution: institution || null,
+          color,
+          is_archived: false,
+        });
+      }
       setSubmitted(false);
       onOpenChange(false);
       setName('');
       setBalance('');
       setInstitution('');
-    }, 400);
+    } catch (err) {
+      setSubmitted(false);
+    }
   };
 
   return (
@@ -80,7 +84,6 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
             Tạo tài khoản ngân hàng, ví điện tử hoặc quỹ tiền mặt để quản lý.
           </DialogDescription>
         </DialogHeader>
-
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="accName">Tên tài khoản</Label>
@@ -93,14 +96,13 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               autoFocus
             />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="accType">Loại tài khoản</Label>
               <Select
                 id="accType"
                 value={type}
-                onChange={(e) => setType(e.target.value as AccountType)}
+                onChange={(e) => setType(e.target.value)}
                 options={[
                   { value: 'BANK', label: 'Ngân hàng' },
                   { value: 'CASH', label: 'Tiền mặt' },
@@ -112,13 +114,12 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 ]}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="accCurrency">Tiền tệ chính</Label>
               <Select
                 id="accCurrency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
                 options={[
                   { value: 'VND', label: 'VND (₫)' },
                   { value: 'USD', label: 'USD ($)' },
@@ -130,19 +131,17 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               />
             </div>
           </div>
-
           <div className="space-y-1.5">
             <Label htmlFor="accBalance">Số dư ban đầu</Label>
             <Input
               id="accBalance"
               type="number"
               step="any"
-              placeholder={currency === 'VND' ? '10.000.000' : '500.00'}
+              placeholder={currencyCode === 'VND' ? '10000000' : '500.00'}
               value={balance}
               onChange={(e) => setBalance(e.target.value)}
             />
           </div>
-
           <div className="space-y-1.5">
             <Label htmlFor="institution">Tổ chức tài chính (tùy chọn)</Label>
             <Input
@@ -152,7 +151,6 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               onChange={(e) => setInstitution(e.target.value)}
             />
           </div>
-
           <div className="space-y-1.5">
             <Label>Màu sắc nhận diện</Label>
             <div className="flex gap-2 pt-1">
@@ -169,7 +167,6 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               ))}
             </div>
           </div>
-
           <DialogFooter className="pt-3">
             <Button
               type="button"

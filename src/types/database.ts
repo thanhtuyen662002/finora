@@ -66,6 +66,84 @@ export interface Database {
         };
         Relationships: [];
       };
+      accounts: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          type: string;
+          currency_code: string;
+          opening_balance: number;
+          institution: string | null;
+          color: string;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          type: string;
+          currency_code: string;
+          opening_balance?: number;
+          institution?: string | null;
+          color?: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          type?: string;
+          currency_code?: string;
+          opening_balance?: number;
+          institution?: string | null;
+          color?: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      categories: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          type: string;
+          icon: string;
+          color: string;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          type: string;
+          icon: string;
+          color: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          type?: string;
+          icon?: string;
+          color?: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -84,6 +162,13 @@ export interface Database {
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
-
 export type UserSettings = Database['public']['Tables']['user_settings']['Row'];
 export type UserSettingsUpdate = Database['public']['Tables']['user_settings']['Update'];
+
+export type AccountRow = Database['public']['Tables']['accounts']['Row'];
+export type AccountInsert = Database['public']['Tables']['accounts']['Insert'];
+export type AccountUpdate = Database['public']['Tables']['accounts']['Update'];
+
+export type CategoryRow = Database['public']['Tables']['categories']['Row'];
+export type CategoryInsert = Database['public']['Tables']['categories']['Insert'];
+export type CategoryUpdate = Database['public']['Tables']['categories']['Update'];

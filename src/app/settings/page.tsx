@@ -429,6 +429,24 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Categories Management Link */}
+          <Card className="hover:border-primary/50 transition-colors cursor-pointer" onClick={() => router.push('/settings/categories')}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Palette className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-base font-semibold">Danh mục thu chi (Categories)</CardTitle>
+                </div>
+                <Button variant="ghost" size="sm">
+                  Quản lý &rarr;
+                </Button>
+              </div>
+              <CardDescription>
+                Tùy chỉnh danh mục phân loại giao dịch thu/chi của bạn.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
           {/* Notifications Preferences */}
           <Card>
             <CardHeader>

@@ -9,13 +9,13 @@ import {
   Globe,
   MoreVertical,
 } from 'lucide-react';
-import { MockAccount } from '@/types/finance';
+import type { AccountRow } from '@/types/database';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyBadge } from './CurrencyBadge';
 import { formatMoney, formatConverted } from '@/lib/money/format';
 
 interface AccountCardProps {
-  account: MockAccount;
+  account: AccountRow;
   onClick?: () => void;
   variant?: 'compact' | 'detailed';
 }
@@ -38,7 +38,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const getIcon = () => {
     switch (account.type) {
       case 'BANK':
-        return account.currency === 'USD' ? <Globe className="h-4 w-4" /> : <Building2 className="h-4 w-4" />;
+        return account.currency_code === 'USD' ? <Globe className="h-4 w-4" /> : <Building2 className="h-4 w-4" />;
       case 'CASH':
         return <Wallet className="h-4 w-4" />;
       case 'EWALLET':
@@ -73,10 +73,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </div>
         <div className="text-right shrink-0 pl-2">
-          <p className="text-sm font-semibold text-foreground">{formatMoney(account.balance, account.currency)}</p>
-          {account.currency !== 'VND' && (
-            <p className="text-[10px] text-muted-foreground">{formatConverted(account.convertedBalanceVND)}</p>
-          )}
+          <p className="text-sm font-semibold text-foreground">{formatMoney(account.opening_balance, account.currency_code as any)}</p>
         </div>
       </div>
     );
@@ -105,30 +102,22 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                 {account.name}
               </h4>
               <p className="text-xs text-muted-foreground">
-                {account.institution || ACCOUNT_TYPE_LABELS[account.type]} {account.accountNumberMasked ? `· ${account.accountNumberMasked}` : ''}
+                {account.institution || ACCOUNT_TYPE_LABELS[account.type]}
               </p>
             </div>
           </div>
           <div className="flex items-center space-x-1.5">
-            <CurrencyBadge currency={account.currency} />
+            <CurrencyBadge currency={account.currency_code as any} />
           </div>
         </div>
 
         <div className="mt-5 flex items-baseline justify-between pt-2 border-t border-border/60">
           <div>
-            <span className="text-xs text-muted-foreground">Số dư hiện tại</span>
+            <span className="text-xs text-muted-foreground">Số dư</span>
             <p className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
-              {formatMoney(account.balance, account.currency)}
+              {formatMoney(account.opening_balance, account.currency_code as any)}
             </p>
           </div>
-          {account.currency !== 'VND' && (
-            <div className="text-right">
-              <span className="text-[10px] text-muted-foreground">Quy đổi VND</span>
-              <p className="text-xs font-semibold text-muted-foreground">
-                {formatConverted(account.convertedBalanceVND)}
-              </p>
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>

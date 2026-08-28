@@ -184,7 +184,7 @@ export default function DashboardPage() {
               {MOCK_ACCOUNTS.map((acc) => (
                 <AccountCard
                   key={acc.id}
-                  account={acc}
+                  account={{ ...acc, user_id: 'mock', currency_code: acc.currency, opening_balance: acc.balance, is_archived: false, created_at: '', updated_at: '' } as any}
                   variant="compact"
                   onClick={() => handleAccountClick(acc)}
                 />
