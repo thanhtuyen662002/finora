@@ -12,7 +12,7 @@ import { formatMoney } from '@/lib/money/format';
 import { EmptyState } from '@/components/finance/EmptyState';
 import { Plus, Wallet, Globe } from 'lucide-react';
 import { getAccounts, createAccount, updateAccount } from '@/features/accounts/accounts';
-import type { AccountRow, AccountInsert } from '@/types/database';
+import type { AccountRow, AccountInsert, AccountUpdate } from '@/types/database';
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);

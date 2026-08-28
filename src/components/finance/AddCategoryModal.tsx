@@ -31,9 +31,9 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
   initialData
 }) => {
   const [name, setName] = useState(initialData?.name || '');
-  const [type, setType] = useState(defaultType);
-  const [icon, setIcon] = useState('Tag');
-  const [color, setColor] = useState('#8b5cf6');
+  const [type, setType] = useState(initialData?.type || defaultType);
+  const [icon, setIcon] = useState(initialData?.icon || 'Tag');
+  const [color, setColor] = useState(initialData?.color || '#8b5cf6');
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -79,7 +79,7 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
             <span>{initialData ? "Sửa danh mục" : "Thêm danh mục"}</span>
           </DialogTitle>
           <DialogDescription>
-            Tạo danh mục mới để phân loại giao dịch của bạn.
+            {initialData ? "Chỉnh sửa thông tin danh mục." : "Tạo danh mục mới để phân loại giao dịch của bạn."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
@@ -154,7 +154,7 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
               Hủy
             </Button>
             <Button type="submit" disabled={submitted || !name}>
-              {submitted ? 'Đang tạo...' : 'Lưu danh mục'}
+              {submitted ? (initialData ? "Đang lưu..." : "Đang tạo...") : (initialData ? "Lưu thay đổi" : "Tạo danh mục")}
             </Button>
           </DialogFooter>
         </form>

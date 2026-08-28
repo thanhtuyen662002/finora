@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
@@ -9,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
 import { AddCategoryModal } from '@/components/finance/AddCategoryModal';
 import { getCategories, createCategory, updateCategory } from '@/features/categories/categories';
-import type { CategoryRow, CategoryInsert } from '@/types/database';
+import type { CategoryRow, CategoryInsert, CategoryUpdate } from '@/types/database';
 import { ArrowLeft, Plus } from 'lucide-react';
 
 export default function CategoriesPage() {
@@ -17,6 +16,8 @@ export default function CategoriesPage() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editCategory, setEditCategory] = useState<CategoryRow | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadCategories = async () => {
     try {
@@ -35,28 +36,32 @@ export default function CategoriesPage() {
     loadCategories();
   }, []);
 
-  const handleArchive = async (id: string) => {
-    if (!confirm('Lưu trữ danh mục này?')) return;
+  const handleArchive = async (id: string, archive: boolean) => {
+    if (archive && !confirm('Bạn có chắc chắn muốn lưu trữ danh mục này?')) return;
     try {
-      await updateCategory(id, { is_archived: true });
+      await updateCategory(id, { is_archived: archive });
       await loadCategories();
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleCreate = async (newCat: Omit<CategoryInsert, 'user_id'>) => {
-    try {
-      await createCategory(newCat);
-      await loadCategories();
-    } catch (err) {
-      console.error(err);
+  const handleCreate = async (newCat: Omit<CategoryInsert, 'user_id'> | CategoryUpdate) => {
+    if (editCategory) {
+      await updateCategory(editCategory.id, newCat as CategoryUpdate);
+    } else {
+      await createCategory(newCat as Omit<CategoryInsert, 'user_id'>);
     }
+    await loadCategories();
+    setEditCategory(null);
   };
 
   const activeCategories = categories.filter(c => !c.is_archived);
-  const incomeCategories = activeCategories.filter(c => c.type === 'INCOME');
-  const expenseCategories = activeCategories.filter(c => c.type === 'EXPENSE');
+  const archivedCategories = categories.filter(c => c.is_archived);
+  const categoriesToShow = showArchived ? archivedCategories : activeCategories;
+
+  const incomeCategories = categoriesToShow.filter(c => c.type === 'INCOME');
+  const expenseCategories = categoriesToShow.filter(c => c.type === 'EXPENSE');
 
   return (
     <AppShell>
@@ -65,6 +70,9 @@ export default function CategoriesPage() {
         subtitle="Quản lý các danh mục phân loại cho thu nhập và chi tiêu."
       >
         <div className="flex items-center space-x-2">
+          <Button variant="outline" size="sm" onClick={() => setShowArchived(!showArchived)}>
+            {showArchived ? 'Hiện đang hoạt động' : 'Hiện đã lưu trữ'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => router.push('/settings')}>
             <ArrowLeft className="h-4 w-4 mr-1.5" />
             Trở về
@@ -92,15 +100,19 @@ export default function CategoriesPage() {
                       </div>
                       <span className="font-medium text-sm">{cat.name}</span>
                     </div>
-                    <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-destructive" onClick={() => handleArchive(cat.id)}>
-                      Xóa
-                    </Button>
+                    <div className="flex items-center space-x-1">
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-primary" onClick={() => { setEditCategory(cat); setIsAddModalOpen(true); }}>
+                        Sửa
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive" onClick={() => handleArchive(cat.id, !showArchived)}>
+                        {showArchived ? 'Khôi phục' : 'Lưu trữ'}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
           </div>
-
           <div>
             <h3 className="font-semibold text-lg mb-3">Danh mục Thu nhập</h3>
             <div className="space-y-2">
@@ -113,9 +125,14 @@ export default function CategoriesPage() {
                       </div>
                       <span className="font-medium text-sm">{cat.name}</span>
                     </div>
-                    <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-destructive" onClick={() => handleArchive(cat.id)}>
-                      Xóa
-                    </Button>
+                    <div className="flex items-center space-x-1">
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-primary" onClick={() => { setEditCategory(cat); setIsAddModalOpen(true); }}>
+                        Sửa
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive" onClick={() => handleArchive(cat.id, !showArchived)}>
+                        {showArchived ? 'Khôi phục' : 'Lưu trữ'}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -126,8 +143,9 @@ export default function CategoriesPage() {
 
       <AddCategoryModal
         open={isAddModalOpen}
-        onOpenChange={setIsAddModalOpen}
+        onOpenChange={(open) => { setIsAddModalOpen(open); if (!open) setEditCategory(null); }}
         onSuccess={handleCreate}
+        initialData={editCategory}
       />
     </AppShell>
   );
