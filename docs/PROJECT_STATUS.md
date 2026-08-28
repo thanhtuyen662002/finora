@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 3 — Accounts + Categories — LIVE PERSISTENCE SMOKE
-- **Phase status:** PARTIAL
+- **Current phase:** Phase 4 — Transactions — AUTHORIZED
+- **Phase status:** PHASE_3_COMPLETE
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -16,9 +16,7 @@
 - **Phase 3 code verification SHA:** `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5`
 - **Accepted Phase 3 migration-source SHA:** `529d1d42ab50d62b2327fadc7a9ac0b2122798fa`
 - **Phase 3 structural receipt SHA:** `1422dcd5e9c67028d1c33006d5d61f7037827dff`
-- **Phase 3 implementation prompt:** `prompts/PHASE_3_ACCOUNTS_CATEGORIES.md`
-- **Phase 3 corrective prompt:** `prompts/PHASE_3_CORRECTIVE.md`
-- **Phase 3 final cleanup prompt:** `prompts/PHASE_3_FINAL_CLEANUP.md`
+- **Phase 3 runtime RLS receipt SHA:** `2b09f494344a3f6d84bb374ad5bdba0512f7f459`
 
 ## Phase 2 Accepted Baseline
 
@@ -39,92 +37,101 @@ Accepted gates:
 
 **PHASE_2 = PASS**
 
-## Phase 3 Accepted Source Gate
+## Phase 3 — Accounts + Categories — Final Receipt
 
-The application/runtime source at `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5` was verified with a clean worktree and matching local/remote HEAD.
+Phase 3 is accepted COMPLETE.
 
-Accepted exact-head verification:
+### Source gate
+
+The application/runtime source at `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5` was verified with matching local/remote HEAD and a clean worktree.
 
 - TypeScript: PASS
 - Lint: PASS
 - Production build: PASS
-- `node --check scripts/verify-phase3-rls.mjs`: PASS
+- Runtime RLS script syntax: PASS
 - Temporary corrective files removed: PASS
-- Code changes during verification: NONE
+- Verification code changes: NONE
 
-A subsequent SQL-only migration correction at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` replaced invalid PostgreSQL `REVOKE ALL EXECUTE ON FUNCTION ...` syntax with valid `REVOKE EXECUTE ON FUNCTION ...` statements for the two Phase 3 SECURITY DEFINER helpers. This did not change application TypeScript/runtime code.
+A later SQL-only correction at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` fixed PostgreSQL function-privilege syntax from invalid `REVOKE ALL EXECUTE` to valid `REVOKE EXECUTE`; no application runtime code changed.
 
-## Phase 3 Remote Database Structural Receipt
+### Remote database structural gate
 
-The corrected Phase 3 migration was manually applied to the target Supabase project and the strict structural verifier completed with every mandatory check PASS and `99_OVERALL = PASS`.
+The corrected Phase 3 migration was manually applied to the target Supabase project. The strict structural verifier returned PASS for every mandatory check and `99_OVERALL = PASS`.
 
-Accepted verifier evidence:
+Accepted facts:
 
-- `01_tables_exist`: PASS (`accounts`, `categories`)
-- `02_rls_enabled`: PASS on both tables
-- `03_rls_policies_exact`: PASS for exactly six authenticated ownership policies
-- `04_b_on_auth_user_created_categories_trigger`: PASS
-- `04_updated_at_triggers`: PASS on accounts and categories
-- `05_function_security`: PASS; both Phase 3 helper functions are SECURITY DEFINER with empty search path
-- `06_anon_public_no_privileges`: PASS; no anon/PUBLIC table or column privileges
-- `07_authenticated_table_privileges_exact`: PASS; table-level SELECT only on accounts/categories
-- `08_authenticated_insert_columns_exact`: PASS
-- `09_authenticated_update_columns_exact`: PASS
-- `10_opening_balance_type`: PASS; `numeric(20,4)`
-- `11_categories_backfill_complete`: PASS; `auth_users=3`, `categories=36`, proving all 12 baseline categories per current auth user
-- `12_execute_privileges_revoked`: PASS
-- `99_OVERALL`: PASS — Phase 3 database structural gate passed with least-privilege grants
+- `accounts` and `categories` exist with RLS enabled;
+- exactly six authenticated ownership policies are present;
+- account/category updated-at triggers are present;
+- category provisioning trigger on `auth.users` is present;
+- Phase 3 SECURITY DEFINER helpers use empty `search_path` and direct client EXECUTE is revoked;
+- `anon` and `PUBLIC` have no table or column privileges on Phase 3 tables;
+- authenticated has table-level SELECT only, with exact column-level INSERT/UPDATE allowlists;
+- `opening_balance` is PostgreSQL `numeric(20,4)`;
+- all current auth users had all 12 baseline categories (`auth_users=3`, `categories=36`);
+- no seeded transfer category exists.
 
-## Phase 3 Two-User Runtime RLS Receipt
+**PHASE_3_REMOTE_DATABASE = PASS**
+**PHASE_3_STRUCTURAL_GATE = PASS**
 
-The hardened runtime verifier was executed against remote main `1422dcd5e9c67028d1c33006d5d61f7037827dff` with two disposable authenticated users and exited with code `0`.
+### Two-user runtime RLS gate
 
-Accepted runtime evidence:
+The hardened two-user runtime verifier executed against remote main `1422dcd5e9c67028d1c33006d5d61f7037827dff` and exited `0`.
+
+Accepted runtime facts:
 
 - User A authentication: PASS
 - User B authentication: PASS
-- Accounts own INSERT/SELECT/UPDATE: PASS
-- Accounts cross-user INSERT blocked: PASS
-- Accounts cross-user SELECT blocked: PASS
-- Accounts cross-user UPDATE blocked: PASS
-- Account ownership change blocked: PASS
-- Category baseline visibility/isolation: PASS
-- Categories own INSERT/SELECT/UPDATE: PASS
-- Categories cross-user INSERT blocked: PASS
-- Categories cross-user SELECT blocked: PASS
-- Categories cross-user UPDATE blocked: PASS
-- Category ownership change blocked: PASS
-- Deliberate non-RLS database error handling: PASS
-- Verifier record cleanup/archive: PASS
-- Process exit code: `0`
-- `PHASE_3_TWO_USER_RLS`: PASS
-- Code changes during verification: NONE
+- own account INSERT/SELECT/UPDATE: PASS
+- cross-user account INSERT/SELECT/UPDATE blocked: PASS
+- account ownership mutation blocked: PASS
+- own category baseline visibility/isolation: PASS
+- own category INSERT/SELECT/UPDATE: PASS
+- cross-user category INSERT/SELECT/UPDATE blocked: PASS
+- category ownership mutation blocked: PASS
+- deliberate non-RLS database error distinction: PASS
+- verifier cleanup/archive: PASS
 
-## Remaining Phase 3 Gate
+**PHASE_3_TWO_USER_RLS = PASS**
 
-Only the live application persistence smoke remains:
+### Live application persistence smoke
 
-1. on the live Vercel application, create an account, edit it, archive it, unarchive it, refresh/re-login and confirm the state persisted;
-2. create a category, edit it, archive it, unarchive it, refresh/re-login and confirm the state persisted;
-3. require no false success UI and no unexpected errors;
-4. after this owner-attested smoke PASS, close Phase 3 and authorize Phase 4.
+Owner-attested live smoke was performed on `https://finora-orpin-nu.vercel.app` after the remote database/runtime gates passed.
 
-## Phase Authorization
+Accepted evidence:
 
-- **Phase 0:** PASS
-- **Phase 1:** PASS
-- **Phase 2 Overall:** PASS
-- **Phase 3 Source Audit:** PASS
-- **Phase 3 Exact-Head TypeScript/Lint/Build:** PASS
-- **Phase 3 Migration Source Syntax Correction:** PASS
-- **Phase 3 Migration Application:** PASS
-- **Phase 3 Remote Database:** PASS
-- **Phase 3 Structural Gate:** PASS
-- **Phase 3 Two-User Runtime RLS:** PASS
-- **Phase 3 Live Persistence Smoke:** NOT_RUN
-- **Phase 3 Overall:** PARTIAL
-- **Phase 4 — Transactions:** NOT AUTHORIZED
+- account create + edit + persistence: PASS
+- account archive + unarchive: PASS
+- category create + edit + persistence: PASS
+- category archive + unarchive: PASS
+- refresh + logout/login persistence: PASS
+- unexpected live errors: NONE
+
+**PHASE_3_LIVE_PERSISTENCE_SMOKE = PASS**
+
+## Phase 3 Final Authorization
+
+```text
+PHASE_0=PASS
+PHASE_1=PASS
+PHASE_2=PASS
+PHASE_3_SOURCE=PASS
+PHASE_3_REMOTE_DATABASE=PASS
+PHASE_3_STRUCTURAL_GATE=PASS
+PHASE_3_TWO_USER_RLS=PASS
+PHASE_3_LIVE_PERSISTENCE_SMOKE=PASS
+FINORA_PHASE_3=PASS
+PHASE_4_AUTHORIZED=true
+```
+
+## Phase 4 Boundary — Transactions
+
+Phase 4 is now authorized. Phase 4 must implement real user-owned income/expense transaction persistence on top of the accepted Phase 2/3 Auth, Accounts, Categories, RLS, and least-privilege contracts.
+
+Phase 4 must **not** implement transfers (Phase 5), dashboard/reporting expansion (Phase 6), budgets/goals/recurring (Phase 7), FX conversion/rate history (Phase 8), income-source integrations (Phase 9), or AI infrastructure/features (Phase 10+).
+
+Transfers remain a separate neutral-to-net-worth domain object and must not be represented as an income/expense category or normal transaction during Phase 4.
 
 ## Next Recommended Action
 
-Perform the bounded live persistence smoke on `https://finora-orpin-nu.vercel.app`. Do not begin Phase 4 until that final Phase 3 gate passes.
+Create and execute a source-controlled Phase 4 Transactions implementation contract. Preserve all accepted Phase 2/3 invariants and require exact-head source verification, remote migration verification, strict structural checks, two-user runtime RLS isolation, and live persistence smoke before Phase 5 is authorized.
