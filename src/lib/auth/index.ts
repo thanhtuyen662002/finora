@@ -216,3 +216,5 @@ export async function updateCurrentUserSettings(
 
   return { data: data as UserSettings | null, error: error as Error | null };
 }
+
+export { getSafeRedirectUrl } from './redirect';

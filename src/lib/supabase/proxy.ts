@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getClientEnv } from "@/config/env";
 import type { Database } from "@/types/database";
+import { getSafeRedirectUrl } from "@/lib/auth/redirect";
 
 /**
  * Updates user session, enforces route protection, and propagates authentication cookies
@@ -107,15 +108,8 @@ export async function updateSession(request: NextRequest) {
   // 2. If authenticated user tries to access auth pages -> redirect to /dashboard or next param
   if (user && isAuthRoute) {
     const nextParam = request.nextUrl.searchParams.get('next');
-    const redirectUrl = request.nextUrl.clone();
-
-    if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
-      redirectUrl.pathname = nextParam;
-      redirectUrl.searchParams.delete('next');
-    } else {
-      redirectUrl.pathname = '/dashboard';
-      redirectUrl.search = '';
-    }
+    const safeTargetPath = getSafeRedirectUrl(nextParam, '/dashboard');
+    const redirectUrl = new URL(safeTargetPath, request.nextUrl.origin);
 
     const redirectResponse = NextResponse.redirect(redirectUrl);
     supabaseResponse.cookies.getAll().forEach((cookie) => {

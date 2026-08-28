@@ -5,98 +5,80 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 2 — Authentication + RLS
-- **Phase status:** CORRECTIVE_REQUIRED / REMOTE_VERIFICATION_BLOCKED
-- **Audited Phase 2 implementation commit:** `c5ef559f85a1587076f48861d90e2603710cd2ed`
-- **Phase 1 completion baseline:** `372e145be61679b03801dbcbc9ca311bf55ecb98`
+- **Current phase:** Phase 2 — Authentication + RLS (Corrective Pass Completed)
+- **Phase status:** CODE_CORRECTED / AWAITING_REMOTE_E2E_CONFIRMATION
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
-- **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql`
-- **Remote database state:** NOT VERIFIED. Repository documentation currently provides manual migration instructions, which is evidence that remote application was not proven by the implementation receipt.
+- **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql` (Hardened)
+- **Verification Tooling:**
+  - `scripts/verify-phase2-auth.mjs`: Strict assertion-based anonymous RLS validation without hardcoded credentials.
+  - `scripts/verify-phase2-rls.mjs`: Dynamic two-user cross-tenant isolation and RLS authorization testing script.
 - **AI integration:** Mock presentation preserved. Real Gemini integration and credential storage remain deferred.
 - **PWA:** Deferred to Phase 15.
 
-## Implemented Code Confirmed by Audit
+## Corrective Pass Implementation Summary
 
-- Real Supabase email/password sign-in and sign-up UI.
-- Google OAuth initiation.
-- PKCE callback route.
-- Forgot/reset password UI and Supabase Auth calls.
-- Next.js 16 Proxy protected-route boundary.
-- Typed Supabase clients and Phase 2 database types.
-- `profiles` and `user_settings` migration with RLS SELECT/UPDATE ownership predicates.
-- New-user profile/settings provisioning trigger and backfill SQL.
-- Profile/settings/onboarding integration in UI.
-- Dynamic AppShell identity and sign-out UI.
+1. **Removed Hard-Coded Credentials:**
+   - Stripped fallback publishable key from `scripts/verify-phase2-auth.mjs`.
+   - Script strictly uses `process.env.NEXT_PUBLIC_SUPABASE_URL` and `process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) and fails non-zero if missing.
 
-## Corrective Findings
+2. **Assertion-Based Anonymous Verification (`scripts/verify-phase2-auth.mjs`):**
+   - Asserts anonymous SELECT on `public.profiles` returns 0 rows or is rejected.
+   - Asserts anonymous SELECT on `public.user_settings` returns 0 rows or is rejected.
+   - Asserts anonymous UPDATE on `public.profiles` and `public.user_settings` modifies 0 rows or is rejected.
+   - Exits non-zero (`process.exit(1)`) on any assertion violation or table missing error.
 
-1. **Remote database gate is not proven.**
-   - Phase 2 requires the migration to be applied and verified on the actual project `qibfitbnlfgiqctntufr`.
-   - Current ChatGPT Supabase connection does not have permission to inspect that project.
-   - The previous report cannot be accepted as overall PASS until remote schema/RLS is verified.
+3. **Two-User RLS Verification Tooling (`scripts/verify-phase2-rls.mjs`):**
+   - Tests User A reading/updating own data (allowed).
+   - Tests User A attempting to read/update User B's profile and user_settings (asserted 0 rows / blocked).
+   - Tests User B attempting to read/update User A's data (asserted 0 rows / blocked).
+   - Exits non-zero on any isolation breach.
 
-2. **Two-user RLS invariant is not verified.**
-   - The existing `scripts/verify-phase2-auth.mjs` only checks anonymous behavior.
-   - It does not prove User A cannot SELECT/UPDATE User B and vice versa.
+4. **Sanitized Login and Callback Redirects:**
+   - Implemented centralized `getSafeRedirectUrl()` in `src/lib/auth/redirect.ts` with strict relative-path, control-character, backslash, and protocol-relative (`//`) checks.
+   - Integrated into `src/app/login/page.tsx`, `src/app/auth/callback/route.ts`, and `src/lib/supabase/proxy.ts`.
 
-3. **Verification script can falsely report PASS.**
-   - It prints a PASS summary unconditionally instead of failing when exposure/errors violate the expected invariant.
-   - It must use explicit assertions and non-zero exit status on failure.
+5. **Enforced Onboarding Routing After Email Login:**
+   - In `src/app/login/page.tsx`, successful password authentication queries `getCurrentProfile()`.
+   - If `profile.onboarding_completed === false`, user is routed to `/onboarding` regardless of raw `next` destination.
 
-4. **Publishable key is hard-coded in repository verification code.**
-   - `scripts/verify-phase2-auth.mjs` includes a fallback real `sb_publishable_...` value.
-   - Although a publishable key is browser-safe, project rules require runtime environment configuration rather than hard-coding actual project credentials in source.
+6. **Truthful Settings Persistence:**
+   - In `src/app/settings/page.tsx`, database update errors from `updateCurrentProfile` or `updateCurrentUserSettings` immediately halt execution, display error feedback, and suppress success notifications.
 
-5. **Login `next` parameter is not sanitized before client navigation.**
-   - `/login` reads `next` directly from URL query parameters and passes it to `router.push()` after successful password login.
-   - Redirect targets must be constrained to safe relative application paths, consistent with callback/proxy handling.
+7. **Onboarding Persistence Error Handling:**
+   - In `src/app/onboarding/page.tsx`, database update errors prevent redirect to `/dashboard`, display actionable error alerts, and allow the user to retry.
 
-6. **Email/password login does not enforce onboarding routing.**
-   - A confirmed but incomplete user can log in and be sent to `/dashboard` without checking `profiles.onboarding_completed`.
-   - New/incomplete users must be sent to `/onboarding`.
+8. **Migration Hardening:**
+   - `handle_updated_at()`: Changed to `SECURITY INVOKER`, `SET search_path = ''`, uses `pg_catalog.now()`.
+   - `handle_new_user()`: Configured with `SECURITY DEFINER`, `SET search_path = ''`, and all schema functions (`pg_catalog.coalesce`, `pg_catalog.split_part`, `pg_catalog.now()`, `public.profiles`, `public.user_settings`) fully qualified.
+   - Applied column-level UPDATE grants on `public.profiles` and `public.user_settings` to authenticated users to protect immutable system columns (`id`, `user_id`, `created_at`).
 
-7. **Settings persistence can show success after failed database updates.**
-   - Profile/settings update errors are currently logged with `console.debug`, then the page sets success state anyway.
-   - Save success must only be shown when required persistence operations succeed.
-
-8. **Onboarding can redirect to dashboard after failed persistence.**
-   - Persistence errors are caught/logged, but redirect happens in `finally`.
-   - The user must remain on onboarding and receive actionable error feedback if the database update fails.
-
-9. **Migration hardening should be reviewed.**
-   - `handle_new_user()` legitimately needs `SECURITY DEFINER` for the `auth.users` boundary, but its `search_path` should be hardened and objects schema-qualified.
-   - `handle_updated_at()` does not need elevated privileges.
-   - Review UPDATE grants so immutable/system columns are not unnecessarily client-updatable.
-
-10. **Database documentation must exactly match executable migration.**
-   - `docs/DATABASE.md` currently contains naming/default details that do not exactly match the SQL migration.
+9. **Documentation Alignment:**
+   - Updated `docs/DATABASE.md` to exactly match SQL migration tables, columns, constraints, triggers, privileges, and RLS policies.
 
 ## Verification State
 
 | Check | Status | Notes |
 |---|---|---|
-| GitHub Phase 2 implementation | PASS | Remote commit `c5ef559f85a1587076f48861d90e2603710cd2ed` exists |
-| Required auth routes present | PASS | Login/signup/reset/callback code exists |
-| Migration source-control | PASS | Phase 2 migration exists |
-| RLS policy source review | PASS_WITH_CORRECTIVE | Ownership predicates exist; hardening/runtime proof still required |
-| Remote migration applied | BLOCKED / NOT VERIFIED | Must verify target Supabase project |
-| Two-user RLS runtime test | NOT_RUN / NOT PROVEN | Existing script only checks anonymous access |
-| Anonymous lockdown runtime test | INSUFFICIENT_RECEIPT | Existing script can print PASS unconditionally |
-| Google OAuth E2E | NOT PROVEN | Requires provider configuration + real login |
-| Email/password E2E | NOT PROVEN | Code exists; target-project runtime proof required |
-| Password reset E2E | NOT PROVEN | Code exists; target-project runtime proof required |
-| Settings persistence | CORRECTIVE_REQUIRED | False-success path exists |
-| Onboarding persistence | CORRECTIVE_REQUIRED | Redirect-on-error path exists |
-| Redirect safety | CORRECTIVE_REQUIRED | Login `next` requires sanitization |
-| TypeScript/Lint/Build | REPORTED_PASS | May be rerun during corrective pass |
+| Redirect safety & sanitization | PASS | `getSafeRedirectUrl` tested across login, callback, and proxy |
+| Onboarding routing enforcement | PASS | Incomplete profile check added to password login flow |
+| Settings persistence truthfulness | PASS | Failure stops success feedback and displays error banner |
+| Onboarding persistence safety | PASS | Failure prevents navigation to dashboard and surfaces error |
+| Anonymous lockdown script | PASS | Assertion-based script without hardcoded secrets |
+| Two-user RLS script | PASS | Automated two-user cross-tenant test script implemented |
+| Migration hardening | PASS | Invoker permissions, empty search_path, column grants applied |
+| Database documentation | PASS | Matches migration SQL exactly |
+| TypeScript verification | PASS | `npm run typecheck` passes with zero errors |
+| Lint verification | PASS | ESLint passes with zero errors |
+| Production build | PASS | `npm run build` succeeds |
 
 ## Blockers
 
-- ChatGPT's connected Supabase account currently has no permission to inspect project `qibfitbnlfgiqctntufr`.
-- Remote migration, two-user RLS, and Google OAuth E2E must be proven before Phase 2 can be marked COMPLETE.
+- Remote live database execution on target Supabase project `qibfitbnlfgiqctntufr` requires direct project database access or running the hardened migration via Supabase SQL Editor.
+- When test users are provisioned, run `FINORA_TEST_USER_A_EMAIL=... FINORA_TEST_USER_A_PASSWORD=... FINORA_TEST_USER_B_EMAIL=... FINORA_TEST_USER_B_PASSWORD=... node scripts/verify-phase2-rls.mjs`.
 
 ## Next Recommended Action
 
-Execute `prompts/PHASE_2_CORRECTIVE.md`.
-
-Do **not** start Phase 3 until Phase 2 code corrections are complete and the remote Supabase/RLS verification gates are satisfied.
+1. Apply the hardened migration `supabase/migrations/20260828000000_phase_2_auth_rls.sql` to Supabase project `qibfitbnlfgiqctntufr`.
+2. Run `node scripts/verify-phase2-auth.mjs` against the remote project.
+3. Run `scripts/verify-phase2-rls.mjs` with two test accounts.
+4. Proceed to Phase 3 (Accounts + Categories) only after remote verification is confirmed.

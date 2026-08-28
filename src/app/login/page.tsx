@@ -19,12 +19,18 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import { signInWithEmail, signInWithGoogle } from '@/lib/auth';
+import {
+  signInWithEmail,
+  signInWithGoogle,
+  getCurrentProfile,
+  getSafeRedirectUrl,
+} from '@/lib/auth';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/dashboard';
+  const rawNext = searchParams.get('next');
+  const safeNext = getSafeRedirectUrl(rawNext, '/dashboard');
   const urlError = searchParams.get('error');
 
   const [email, setEmail] = useState('');
@@ -54,7 +60,13 @@ function LoginForm() {
       }
 
       if (data?.user) {
-        router.push(next);
+        // Enforce onboarding route for incomplete profiles
+        const { data: profile } = await getCurrentProfile();
+        if (profile && profile.onboarding_completed === false) {
+          router.push('/onboarding');
+        } else {
+          router.push(safeNext);
+        }
         router.refresh();
       }
     } catch {

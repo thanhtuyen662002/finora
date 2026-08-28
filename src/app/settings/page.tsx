@@ -137,10 +137,6 @@ export default function SettingsPage() {
         display_name: name,
       });
 
-      if (profileError) {
-        console.debug('Profile update note:', profileError.message);
-      }
-
       // 2. Update user_settings
       const { error: settingsError } = await updateCurrentUserSettings({
         base_currency: baseCurrency,
@@ -149,8 +145,13 @@ export default function SettingsPage() {
         theme: appearanceTheme,
       });
 
-      if (settingsError) {
-        console.debug('Settings update note:', settingsError.message);
+      if (profileError || settingsError) {
+        const errorDetail =
+          profileError?.message ||
+          settingsError?.message ||
+          'Không thể cập nhật thông tin trong cơ sở dữ liệu.';
+        setErrorMessage(`Lỗi lưu cài đặt: ${errorDetail}`);
+        return;
       }
 
       setSaveSuccess(true);

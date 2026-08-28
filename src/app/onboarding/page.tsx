@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Target,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -32,6 +33,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const totalSteps = 5;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // State collected during onboarding
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('VND');
@@ -143,24 +145,45 @@ export default function OnboardingPage() {
   };
 
   const handleNext = async () => {
+    setErrorMessage(null);
     if (step < totalSteps) {
       setStep(step + 1);
     } else {
       setIsSubmitting(true);
       try {
-        // Persist base currency and onboarding status
-        await updateCurrentUserSettings({ base_currency: baseCurrency });
-        await updateCurrentProfile({ onboarding_completed: true });
-      } catch (err) {
-        console.debug('Failed to save onboarding settings', err);
-      } finally {
+        // Persist base currency
+        const { error: settingsError } = await updateCurrentUserSettings({
+          base_currency: baseCurrency,
+        });
+
+        if (settingsError) {
+          setErrorMessage(`Không thể lưu cài đặt tiền tệ: ${settingsError.message}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Persist onboarding status
+        const { error: profileError } = await updateCurrentProfile({
+          onboarding_completed: true,
+        });
+
+        if (profileError) {
+          setErrorMessage(`Không thể hoàn tất khởi tạo tài khoản: ${profileError.message}`);
+          setIsSubmitting(false);
+          return;
+        }
+
         router.push('/dashboard');
         router.refresh();
+      } catch {
+        setErrorMessage('Không thể lưu cấu hình khởi tạo. Vui lòng thử lại.');
+        setIsSubmitting(false);
       }
     }
   };
 
   const handleBack = () => {
+    setErrorMessage(null);
     if (step > 1) {
       setStep(step - 1);
     }
@@ -185,6 +208,13 @@ export default function OnboardingPage() {
         </div>
 
         <Card className="shadow-lg border-border">
+          {errorMessage && (
+            <div className="mx-6 mt-6 p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {/* Step 1: Welcome */}
           {step === 1 && (
             <>

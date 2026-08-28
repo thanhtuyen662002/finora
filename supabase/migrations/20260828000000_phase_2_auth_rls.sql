@@ -33,11 +33,11 @@ COMMENT ON TABLE public.user_settings IS 'User personal financial preferences an
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
+SECURITY INVOKER
+SET search_path = ''
 AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = pg_catalog.now();
     RETURN NEW;
 END;
 $$;
@@ -60,22 +60,22 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
     v_display_name TEXT;
     v_avatar_url TEXT;
 BEGIN
     -- Extract display name if present in OAuth/Signup metadata
-    v_display_name := COALESCE(
+    v_display_name := pg_catalog.coalesce(
         NEW.raw_user_meta_data->>'full_name',
         NEW.raw_user_meta_data->>'name',
         NEW.raw_user_meta_data->>'display_name',
-        split_part(NEW.email, '@', 1)
+        pg_catalog.split_part(NEW.email, '@', 1)
     );
     
     -- Extract avatar URL if present
-    v_avatar_url := COALESCE(
+    v_avatar_url := pg_catalog.coalesce(
         NEW.raw_user_meta_data->>'avatar_url',
         NEW.raw_user_meta_data->>'picture'
     );
@@ -93,8 +93,8 @@ BEGIN
         v_display_name,
         v_avatar_url,
         FALSE,
-        NOW(),
-        NOW()
+        pg_catalog.now(),
+        pg_catalog.now()
     )
     ON CONFLICT (id) DO NOTHING;
 
@@ -113,8 +113,8 @@ BEGIN
         'vi-VN',
         'Asia/Ho_Chi_Minh',
         'system',
-        NOW(),
-        NOW()
+        pg_catalog.now(),
+        pg_catalog.now()
     )
     ON CONFLICT (user_id) DO NOTHING;
 
@@ -133,13 +133,13 @@ CREATE TRIGGER on_auth_user_created
 INSERT INTO public.profiles (id, display_name, avatar_url, onboarding_completed, created_at, updated_at)
 SELECT
     u.id,
-    COALESCE(
+    pg_catalog.coalesce(
         u.raw_user_meta_data->>'full_name',
         u.raw_user_meta_data->>'name',
         u.raw_user_meta_data->>'display_name',
-        split_part(u.email, '@', 1)
+        pg_catalog.split_part(u.email, '@', 1)
     ),
-    COALESCE(
+    pg_catalog.coalesce(
         u.raw_user_meta_data->>'avatar_url',
         u.raw_user_meta_data->>'picture'
     ),
@@ -198,9 +198,12 @@ CREATE POLICY "Users can update own settings"
     USING ((SELECT auth.uid()) = user_id)
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- 8. Table Grants and Privileges
+-- 8. Table Grants and Column-Level Privileges
 REVOKE ALL ON TABLE public.profiles FROM anon, public;
 REVOKE ALL ON TABLE public.user_settings FROM anon, public;
 
-GRANT SELECT, UPDATE ON TABLE public.profiles TO authenticated;
-GRANT SELECT, UPDATE ON TABLE public.user_settings TO authenticated;
+GRANT SELECT ON TABLE public.profiles TO authenticated;
+GRANT UPDATE (display_name, avatar_url, onboarding_completed) ON TABLE public.profiles TO authenticated;
+
+GRANT SELECT ON TABLE public.user_settings TO authenticated;
+GRANT UPDATE (base_currency, locale, timezone, theme) ON TABLE public.user_settings TO authenticated;
