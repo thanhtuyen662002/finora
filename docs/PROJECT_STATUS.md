@@ -5,22 +5,21 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 4 — Transactions — CORRECTIVE REQUIRED
+- **Current phase:** Phase 4 — Transactions — FINAL CORRECTIVE REQUIRED
 - **Phase status:** PARTIAL
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
-- **Initial Phase 3 implementation SHA:** `8ebe887ed1e5aee8416dd084bad74a575b8d082d`
-- **First Phase 3 corrective remote SHA audited:** `7c841ea4702ac191573e40ac2b4308913fd1daeb`
-- **AI Studio Phase 3 final-cleanup SHA audited:** `7159363a2d0a20fac9f9621ee531b2d131517d66`
 - **Phase 3 code verification SHA:** `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5`
 - **Accepted Phase 3 migration-source SHA:** `529d1d42ab50d62b2327fadc7a9ac0b2122798fa`
 - **Phase 3 structural receipt SHA:** `1422dcd5e9c67028d1c33006d5d61f7037827dff`
 - **Phase 3 runtime RLS receipt SHA:** `2b09f494344a3f6d84bb374ad5bdba0512f7f459`
 - **Phase 3 closure SHA:** `935a806c15d28b8de412631f48cf2ee067a3af2f`
 - **Phase 4 implementation contract SHA:** `75dd85d4a7b062fb3f8cc2a25570a75c057838ac`
-- **Phase 4 implementation SHA under corrective audit:** `399f96327111ebf9abeb7c95d445ce0174f91e6f`
+- **Phase 4 initial implementation SHA:** `399f96327111ebf9abeb7c95d445ce0174f91e6f`
 - **Phase 4 corrective prompt:** `prompts/PHASE_4_CORRECTIVE.md`
+- **Phase 4 corrective remote SHA audited:** `89a2e720ea011c342ed0ae2b2d420092ae2b0967`
+- **Phase 4 final corrective prompt:** `prompts/PHASE_4_FINAL_CORRECTIVE.md`
 
 ## Phase 2 Accepted Baseline
 
@@ -43,24 +42,23 @@ Accepted gates:
 
 ## Phase 3 — Accounts + Categories — Final Receipt
 
-Phase 3 is accepted COMPLETE.
+Phase 3 is accepted COMPLETE and is the immutable baseline for Phase 4.
 
 ### Source gate
 
-The application/runtime source at `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5` was verified with matching local/remote HEAD and a clean worktree.
+The Phase 3 application/runtime source was verified with matching local/remote HEAD and clean worktree.
 
 - TypeScript: PASS
 - Lint: PASS
 - Production build: PASS
-- Runtime RLS script syntax: PASS
-- Temporary corrective files removed: PASS
+- Runtime verifier script syntax: PASS
 - Verification code changes: NONE
 
-A later SQL-only correction at `529d1d42ab50d62b2327fadc7a9ac0b2122798fa` fixed PostgreSQL function-privilege syntax from invalid `REVOKE ALL EXECUTE` to valid `REVOKE EXECUTE`; no application runtime code changed.
+A later SQL-only correction fixed invalid PostgreSQL function-privilege syntax without changing application runtime code.
 
 ### Remote database structural gate
 
-The corrected Phase 3 migration was manually applied to the target Supabase project. The strict structural verifier returned PASS for every mandatory check and `99_OVERALL = PASS`.
+The corrected Phase 3 migration was manually applied to the target Supabase project. Strict verification returned every mandatory check PASS and `99_OVERALL = PASS`.
 
 Accepted facts:
 
@@ -68,11 +66,11 @@ Accepted facts:
 - exactly six authenticated ownership policies are present;
 - account/category updated-at triggers are present;
 - category provisioning trigger on `auth.users` is present;
-- Phase 3 SECURITY DEFINER helpers use empty `search_path` and direct client EXECUTE is revoked;
+- Phase 3 SECURITY DEFINER helpers use empty `search_path` and client EXECUTE is revoked;
 - `anon` and `PUBLIC` have no table or column privileges on Phase 3 tables;
-- authenticated has table-level SELECT only, with exact column-level INSERT/UPDATE allowlists;
+- authenticated has table-level SELECT only with exact column-level INSERT/UPDATE allowlists;
 - `opening_balance` is PostgreSQL `numeric(20,4)`;
-- all current auth users had all 12 baseline categories (`auth_users=3`, `categories=36`);
+- baseline categories were complete for all current auth users;
 - no seeded transfer category exists.
 
 **PHASE_3_REMOTE_DATABASE = PASS**
@@ -80,7 +78,7 @@ Accepted facts:
 
 ### Two-user runtime RLS gate
 
-The hardened two-user runtime verifier executed against remote main `1422dcd5e9c67028d1c33006d5d61f7037827dff` and exited `0`.
+The hardened two-user runtime verifier exited `0`.
 
 Accepted runtime facts:
 
@@ -88,7 +86,7 @@ Accepted runtime facts:
 - own account INSERT/SELECT/UPDATE: PASS
 - cross-user account INSERT/SELECT/UPDATE blocked: PASS
 - account ownership mutation blocked: PASS
-- own category baseline visibility/isolation: PASS
+- category baseline visibility/isolation: PASS
 - own category INSERT/SELECT/UPDATE: PASS
 - cross-user category INSERT/SELECT/UPDATE blocked: PASS
 - category ownership mutation blocked: PASS
@@ -99,7 +97,7 @@ Accepted runtime facts:
 
 ### Live application persistence smoke
 
-Owner-attested live smoke on `https://finora-orpin-nu.vercel.app`:
+Owner-attested live smoke on the Finora Vercel application:
 
 - account create + edit + persistence: PASS
 - account archive + unarchive: PASS
@@ -110,7 +108,7 @@ Owner-attested live smoke on `https://finora-orpin-nu.vercel.app`:
 
 **PHASE_3_LIVE_PERSISTENCE_SMOKE = PASS**
 
-### Phase 3 final authorization
+### Phase 3 authorization receipt
 
 ```text
 PHASE_0=PASS
@@ -125,56 +123,59 @@ FINORA_PHASE_3=PASS
 PHASE_4_AUTHORIZED=true
 ```
 
-## Phase 4 — Transactions — Source Audit
+## Phase 4 — Transactions — Audit History
 
-Phase 4 implementation was published to `main` at `399f96327111ebf9abeb7c95d445ce0174f91e6f`. The agent report stated Git push was blocked, but actual GitHub inspection proved the commit was already present on remote `main` with parent `75dd85d4a7b062fb3f8cc2a25570a75c057838ac`.
+### Initial implementation audit
 
-Positive direction confirmed:
+Initial Phase 4 source was published to `main` at `399f96327111ebf9abeb7c95d445ce0174f91e6f`. Actual GitHub inspection contradicted the agent's stale push-failure report.
 
-- real transaction feature module exists;
-- transaction migration is source-controlled and transaction type is limited to INCOME/EXPENSE;
-- ownership-safe composite account/category FK intent exists;
-- RLS/grant intent exists;
-- `account_balances` security-invoker view intent exists;
-- transaction UI is partially wired to real Phase 3 accounts/categories;
-- transfer tab was removed from the real transaction modal;
-- TypeScript/lint/build/script syntax were reported PASS by the implementation agent.
+Positive direction included real transaction persistence intent, INCOME/EXPENSE-only scope, ownership-safe composite FK intent, RLS/grants, a security-invoker account-balance view, real Phase 3 account/category integration, and removal of real transfer persistence.
 
-However, repository audit found mandatory blockers. Therefore the code gate is NOT accepted yet and the Phase 4 migration must not be applied remotely in this revision.
+The initial implementation was not accepted because money correctness, verifier integrity, void/restore UX, current-date filtering, active-reference selection, documentation, and exact derived-balance handling were incomplete.
 
-### Mandatory corrective findings
+### First corrective audit
 
-1. `scripts/verify-phase4-db.sql` is only a minimal existence/column probe and does not implement the strict structural verifier contract or final `99_OVERALL`.
-2. `scripts/verify-phase4-rls.mjs` is not a valid full runtime verifier: setup omits required Phase 3 `user_id`, uses invalid `#000` colors, lacks full bidirectional A↔B transaction matrix, void/restore balance proof, integrity tests, view isolation, and cleanup assertions.
-3. `/transactions` uses `parseFloat()` and native-number accumulation/subtraction for monetary summaries.
-4. `AddTransactionModal` uses `parseFloat()` for monetary validation/mutations.
-5. Transaction filters hardcode August/July 2026 and a fixed date instead of current runtime dates.
-6. Amount sorting compares monetary values as JS numbers and is not currency-safe.
-7. CSV UI reports success without creating a real export.
-8. Void/restore feature functions exist but the real transaction UI has no complete void/restore controls/flow.
-9. New transaction selection includes archived accounts/categories instead of active-only choices.
-10. Summary cards aggregate all active history rather than the actual current month.
-11. Derived balances are consumed as JS numbers and `AccountCard` uses `Number(...)` for money.
-12. Phase 4 transaction migration lacks sensible maximum-length bounds for merchant/note.
-13. `docs/DATABASE.md` was not updated with Phase 4 database/security truth.
-14. `docs/PROJECT_STATUS.md` was destructively shortened and lost detailed accepted Phase 2/3 receipts; this ledger restores them.
-15. Dashboard compatibility edits must remain bounded and must not silently implement/claim Phase 6 or provide a false transfer action.
+The corrective agent reported local SHA `3a34d62c95802b79c0acd944730962dd9cfa1151` with code-only PASS but `REMOTE_HEAD_MATCHES_LOCAL=false`. Subsequent actual GitHub inspection found remote `main` had advanced instead to:
 
-The exact corrective contract is source-controlled in `prompts/PHASE_4_CORRECTIVE.md`.
+`89a2e720ea011c342ed0ae2b2d420092ae2b0967`
+
+with parent `7a57a27029ffe86185b67bcceeddaac826e4985d`.
+
+This remote commit is NOT equivalent to the reported verified local revision and still fails the Phase 4 contract.
+
+### Mandatory residual findings on remote `89a2e720...`
+
+1. `AddTransactionModal.tsx` contains duplicate imports of `createTransaction` / `updateTransaction`, so exact remote source is not accepted as the revision that reportedly passed TypeScript/build.
+2. The modal still validates money with `Number(amount) <= 0`.
+3. Transaction table reads still expose `amount` as JS `number`; converting to string afterward cannot restore precision already lost at the JSON boundary.
+4. `src/features/transactions/transactions.ts` still uses `as any` for void/restore because mutation types are not correctly bounded.
+5. `formatExactDecimal()` still uses `parseInt()` on monetary integer parts, which can lose exactness for large `numeric(20,4)` values.
+6. Summary cards use exact-string accumulation but still summarize all active transaction history instead of the actual current month.
+7. `TransactionList` labels say current periods but filtering still hardcodes `2026-08`, `2026-07`, and `2026-08-27`.
+8. New-vs-edit archived account/category selection still needs exact active-only default behavior for new transactions while preserving only the historical selected archived reference during edit.
+9. CSV now creates a file, but CSV escaping and dead success-state UI still require cleanup.
+10. `scripts/verify-phase4-db.sql` is not a strict structural verifier. It checks only a small subset, does not validate policy predicates/grants/FKs/view security/precision/regressions, and uses an unsafe unsupported nested `PROCEDURE ... IS` pattern in an anonymous `DO` block.
+11. `scripts/verify-phase4-rls.mjs` is not a full runnable matrix. Its transaction INSERT omits required `user_id` and it lacks B-own operations, complete bidirectional cross-user/account/category checks, domain-integrity checks, DELETE block, ownership mutation, view isolation, deliberate DB error distinction, and asserted cleanup.
+12. The Phase 4 remote database migration remains intentionally unapplied.
+
+The exact final corrective contract is source-controlled in:
+
+`prompts/PHASE_4_FINAL_CORRECTIVE.md`
 
 ## Remote Phase 4 Database State
 
-The Phase 4 migration has **not** been accepted or authorized for application.
+The Phase 4 migration is **NOT AUTHORIZED FOR APPLICATION** at the current source revision.
 
-Required order after corrective code PASS:
+Required order after final corrective source PASS:
 
-1. audit the corrected exact remote source;
-2. run exact-head typecheck/lint/build and runtime verifier syntax;
-3. only then authorize the corrected Phase 4 migration for manual Supabase application;
-4. run strict `scripts/verify-phase4-db.sql` and require every mandatory row plus `99_OVERALL = PASS`;
-5. run hardened two-user `scripts/verify-phase4-rls.mjs` and require exit code `0`;
-6. perform live transaction create/edit/void/restore/refresh/re-login smoke and derived-balance proof;
-7. only then close Phase 4 and authorize Phase 5.
+1. audit the exact corrected remote source;
+2. require exact local/remote HEAD match and clean worktree;
+3. require exact-head typecheck/lint/build/runtime-script syntax PASS;
+4. only then authorize the exact Phase 4 migration for manual Supabase application;
+5. run strict `scripts/verify-phase4-db.sql` and require every mandatory row plus `99_OVERALL = PASS`;
+6. run hardened two-user `scripts/verify-phase4-rls.mjs` and require exit code `0`;
+7. perform live transaction create/edit/void/restore/refresh/re-login smoke plus derived-balance proof;
+8. only then close Phase 4 and authorize Phase 5.
 
 ## Phase Authorization
 
@@ -182,7 +183,7 @@ Required order after corrective code PASS:
 - **Phase 1:** PASS
 - **Phase 2:** PASS
 - **Phase 3:** PASS
-- **Phase 4 Code Gate:** PASS_CODE_ONLY
+- **Phase 4 Code Gate:** FINAL_CORRECTIVE_REQUIRED
 - **Phase 4 Remote Database:** BLOCKED_NOT_APPLIED
 - **Phase 4 Structural Gate:** NOT_RUN
 - **Phase 4 Two-User Runtime RLS:** NOT_RUN
@@ -192,4 +193,4 @@ Required order after corrective code PASS:
 
 ## Next Recommended Action
 
-Manual verify remote migration and tests.
+Execute `prompts/PHASE_4_FINAL_CORRECTIVE.md` as a code-only task. Do not apply any Phase 4 migration and do not begin Phase 5 until the exact corrected remote source is audited and accepted.
