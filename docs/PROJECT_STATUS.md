@@ -5,7 +5,7 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 3 — Accounts + Categories — RUNTIME RLS VERIFICATION
+- **Current phase:** Phase 3 — Accounts + Categories — LIVE PERSISTENCE SMOKE
 - **Phase status:** PARTIAL
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
@@ -15,6 +15,7 @@
 - **AI Studio final-cleanup SHA audited:** `7159363a2d0a20fac9f9621ee531b2d131517d66`
 - **Phase 3 code verification SHA:** `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5`
 - **Accepted Phase 3 migration-source SHA:** `529d1d42ab50d62b2327fadc7a9ac0b2122798fa`
+- **Phase 3 structural receipt SHA:** `1422dcd5e9c67028d1c33006d5d61f7037827dff`
 - **Phase 3 implementation prompt:** `prompts/PHASE_3_ACCOUNTS_CATEGORIES.md`
 - **Phase 3 corrective prompt:** `prompts/PHASE_3_CORRECTIVE.md`
 - **Phase 3 final cleanup prompt:** `prompts/PHASE_3_FINAL_CLEANUP.md`
@@ -74,13 +75,39 @@ Accepted verifier evidence:
 - `12_execute_privileges_revoked`: PASS
 - `99_OVERALL`: PASS — Phase 3 database structural gate passed with least-privilege grants
 
-## Remaining Phase 3 Gates
+## Phase 3 Two-User Runtime RLS Receipt
 
-Required order:
+The hardened runtime verifier was executed against remote main `1422dcd5e9c67028d1c33006d5d61f7037827dff` with two disposable authenticated users and exited with code `0`.
 
-1. run `node scripts/verify-phase3-rls.mjs` with the two disposable test users and require exit code `0`;
-2. smoke-test account/category create/edit/archive/unarchive persistence on the live Vercel application;
-3. only then close Phase 3 and authorize Phase 4.
+Accepted runtime evidence:
+
+- User A authentication: PASS
+- User B authentication: PASS
+- Accounts own INSERT/SELECT/UPDATE: PASS
+- Accounts cross-user INSERT blocked: PASS
+- Accounts cross-user SELECT blocked: PASS
+- Accounts cross-user UPDATE blocked: PASS
+- Account ownership change blocked: PASS
+- Category baseline visibility/isolation: PASS
+- Categories own INSERT/SELECT/UPDATE: PASS
+- Categories cross-user INSERT blocked: PASS
+- Categories cross-user SELECT blocked: PASS
+- Categories cross-user UPDATE blocked: PASS
+- Category ownership change blocked: PASS
+- Deliberate non-RLS database error handling: PASS
+- Verifier record cleanup/archive: PASS
+- Process exit code: `0`
+- `PHASE_3_TWO_USER_RLS`: PASS
+- Code changes during verification: NONE
+
+## Remaining Phase 3 Gate
+
+Only the live application persistence smoke remains:
+
+1. on the live Vercel application, create an account, edit it, archive it, unarchive it, refresh/re-login and confirm the state persisted;
+2. create a category, edit it, archive it, unarchive it, refresh/re-login and confirm the state persisted;
+3. require no false success UI and no unexpected errors;
+4. after this owner-attested smoke PASS, close Phase 3 and authorize Phase 4.
 
 ## Phase Authorization
 
@@ -93,11 +120,11 @@ Required order:
 - **Phase 3 Migration Application:** PASS
 - **Phase 3 Remote Database:** PASS
 - **Phase 3 Structural Gate:** PASS
-- **Phase 3 Two-User Runtime RLS:** NOT_RUN
+- **Phase 3 Two-User Runtime RLS:** PASS
 - **Phase 3 Live Persistence Smoke:** NOT_RUN
 - **Phase 3 Overall:** PARTIAL
 - **Phase 4 — Transactions:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Run the Phase 3 two-user runtime RLS verifier against the target Supabase project. Do not begin Phase 4 until runtime isolation and live persistence smoke tests pass.
+Perform the bounded live persistence smoke on `https://finora-orpin-nu.vercel.app`. Do not begin Phase 4 until that final Phase 3 gate passes.
