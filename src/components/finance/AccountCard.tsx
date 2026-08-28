@@ -7,12 +7,11 @@ import {
   CreditCard,
   TrendingUp,
   Globe,
-  MoreVertical,
 } from 'lucide-react';
 import type { AccountRow } from '@/types/database';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyBadge } from './CurrencyBadge';
-import { formatMoney, formatConverted } from '@/lib/money/format';
+import { formatMoney } from '@/lib/money/format';
 
 interface AccountCardProps {
   account: AccountRow;
@@ -73,7 +72,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </div>
         <div className="text-right shrink-0 pl-2">
-          <p className="text-sm font-semibold text-foreground">{formatMoney(account.opening_balance, account.currency_code as any)}</p>
+          <p className="text-sm font-semibold text-foreground">{formatMoney(account.opening_balance, account.currency_code)}</p>
         </div>
       </div>
     );
@@ -106,16 +105,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-1.5">
-            <CurrencyBadge currency={account.currency_code as any} />
-          </div>
+          <CurrencyBadge currency={account.currency_code} />
         </div>
 
         <div className="mt-5 flex items-baseline justify-between pt-2 border-t border-border/60">
           <div>
-            <span className="text-xs text-muted-foreground">Số dư</span>
+            <span className="text-xs text-muted-foreground">Số dư khởi tạo</span>
             <p className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
-              {formatMoney(account.opening_balance, account.currency_code as any)}
+              {formatMoney(account.opening_balance, account.currency_code)}
             </p>
           </div>
         </div>
