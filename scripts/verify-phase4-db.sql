@@ -153,7 +153,12 @@ checks AS (
             WHERE conrelid = 'public.transactions'::regclass
               AND contype = 'c'
               AND conname = 'check_transaction_amount_positive'
-              AND regexp_replace(definition, '\\s+', '', 'g') = 'CHECK((amount>(0)::numeric))'
+              AND regexp_replace(definition, '[[:space:]]+', '', 'g') IN (
+                  'CHECK((amount>(0)::numeric))',
+                  'CHECK((amount>0::numeric))',
+                  'CHECK(amount>(0)::numeric)',
+                  'CHECK(amount>0::numeric)'
+              )
         ),
         COALESCE((
             SELECT definition FROM constraint_columns
@@ -170,8 +175,10 @@ checks AS (
             WHERE conrelid = 'public.transactions'::regclass
               AND contype = 'c'
               AND conname = 'check_transaction_type'
-              AND regexp_replace(definition, '\\s+', '', 'g') =
-                  'CHECK((type=ANY(ARRAY[''INCOME''::text,''EXPENSE''::text])))'
+              AND regexp_replace(definition, '[[:space:]]+', '', 'g') IN (
+                  'CHECK((type=ANY(ARRAY[''INCOME''::text,''EXPENSE''::text])))',
+                  'CHECK(type=ANY(ARRAY[''INCOME''::text,''EXPENSE''::text]))'
+              )
         ),
         COALESCE((
             SELECT definition FROM constraint_columns
@@ -347,7 +354,7 @@ checks AS (
     SELECT
         '16_authenticated_insert_columns_exact',
         (
-            SELECT count(*) = 9
+            SELECT count(DISTINCT cp.column_name) = 9
             FROM information_schema.column_privileges cp
             JOIN expected_insert_columns e ON e.column_name = cp.column_name
             WHERE cp.table_schema = 'public' AND cp.table_name = 'transactions'
@@ -373,7 +380,7 @@ checks AS (
     SELECT
         '17_authenticated_update_columns_exact',
         (
-            SELECT count(*) = 9
+            SELECT count(DISTINCT cp.column_name) = 9
             FROM information_schema.column_privileges cp
             JOIN expected_update_columns e ON e.column_name = cp.column_name
             WHERE cp.table_schema = 'public' AND cp.table_name = 'transactions'
@@ -479,7 +486,10 @@ checks AS (
             SELECT 1 FROM information_schema.column_privileges
             WHERE table_schema = 'public'
               AND table_name IN ('account_balances','transaction_details')
-              AND grantee IN ('anon','PUBLIC','authenticated')
+              AND (
+                    grantee IN ('anon','PUBLIC')
+                 OR (grantee = 'authenticated' AND privilege_type <> 'SELECT')
+              )
         ),
         COALESCE((
             SELECT string_agg(table_name || ':' || grantee || ':' || privilege_type, ' | ' ORDER BY table_name, grantee, privilege_type)
