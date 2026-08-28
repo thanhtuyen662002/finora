@@ -1,373 +1,276 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
+const SUPABASE_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const USER_A_EMAIL = process.env.FINORA_TEST_USER_A_EMAIL;
 const USER_A_PASSWORD = process.env.FINORA_TEST_USER_A_PASSWORD;
-
 const USER_B_EMAIL = process.env.FINORA_TEST_USER_B_EMAIL;
 const USER_B_PASSWORD = process.env.FINORA_TEST_USER_B_PASSWORD;
 
 console.log('=== FINORA PHASE 3 — TWO-USER RLS VERIFICATION ===');
 
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  console.error('❌ FAIL: Missing required environment variables.');
+  console.error('❌ FAIL: Missing public Supabase environment variables.');
   process.exit(1);
 }
-
 if (!USER_A_EMAIL || !USER_A_PASSWORD || !USER_B_EMAIL || !USER_B_PASSWORD) {
-  console.error('❌ BLOCKED: Missing test user credentials.');
+  console.error('❌ BLOCKED: Missing disposable two-user test credentials.');
   process.exit(1);
 }
 
-function isMissingTableError(err) {
-  if (!err) return false;
-  const msg = (err.message || '').toLowerCase();
-  const code = err.code || '';
-  return code === '42P01' || code === 'PGRST200' || code === 'PGRST205' || msg.includes('does not exist');
+function isMissingTableError(error) {
+  if (!error) return false;
+  const message = String(error.message || '').toLowerCase();
+  return ['42P01', 'PGRST200', 'PGRST205'].includes(error.code || '') || message.includes('does not exist');
+}
+
+function fail(message, detail) {
+  console.error(`❌ FAIL: ${message}`, detail || '');
+  return true;
 }
 
 async function run() {
-  const clientA = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  const clientB = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const clientA = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const clientB = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 
-  console.log('Authenticating users...');
-  const { data: authA, error: errAuthA } = await clientA.auth.signInWithPassword({ email: USER_A_EMAIL, password: USER_A_PASSWORD });
-  const { data: authB, error: errAuthB } = await clientB.auth.signInWithPassword({ email: USER_B_EMAIL, password: USER_B_PASSWORD });
-
-  if (errAuthA || errAuthB) {
-    console.error('❌ FAIL: Auth failed', errAuthA, errAuthB);
+  const { data: authA, error: authAError } = await clientA.auth.signInWithPassword({
+    email: USER_A_EMAIL,
+    password: USER_A_PASSWORD,
+  });
+  const { data: authB, error: authBError } = await clientB.auth.signInWithPassword({
+    email: USER_B_EMAIL,
+    password: USER_B_PASSWORD,
+  });
+  if (authAError || authBError || !authA.user || !authB.user) {
+    console.error('❌ FAIL: Could not authenticate both test users.', authAError || authBError);
     process.exit(1);
   }
 
   const userIdA = authA.user.id;
   const userIdB = authB.user.id;
-  console.log(`User A: ${userIdA}`);
-  console.log(`User B: ${userIdB}\n`);
-
+  const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   let hasError = false;
-  let testAccountA = null;
-  let testAccountB = null;
-  let testCategoryA = null;
-  let testCategoryB = null;
 
-  try {
-    // ---------------------------------------------------------
-    // 0. DELIBERATE ERROR TEST
-    // ---------------------------------------------------------
-    console.log('[1/5] Testing deliberate normal database error...');
-    const { error: errDeliberate } = await clientA.from('accounts').insert({
+  console.log(`✔ User A authenticated: ${userIdA}`);
+  console.log(`✔ User B authenticated: ${userIdB}`);
+
+  const preflight = await clientA.from('accounts').select('id').limit(1);
+  if (isMissingTableError(preflight.error)) {
+    console.error('❌ BLOCKED: Phase 3 tables are not present on the remote database.');
+    process.exit(2);
+  }
+  if (preflight.error) {
+    console.error('❌ FAIL: Phase 3 preflight query failed.', preflight.error);
+    process.exit(1);
+  }
+
+  console.log('\n[1/5] Deliberate database-error discrimination...');
+  const deliberate = await clientA.from('accounts').insert({
+    user_id: userIdA,
+    name: `Verifier invalid ${runId}`,
+    type: 'INVALID_TYPE',
+    currency_code: 'VND',
+  });
+  if (!deliberate.error) {
+    hasError = fail('Deliberate check-constraint violation unexpectedly succeeded.');
+  } else if (deliberate.error.code !== '23514') {
+    hasError = fail('Deliberate query error was not the expected check-constraint error.', deliberate.error);
+  } else {
+    console.log('✔ Normal database error is distinguishable from an RLS empty result.');
+  }
+
+  const accountNameA = `Verifier Account A ${runId}`;
+  const accountNameB = `Verifier Account B ${runId}`;
+  let accountA = null;
+  let accountB = null;
+
+  console.log('\n[2/5] Accounts — full bidirectional ownership matrix...');
+  {
+    const resultA = await clientA.from('accounts').insert({
       user_id: userIdA,
-      name: 'Test',
-      type: 'INVALID_TYPE', // this will violate check constraint
-      currency_code: 'VND'
-    });
-    if (!errDeliberate) {
-       console.error('❌ FAIL: Deliberate check-constraint violation did not error!');
-       hasError = true;
-    } else if (errDeliberate.code === '23514' || errDeliberate.message.includes('check_constraint') || errDeliberate.message.includes('type')) {
-       console.log('✔ Correctly caught normal database error (check constraint).');
-    } else {
-       console.error('❌ FAIL: Deliberate error returned unexpected type:', errDeliberate);
-       hasError = true;
-    }
-
-    // ---------------------------------------------------------
-    // 1. ACCOUNTS TESTS
-    // ---------------------------------------------------------
-    console.log('\n[2/5] Testing Accounts RLS...');
-
-    // A insert own account
-    const { data: newAccA, error: errNewAccA } = await clientA.from('accounts').insert({
-      user_id: userIdA,
-      name: 'Test Account A',
+      name: accountNameA,
       type: 'CASH',
       currency_code: 'VND',
-      opening_balance: 1000000,
-      color: '#111111'
+      opening_balance: '1000000.0000',
+      color: '#111111',
     }).select('*').single();
+    if (resultA.error || !resultA.data) hasError = fail('User A could not INSERT own account.', resultA.error);
+    else { accountA = resultA.data; console.log('✔ A INSERT own account.'); }
 
-    if (errNewAccA) {
-      if (isMissingTableError(errNewAccA)) {
-        console.error('❌ BLOCKED: Remote database not migrated yet. Please apply migration to Supabase.');
-        process.exit(2);
-      }
-      console.error('❌ FAIL: User A could not insert own account.', errNewAccA);
-      hasError = true;
-    } else {
-      console.log('✔ User A successfully inserted own account.');
-      testAccountA = newAccA.id;
-    }
-
-    // B insert own account
-    const { data: newAccB, error: errNewAccB } = await clientB.from('accounts').insert({
+    const resultB = await clientB.from('accounts').insert({
       user_id: userIdB,
-      name: 'Test Account B',
+      name: accountNameB,
       type: 'BANK',
       currency_code: 'USD',
-      opening_balance: 500,
-      color: '#222222'
+      opening_balance: '500.0000',
+      color: '#222222',
     }).select('*').single();
+    if (resultB.error || !resultB.data) hasError = fail('User B could not INSERT own account.', resultB.error);
+    else { accountB = resultB.data; console.log('✔ B INSERT own account.'); }
 
-    if (errNewAccB) {
-      console.error('❌ FAIL: User B could not insert own account.', errNewAccB);
-      hasError = true;
-    } else {
-      console.log('✔ User B successfully inserted own account.');
-      testAccountB = newAccB.id;
+    if (accountA) {
+      const ownReadA = await clientA.from('accounts').select('*').eq('id', accountA.id).single();
+      if (ownReadA.error || ownReadA.data?.user_id !== userIdA) hasError = fail('A could not SELECT own account.', ownReadA.error);
+      else console.log('✔ A SELECT own account.');
+
+      const ownUpdateA = await clientA.from('accounts').update({ name: `${accountNameA} updated` }).eq('id', accountA.id).select('*').single();
+      if (ownUpdateA.error || ownUpdateA.data?.name !== `${accountNameA} updated`) hasError = fail('A own account UPDATE did not persist.', ownUpdateA.error);
+      else console.log('✔ A UPDATE own account persisted.');
+
+      const ownerChangeA = await clientA.from('accounts').update({ user_id: userIdB }).eq('id', accountA.id).select('id,user_id');
+      const ownerReadbackA = await clientA.from('accounts').select('user_id').eq('id', accountA.id).single();
+      if ((!ownerChangeA.error && ownerChangeA.data.length > 0) || ownerReadbackA.error || ownerReadbackA.data?.user_id !== userIdA) {
+        hasError = fail('A changed account ownership to B.', ownerChangeA.error || ownerReadbackA.error);
+      } else console.log('✔ A cannot change account user_id.');
     }
 
-    if (testAccountA) {
-      // A update own account
-      const { data: aUpdateA, error: errAUpdateA } = await clientA.from('accounts').update({ name: 'Test Account A Updated' }).eq('id', testAccountA).select();
-      if (errAUpdateA || aUpdateA.length === 0) {
-        console.error('❌ FAIL: User A could not update own account.', errAUpdateA);
-        hasError = true;
-      } else {
-        console.log('✔ User A successfully updated own account.');
-      }
+    if (accountB) {
+      const ownReadB = await clientB.from('accounts').select('*').eq('id', accountB.id).single();
+      if (ownReadB.error || ownReadB.data?.user_id !== userIdB) hasError = fail('B could not SELECT own account.', ownReadB.error);
+      else console.log('✔ B SELECT own account.');
 
-      // A cannot update A's account to be owned by B
-      const { data: aUpdateAOwner, error: errAUpdateAOwner } = await clientA.from('accounts').update({ user_id: userIdB }).eq('id', testAccountA).select();
-      if (errAUpdateAOwner || aUpdateAOwner.length === 0) {
-        console.log('✔ User A correctly blocked from changing ownership of own account.');
-      } else {
-        console.error('❌ FAIL: User A successfully changed ownership of own account! RLS violation.');
-        hasError = true;
-      }
+      const ownUpdateB = await clientB.from('accounts').update({ name: `${accountNameB} updated` }).eq('id', accountB.id).select('*').single();
+      if (ownUpdateB.error || ownUpdateB.data?.name !== `${accountNameB} updated`) hasError = fail('B own account UPDATE did not persist.', ownUpdateB.error);
+      else console.log('✔ B UPDATE own account persisted.');
 
-      // B read A's account
-      const { data: bReadA, error: errBReadA } = await clientB.from('accounts').select('*').eq('id', testAccountA);
-      if (!errBReadA && bReadA.length > 0) {
-        console.error('❌ FAIL: User B successfully read User A account! RLS violation.');
-        hasError = true;
-      } else {
-        console.log('✔ User B correctly blocked from reading User A account.');
-      }
-
-      // B update A's account
-      const { data: bUpdateA, error: errBUpdateA } = await clientB.from('accounts').update({ name: 'Hacked by B' }).eq('id', testAccountA).select();
-      if (!errBUpdateA && bUpdateA.length > 0) {
-        console.error('❌ FAIL: User B successfully updated User A account! RLS violation.');
-        hasError = true;
-      } else {
-        console.log('✔ User B correctly blocked from updating User A account.');
-      }
+      const ownerChangeB = await clientB.from('accounts').update({ user_id: userIdA }).eq('id', accountB.id).select('id,user_id');
+      const ownerReadbackB = await clientB.from('accounts').select('user_id').eq('id', accountB.id).single();
+      if ((!ownerChangeB.error && ownerChangeB.data.length > 0) || ownerReadbackB.error || ownerReadbackB.data?.user_id !== userIdB) {
+        hasError = fail('B changed account ownership to A.', ownerChangeB.error || ownerReadbackB.error);
+      } else console.log('✔ B cannot change account user_id.');
     }
 
-    if (testAccountB) {
-      // A read B's account
-      const { data: aReadB, error: errAReadB } = await clientA.from('accounts').select('*').eq('id', testAccountB);
-      if (!errAReadB && aReadB.length > 0) {
-        console.error('❌ FAIL: User A successfully read User B account! RLS violation.');
-        hasError = true;
-      } else {
-        console.log('✔ User A correctly blocked from reading User B account.');
-      }
+    const insertAForB = await clientA.from('accounts').insert({ user_id: userIdB, name: `A-for-B ${runId}`, type: 'CASH', currency_code: 'VND' });
+    if (!insertAForB.error) hasError = fail('A INSERTed an account owned by B.'); else console.log('✔ A cannot INSERT for B.');
+    const insertBForA = await clientB.from('accounts').insert({ user_id: userIdA, name: `B-for-A ${runId}`, type: 'CASH', currency_code: 'VND' });
+    if (!insertBForA.error) hasError = fail('B INSERTed an account owned by A.'); else console.log('✔ B cannot INSERT for A.');
 
-      // A update B's account
-      const { data: aUpdateB, error: errAUpdateB } = await clientA.from('accounts').update({ name: 'Hacked by A' }).eq('id', testAccountB).select();
-      if (!errAUpdateB && aUpdateB.length > 0) {
-        console.error('❌ FAIL: User A successfully updated User B account! RLS violation.');
-        hasError = true;
-      } else {
-        console.log('✔ User A correctly blocked from updating User B account.');
-      }
+    if (accountA && accountB) {
+      const aReadsB = await clientA.from('accounts').select('id').eq('id', accountB.id);
+      if (aReadsB.error || aReadsB.data.length !== 0) hasError = fail('A foreign account SELECT was not an RLS-empty result.', aReadsB.error);
+      else console.log('✔ A cannot SELECT B account.');
+      const bReadsA = await clientB.from('accounts').select('id').eq('id', accountA.id);
+      if (bReadsA.error || bReadsA.data.length !== 0) hasError = fail('B foreign account SELECT was not an RLS-empty result.', bReadsA.error);
+      else console.log('✔ B cannot SELECT A account.');
+
+      const aUpdatesB = await clientA.from('accounts').update({ name: `A hacked B ${runId}` }).eq('id', accountB.id).select('id');
+      if (aUpdatesB.error || aUpdatesB.data.length !== 0) hasError = fail('A foreign account UPDATE was not blocked as zero rows.', aUpdatesB.error);
+      else console.log('✔ A cannot UPDATE B account.');
+      const bUpdatesA = await clientB.from('accounts').update({ name: `B hacked A ${runId}` }).eq('id', accountA.id).select('id');
+      if (bUpdatesA.error || bUpdatesA.data.length !== 0) hasError = fail('B foreign account UPDATE was not blocked as zero rows.', bUpdatesA.error);
+      else console.log('✔ B cannot UPDATE A account.');
+    }
+  }
+
+  const baselinePairs = [
+    ['INCOME', 'Lương'], ['INCOME', 'YouTube & AdSense'], ['INCOME', 'Freelance'], ['INCOME', 'Đầu tư'], ['INCOME', 'Khác'],
+    ['EXPENSE', 'Ăn uống'], ['EXPENSE', 'Di chuyển'], ['EXPENSE', 'Mua sắm'], ['EXPENSE', 'Hóa đơn & Nhà cửa'],
+    ['EXPENSE', 'Giải trí'], ['EXPENSE', 'Sức khỏe'], ['EXPENSE', 'Khác'],
+  ];
+  const categoryNameA = `Verifier Category A ${runId}`;
+  const categoryNameB = `Verifier Category B ${runId}`;
+  let categoryA = null;
+  let categoryB = null;
+
+  console.log('\n[3/5] Categories — baseline visibility + full bidirectional ownership matrix...');
+  for (const [label, client, userId] of [['A', clientA, userIdA], ['B', clientB, userIdB]]) {
+    const visible = await client.from('categories').select('user_id,type,name');
+    if (visible.error) {
+      hasError = fail(`${label} could not SELECT own categories.`, visible.error);
+      continue;
+    }
+    if (visible.data.some((row) => row.user_id !== userId)) {
+      hasError = fail(`${label} can see foreign seeded categories.`);
+      continue;
+    }
+    const missing = baselinePairs.filter(([type, name]) => !visible.data.some((row) => row.type === type && row.name === name));
+    if (missing.length > 0) hasError = fail(`${label} is missing baseline categories: ${JSON.stringify(missing)}`);
+    else console.log(`✔ ${label} sees all 12 own baseline categories and no foreign rows.`);
+  }
+
+  {
+    const resultA = await clientA.from('categories').insert({ user_id: userIdA, name: categoryNameA, type: 'EXPENSE', icon: 'Tag', color: '#333333' }).select('*').single();
+    if (resultA.error || !resultA.data) hasError = fail('A could not INSERT own category.', resultA.error);
+    else { categoryA = resultA.data; console.log('✔ A INSERT own category.'); }
+    const resultB = await clientB.from('categories').insert({ user_id: userIdB, name: categoryNameB, type: 'INCOME', icon: 'Tag', color: '#444444' }).select('*').single();
+    if (resultB.error || !resultB.data) hasError = fail('B could not INSERT own category.', resultB.error);
+    else { categoryB = resultB.data; console.log('✔ B INSERT own category.'); }
+
+    if (categoryA) {
+      const ownReadA = await clientA.from('categories').select('*').eq('id', categoryA.id).single();
+      if (ownReadA.error || ownReadA.data?.user_id !== userIdA) hasError = fail('A could not SELECT own category.', ownReadA.error);
+      else console.log('✔ A SELECT own category.');
+      const ownUpdateA = await clientA.from('categories').update({ name: `${categoryNameA} updated` }).eq('id', categoryA.id).select('*').single();
+      if (ownUpdateA.error || ownUpdateA.data?.name !== `${categoryNameA} updated`) hasError = fail('A own category UPDATE did not persist.', ownUpdateA.error);
+      else console.log('✔ A UPDATE own category persisted.');
+      const ownerChangeA = await clientA.from('categories').update({ user_id: userIdB }).eq('id', categoryA.id).select('id,user_id');
+      const readbackA = await clientA.from('categories').select('user_id').eq('id', categoryA.id).single();
+      if ((!ownerChangeA.error && ownerChangeA.data.length > 0) || readbackA.error || readbackA.data?.user_id !== userIdA) hasError = fail('A changed category ownership.', ownerChangeA.error || readbackA.error);
+      else console.log('✔ A cannot change category user_id.');
     }
 
-    // A insert for B
-    const { error: errAInsertB } = await clientA.from('accounts').insert({
-      user_id: userIdB,
-      name: 'A inserting for B',
-      type: 'CASH',
-      currency_code: 'VND'
-    });
-    if (!errAInsertB) {
-      console.error('❌ FAIL: User A successfully inserted an account for User B! RLS violation.');
-      hasError = true;
-    } else {
-      console.log('✔ User A correctly blocked from inserting an account for User B.');
+    if (categoryB) {
+      const ownReadB = await clientB.from('categories').select('*').eq('id', categoryB.id).single();
+      if (ownReadB.error || ownReadB.data?.user_id !== userIdB) hasError = fail('B could not SELECT own category.', ownReadB.error);
+      else console.log('✔ B SELECT own category.');
+      const ownUpdateB = await clientB.from('categories').update({ name: `${categoryNameB} updated` }).eq('id', categoryB.id).select('*').single();
+      if (ownUpdateB.error || ownUpdateB.data?.name !== `${categoryNameB} updated`) hasError = fail('B own category UPDATE did not persist.', ownUpdateB.error);
+      else console.log('✔ B UPDATE own category persisted.');
+      const ownerChangeB = await clientB.from('categories').update({ user_id: userIdA }).eq('id', categoryB.id).select('id,user_id');
+      const readbackB = await clientB.from('categories').select('user_id').eq('id', categoryB.id).single();
+      if ((!ownerChangeB.error && ownerChangeB.data.length > 0) || readbackB.error || readbackB.data?.user_id !== userIdB) hasError = fail('B changed category ownership.', ownerChangeB.error || readbackB.error);
+      else console.log('✔ B cannot change category user_id.');
     }
 
+    const insertAForB = await clientA.from('categories').insert({ user_id: userIdB, name: `A-cat-for-B ${runId}`, type: 'EXPENSE', icon: 'Tag', color: '#555555' });
+    if (!insertAForB.error) hasError = fail('A INSERTed a category owned by B.'); else console.log('✔ A cannot INSERT category for B.');
+    const insertBForA = await clientB.from('categories').insert({ user_id: userIdA, name: `B-cat-for-A ${runId}`, type: 'INCOME', icon: 'Tag', color: '#666666' });
+    if (!insertBForA.error) hasError = fail('B INSERTed a category owned by A.'); else console.log('✔ B cannot INSERT category for A.');
 
-    // ---------------------------------------------------------
-    // 2. CATEGORIES TESTS
-    // ---------------------------------------------------------
-    console.log('\n[3/5] Testing Categories RLS...');
-    
-    // Check seeded categories visibility
-    const { data: catsA, error: errCatsA } = await clientA.from('categories').select('*');
-    if (errCatsA) {
-      console.error('❌ FAIL: User A could not read categories.', errCatsA);
-      hasError = true;
-    } else {
-      const foreignCats = catsA.filter(c => c.user_id !== userIdA);
-      if (foreignCats.length > 0) {
-        console.error('❌ FAIL: User A can see foreign categories! RLS violation.');
-        hasError = true;
-      } else {
-        const hasAllDefaults = catsA.length >= 12;
-        if (!hasAllDefaults) {
-           console.error('❌ FAIL: User A does not see all 12 baseline categories. Found: ' + catsA.length);
-           hasError = true;
-        } else {
-           console.log(`✔ User A successfully read own categories (count: ${catsA.length}, no foreign).`);
-        }
-      }
+    if (categoryA && categoryB) {
+      const aReadsB = await clientA.from('categories').select('id').eq('id', categoryB.id);
+      if (aReadsB.error || aReadsB.data.length !== 0) hasError = fail('A foreign category SELECT was not an RLS-empty result.', aReadsB.error);
+      else console.log('✔ A cannot SELECT B category.');
+      const bReadsA = await clientB.from('categories').select('id').eq('id', categoryA.id);
+      if (bReadsA.error || bReadsA.data.length !== 0) hasError = fail('B foreign category SELECT was not an RLS-empty result.', bReadsA.error);
+      else console.log('✔ B cannot SELECT A category.');
+      const aUpdatesB = await clientA.from('categories').update({ name: `A hacked B category ${runId}` }).eq('id', categoryB.id).select('id');
+      if (aUpdatesB.error || aUpdatesB.data.length !== 0) hasError = fail('A foreign category UPDATE was not blocked as zero rows.', aUpdatesB.error);
+      else console.log('✔ A cannot UPDATE B category.');
+      const bUpdatesA = await clientB.from('categories').update({ name: `B hacked A category ${runId}` }).eq('id', categoryA.id).select('id');
+      if (bUpdatesA.error || bUpdatesA.data.length !== 0) hasError = fail('B foreign category UPDATE was not blocked as zero rows.', bUpdatesA.error);
+      else console.log('✔ B cannot UPDATE A category.');
     }
+  }
 
-    const { data: catsB, error: errCatsB } = await clientB.from('categories').select('*');
-    if (errCatsB) {
-      console.error('❌ FAIL: User B could not read categories.', errCatsB);
-      hasError = true;
-    } else {
-      const foreignCats = catsB.filter(c => c.user_id !== userIdB);
-      if (foreignCats.length > 0) {
-        console.error('❌ FAIL: User B can see foreign categories! RLS violation.');
-        hasError = true;
-      } else {
-        const hasAllDefaults = catsB.length >= 12;
-        if (!hasAllDefaults) {
-           console.error('❌ FAIL: User B does not see all 12 baseline categories. Found: ' + catsB.length);
-           hasError = true;
-        } else {
-           console.log(`✔ User B successfully read own categories (count: ${catsB.length}, no foreign).`);
-        }
-      }
-    }
-
-    // A insert own category
-    const { data: newCatA, error: errNewCatA } = await clientA.from('categories').insert({
-      user_id: userIdA,
-      name: 'Test Category A Verifier',
-      type: 'EXPENSE',
-      icon: 'Test',
-      color: '#222222'
-    }).select('*').single();
-
-    if (errNewCatA) {
-      console.error('❌ FAIL: User A could not insert own category.', errNewCatA);
-      hasError = true;
-    } else {
-      console.log('✔ User A successfully inserted own category.');
-      testCategoryA = newCatA.id;
-    }
-
-    // B insert own category
-    const { data: newCatB, error: errNewCatB } = await clientB.from('categories').insert({
-      user_id: userIdB,
-      name: 'Test Category B Verifier',
-      type: 'INCOME',
-      icon: 'Test',
-      color: '#333333'
-    }).select('*').single();
-
-    if (errNewCatB) {
-      console.error('❌ FAIL: User B could not insert own category.', errNewCatB);
-      hasError = true;
-    } else {
-      console.log('✔ User B successfully inserted own category.');
-      testCategoryB = newCatB.id;
-    }
-
-    if (testCategoryA) {
-       // A update own category
-       const { data: aUpdateCatA, error: errAUpdateCatA } = await clientA.from('categories').update({ name: 'Test Category A Verifier Updated' }).eq('id', testCategoryA).select();
-       if (errAUpdateCatA || aUpdateCatA.length === 0) {
-         console.error('❌ FAIL: User A could not update own category.', errAUpdateCatA);
-         hasError = true;
-       } else {
-         console.log('✔ User A successfully updated own category.');
-       }
- 
-       // B read A's category
-       const { data: bReadCatA, error: errBReadCatA } = await clientB.from('categories').select('*').eq('id', testCategoryA);
-       if (!errBReadCatA && bReadCatA.length > 0) {
-         console.error('❌ FAIL: User B successfully read User A category! RLS violation.');
-         hasError = true;
-       } else {
-         console.log('✔ User B correctly blocked from reading User A category.');
-       }
- 
-       // B update A's category
-       const { data: bUpdateCatA, error: errBUpdateCatA } = await clientB.from('categories').update({ name: 'Hacked by B' }).eq('id', testCategoryA).select();
-       if (!errBUpdateCatA && bUpdateCatA.length > 0) {
-         console.error('❌ FAIL: User B successfully updated User A category! RLS violation.');
-         hasError = true;
-       } else {
-         console.log('✔ User B correctly blocked from updating User A category.');
-       }
-    }
-
-    if (testCategoryB) {
-        // A read B's category
-        const { data: aReadCatB, error: errAReadCatB } = await clientA.from('categories').select('*').eq('id', testCategoryB);
-        if (!errAReadCatB && aReadCatB.length > 0) {
-          console.error('❌ FAIL: User A successfully read User B category! RLS violation.');
-          hasError = true;
-        } else {
-          console.log('✔ User A correctly blocked from reading User B category.');
-        }
-  
-        // A update B's category
-        const { data: aUpdateCatB, error: errAUpdateCatB } = await clientA.from('categories').update({ name: 'Hacked by A' }).eq('id', testCategoryB).select();
-        if (!errAUpdateCatB && aUpdateCatB.length > 0) {
-          console.error('❌ FAIL: User A successfully updated User B category! RLS violation.');
-          hasError = true;
-        } else {
-          console.log('✔ User A correctly blocked from updating User B category.');
-        }
-    }
-
-    // A insert for B
-    const { error: errAInsertCatB } = await clientA.from('categories').insert({
-      user_id: userIdB,
-      name: 'A inserting for B',
-      type: 'EXPENSE',
-      icon: 'Test',
-      color: '#333333'
-    });
-    if (!errAInsertCatB) {
-      console.error('❌ FAIL: User A successfully inserted a category for User B! RLS violation.');
-      hasError = true;
-    } else {
-      console.log('✔ User A correctly blocked from inserting a category for User B.');
-    }
-
-    // ---------------------------------------------------------
-    // 3. CLEANUP
-    // ---------------------------------------------------------
-    console.log('\n[4/5] Cleanup (Archive test records)...');
-    if (testAccountA) {
-      const { data: cleanA1Data, error: cleanA1 } = await clientA.from('accounts').update({ is_archived: true, name: 'Test Account A Updated (Archived)' }).eq('id', testAccountA).select('*');
-      if (cleanA1 || cleanA1Data.length === 0) { console.error('❌ Cleanup failed for A account'); hasError = true; } else console.log('✔ Archived test account A.');
-    }
-    if (testAccountB) {
-      const { data: cleanB1Data, error: cleanB1 } = await clientB.from('accounts').update({ is_archived: true, name: 'Test Account B (Archived)' }).eq('id', testAccountB).select('*');
-      if (cleanB1 || cleanB1Data.length === 0) { console.error('❌ Cleanup failed for B account'); hasError = true; } else console.log('✔ Archived test account B.');
-    }
-    if (testCategoryA) {
-      const { data: cleanA2Data, error: cleanA2 } = await clientA.from('categories').update({ is_archived: true, name: 'Test Category A Verifier (Archived)' }).eq('id', testCategoryA).select('*');
-      if (cleanA2 || cleanA2Data.length === 0) { console.error('❌ Cleanup failed for A category'); hasError = true; } else console.log('✔ Archived test category A.');
-    }
-    if (testCategoryB) {
-      const { data: cleanB2Data, error: cleanB2 } = await clientB.from('categories').update({ is_archived: true, name: 'Test Category B Verifier (Archived)' }).eq('id', testCategoryB).select('*');
-      if (cleanB2 || cleanB2Data.length === 0) { console.error('❌ Cleanup failed for B category'); hasError = true; } else console.log('✔ Archived test category B.');
-    }
-
-  } catch (err) {
-    console.error('❌ Unexpected error during tests:', err);
-    hasError = true;
+  console.log('\n[4/5] Checked archive cleanup...');
+  const cleanupTargets = [
+    [clientA, 'accounts', accountA, 'Verifier account A archived'],
+    [clientB, 'accounts', accountB, 'Verifier account B archived'],
+    [clientA, 'categories', categoryA, 'Verifier category A archived'],
+    [clientB, 'categories', categoryB, 'Verifier category B archived'],
+  ];
+  for (const [client, table, row, label] of cleanupTargets) {
+    if (!row) continue;
+    const cleanup = await client.from(table).update({ is_archived: true }).eq('id', row.id).select('id,is_archived').single();
+    if (cleanup.error || cleanup.data?.is_archived !== true) hasError = fail(`${label} cleanup was not proven.`, cleanup.error);
+    else console.log(`✔ ${label}.`);
   }
 
   console.log('\n[5/5] Summary');
   if (hasError) {
-    console.error('❌ FAIL: One or more two-user RLS isolation tests failed.');
+    console.error('❌ FAIL: One or more Phase 3 runtime RLS assertions failed.');
     process.exit(1);
-  } else {
-    console.log('✅ PASS: Two-user runtime RLS isolation passed for accounts and categories.');
   }
+  console.log('✅ PASS: Phase 3 two-user runtime RLS matrix passed completely.');
 }
 
-run();
+run().catch((error) => {
+  console.error('❌ FAIL: Unexpected verifier exception.', error);
+  process.exit(1);
+});
