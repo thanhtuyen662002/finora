@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 2 — Authentication + RLS
-- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_BLOCKED_USER_B_CREDENTIAL
+- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_PASS / AUTH_E2E_PENDING
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql`
 - **Strict structural verifier:** `scripts/verify-phase2-db.sql`
@@ -17,33 +17,37 @@
 
 ## Phase 2 Code Gate
 
-Phase 2 implementation and corrective/final-gate code are complete and published. Confirmed code-level gates include:
+Phase 2 implementation, corrective pass, and final-gate hardening are complete and published.
+
+Confirmed code-level properties include:
 
 - Supabase SSR request-boundary identity validation uses `supabase.auth.getClaims()`.
 - Redirect paths are sanitized centrally.
-- Callback origin no longer trusts arbitrary `x-forwarded-host` input.
+- Callback origin does not trust arbitrary `x-forwarded-host` input.
 - SSR/PKCE email confirmation and password recovery routes are implemented.
-- Settings and onboarding persistence fail truthfully instead of reporting false success.
+- Settings and onboarding persistence stop and surface errors instead of reporting false success.
 - Anonymous and two-user RLS verification scripts are assertion-based and exit non-zero on blocked/failed mandatory checks.
-- TypeScript, lint and production build were reported PASS for the final-gate implementation.
+- TypeScript, lint, production build, and redirect-sanitization checks were reported PASS for the final-gate implementation.
 
 ## Remote Database Structural Receipt
 
-The Phase 2 migration has been manually applied to Supabase project `qibfitbnlfgiqctntufr` and the strict structural verifier returned PASS on every mandatory check.
+The Phase 2 migration has been manually applied to Supabase project `qibfitbnlfgiqctntufr`.
+
+The strict structural verifier returned PASS on every mandatory check:
 
 | Check | Status | Evidence |
 |---|---|---|
 | `01_tables_exist` | PASS | `profiles=profiles, user_settings=user_settings` |
-| `02_rls_enabled` | PASS | `profiles=true, user_settings=true` |
-| `03_rls_policies_exact` | PASS | Exactly four expected SELECT/UPDATE ownership policies |
+| `02_rls_enabled` | PASS | RLS enabled on both Phase 2 tables |
+| `03_rls_policies_exact` | PASS | Exactly four expected ownership SELECT/UPDATE policies |
 | `04_auth_user_trigger` | PASS | `on_auth_user_created` |
 | `05_updated_at_triggers` | PASS | Updated-at trigger exists on both tables |
-| `06_function_security` | PASS | `handle_new_user` security definer; `handle_updated_at` invoker; both empty search path |
+| `06_function_security` | PASS | `handle_new_user` definer; `handle_updated_at` invoker; both empty search path |
 | `07_anon_public_no_privileges` | PASS | No anon/public table privileges |
 | `08_authenticated_table_privileges_exact` | PASS | `profiles:SELECT | user_settings:SELECT` |
-| `09_authenticated_update_columns_exact` | PASS | Only 7 approved mutable columns have authenticated UPDATE privileges |
-| `10_auth_backfill_complete` | PASS | Structural verifier completed successfully |
-| `99_OVERALL` | PASS | `Phase 2 database structural gate passed with least-privilege grants` |
+| `09_authenticated_update_columns_exact` | PASS | Only seven approved mutable columns have authenticated UPDATE privilege |
+| `10_auth_backfill_complete` | PASS | No missing profile/settings rows at verification time |
+| `99_OVERALL` | PASS | Least-privilege structural gate passed |
 
 ### Least-Privilege Contract
 
@@ -59,59 +63,70 @@ Column-level `UPDATE` is limited to:
 - `user_settings.theme`
 - `user_settings.timezone`
 
-No authenticated `INSERT`, `DELETE`, broad table-level `UPDATE`, or update privileges on immutable identifiers/timestamps are part of the Phase 2 contract.
+No authenticated `INSERT`, `DELETE`, broad table-level `UPDATE`, or UPDATE privilege on immutable identifiers/timestamps is part of the Phase 2 contract.
 
-## Live Runtime Verification Receipt
+## Live Anonymous RLS Receipt
 
-### Anonymous RLS
+`node scripts/verify-phase2-auth.mjs` was executed against the actual target project and exited `0`.
 
-`node scripts/verify-phase2-auth.mjs` executed against the live Supabase project and exited with code `0`.
+Confirmed:
 
-Verified live behavior:
+- anonymous SELECT on `profiles` rejected;
+- anonymous SELECT on `user_settings` rejected;
+- anonymous UPDATE on `profiles` rejected;
+- anonymous UPDATE on `user_settings` rejected.
 
-- Anonymous SELECT on `public.profiles` rejected with `permission denied for table profiles`.
-- Anonymous SELECT on `public.user_settings` rejected with `permission denied for table user_settings`.
-- Anonymous UPDATE on `public.profiles` rejected.
-- Anonymous UPDATE on `public.user_settings` rejected.
+**ANON_LOCKDOWN = PASS**
 
-**Anonymous RLS Isolation: PASS.**
+## Live Two-User RLS Receipt
 
-### Two-User RLS
+`node scripts/verify-phase2-rls.mjs` was executed against the actual target project with two distinct authenticated test users and exited `0`.
 
-`node scripts/verify-phase2-rls.mjs` started against two configured users.
+Confirmed runtime invariant:
 
-- User A authenticated successfully and received a valid UUID.
-- User B authentication failed with `Invalid login credentials`.
-- Script exited non-zero (`1`) before any cross-user RLS assertions ran.
+- User A can SELECT own profile/settings;
+- User A can UPDATE and restore an allowed own profile field;
+- User A cannot SELECT User B profile/settings;
+- User A cannot UPDATE User B profile/settings;
+- User B can SELECT own profile/settings;
+- User B can UPDATE and restore an allowed own settings field;
+- User B cannot SELECT User A profile/settings;
+- User B cannot UPDATE User A profile/settings.
 
-This is an external test-credential blocker, not an RLS failure.
+**RLS_TWO_USER_TEST = PASS**
 
-**Two-User RLS Isolation: BLOCKED_USER_B_CREDENTIAL.**
+This proves Phase 2 ownership isolation against the live Supabase project without a service-role bypass.
 
-## Remaining Mandatory Gate
+## Remaining Mandatory Auth E2E Gate
 
-Phase 2 is not yet COMPLETE because bidirectional runtime isolation has not been proven with two successfully authenticated users.
+Phase 2 is not yet marked COMPLETE because the original Phase 2 contract also requires live authentication workflow verification against the actual target project.
 
-Required next action:
+Still to verify and record:
 
-1. Fix or reset User B credentials in the target Supabase project and ensure the user is confirmed.
-2. Keep User A unchanged.
-3. Re-run only `node scripts/verify-phase2-rls.mjs` with both users supplied through environment variables.
-4. Required invariant:
-   - A can SELECT/UPDATE allowed fields on A.
-   - A cannot SELECT/UPDATE B.
-   - B can SELECT/UPDATE allowed fields on B.
-   - B cannot SELECT/UPDATE A.
+- email/password signup;
+- confirmation flow as configured;
+- email/password login;
+- incomplete user is routed to `/onboarding`;
+- onboarding persistence;
+- settings persistence;
+- real sign out;
+- protected route redirects to `/login` after sign out;
+- password reset email and successful recovery completion;
+- Google OAuth E2E if provider configuration is available; otherwise record the exact external configuration blocker.
 
-Do not commit or share test-user passwords.
+Do not begin Phase 3 until the mandatory Phase 2 Auth E2E status is resolved truthfully.
 
 ## Phase Authorization
 
 - **Phase 0:** PASS
 - **Phase 1:** PASS
-- **Phase 2:** STRUCTURAL PASS / ANON RLS PASS / TWO-USER RLS BLOCKED ON USER B CREDENTIAL
+- **Phase 2 Code:** PASS
+- **Phase 2 Remote DB Structure:** PASS
+- **Phase 2 Anonymous RLS:** PASS
+- **Phase 2 Two-User Runtime RLS:** PASS
+- **Phase 2 Auth E2E:** PENDING
 - **Phase 3:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Correct User B login credentials and re-run `node scripts/verify-phase2-rls.mjs`. Phase 3 — Accounts + Categories may start only after that runtime two-user gate passes.
+Run a bounded live Auth E2E verification against `qibfitbnlfgiqctntufr` only. Do not modify application code unless an actual E2E defect is found, and do not begin Phase 3.
