@@ -2,133 +2,92 @@
 
 ## Status
 
-**Database implementation:** NOT_STARTED
+**Database implementation:** PHASE_2_AUTH_RLS_ACTIVE
 
-This document records the planned data model and invariants. Executable Supabase migrations will become the schema source of truth once database work begins.
+This document records the data model, tables, relationships, and invariants implemented in Finora. Executable Supabase migrations under `supabase/migrations/` are the authoritative schema source of truth.
 
 ## Database Platform
 
-- PostgreSQL via Supabase
-- Supabase Auth for user identity
-- Supabase Storage for future user-owned files such as receipt images or imports
+- PostgreSQL via Supabase (Project ID: `qibfitbnlfgiqctntufr`)
+- Supabase Auth for user identity (`auth.users`)
+- Supabase Storage for future user-owned files (receipts/imports)
 
-## Planned Core Tables
+## Implemented Tables (Phase 2 — Auth + RLS)
 
-The initial design is expected to include the following concepts as implementation phases require them:
+### `public.profiles`
 
-- `profiles`
-- `user_settings`
-- `accounts`
-- `categories`
-- `transactions`
-- `transfers`
-- `budgets`
-- `goals`
-- `recurring_rules`
-- `income_sources`
-- `exchange_rates`
-- `ai_usage`
+Stores user profile information associated with the Supabase Auth user.
 
-Private/server-only configuration may later include:
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `uuid` | `PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE` | Auth user ID |
+| `display_name` | `text` | `NULL` | User's chosen display name |
+| `avatar_url` | `text` | `NULL` | Profile avatar URL |
+| `onboarding_completed` | `boolean` | `NOT NULL DEFAULT false` | Whether user finished initial onboarding |
+| `created_at` | `timestamptz` | `NOT NULL DEFAULT timezone('utc'::text, now())` | Creation timestamp |
+| `updated_at` | `timestamptz` | `NOT NULL DEFAULT timezone('utc'::text, now())` | Last update timestamp |
 
-- system AI settings;
-- encrypted AI credentials;
-- feature configuration.
+**Triggers:**
+- `set_profiles_updated_at`: Executes `handle_updated_at()` `BEFORE UPDATE`.
 
-Do not create all tables in Phase 0. Add schema only when the relevant phase requires it.
+**RLS Policies on `public.profiles`:**
+- `Users can view own profile`: `FOR SELECT USING (auth.uid() = id)`
+- `Users can update own profile`: `FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id)`
+
+---
+
+### `public.user_settings`
+
+Stores user-specific localization, default currency, and appearance preferences.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `user_id` | `uuid` | `PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE` | Auth user ID |
+| `base_currency` | `text` | `NOT NULL DEFAULT 'VND'` | Base currency for reporting |
+| `locale` | `text` | `NOT NULL DEFAULT 'vi-VN'` | Locale formatting identifier |
+| `timezone` | `text` | `NOT NULL DEFAULT 'Asia/Ho_Chi_Minh'` | Timezone identifier |
+| `theme` | `text` | `NOT NULL DEFAULT 'system'` | Theme choice (`light`, `dark`, `system`) |
+| `created_at` | `timestamptz` | `NOT NULL DEFAULT timezone('utc'::text, now())` | Creation timestamp |
+| `updated_at` | `timestamptz` | `NOT NULL DEFAULT timezone('utc'::text, now())` | Last update timestamp |
+
+**Triggers:**
+- `set_user_settings_updated_at`: Executes `handle_updated_at()` `BEFORE UPDATE`.
+
+**RLS Policies on `public.user_settings`:**
+- `Users can view own settings`: `FOR SELECT USING (auth.uid() = user_id)`
+- `Users can update own settings`: `FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)`
+
+---
+
+### Automated User Provisioning Trigger
+
+- Function: `public.handle_new_user()` (`SECURITY DEFINER`, `SET search_path = public`)
+- Trigger: `on_auth_user_created` on `auth.users` `AFTER INSERT FOR EACH ROW`
+- Action: Automatically creates matching row in `public.profiles` (using `raw_user_meta_data->>'full_name'`) and `public.user_settings` (with defaults `VND`, `vi-VN`, `Asia/Ho_Chi_Minh`, `system`).
+
+---
+
+## Planned Core Tables for Future Phases
+
+- Phase 3: `accounts`, `categories`
+- Phase 4: `transactions`
+- Phase 5: `transfers`
+- Phase 7: `budgets`, `goals`, `recurring_rules`
+- Phase 8: `exchange_rates`
+- Phase 9: `income_sources`
+- Phase 10+: `ai_usage`, encrypted credentials (server-only schema)
 
 ## Ownership Model
 
-Every user-owned record must have a clear ownership relationship to the authenticated user.
+Every user-owned record has an explicit foreign key to `auth.users(id)`.
 
-RLS must enforce isolation. Frontend filters are not authorization.
+RLS enforces data isolation at the database level. Frontend filters are not authorization.
 
-Expected invariant:
-
+**Invariant 1:**
 ```text
 User A cannot SELECT, UPDATE, or DELETE User B's financial records.
 ```
 
-For exposed tables, policies must include ownership predicates rather than only checking that the Postgres role is `authenticated`.
+## Migration Ledger
 
-## Money Representation
-
-Do not use floating-point PostgreSQL types for authoritative monetary values.
-
-Prefer `numeric`/`decimal` with an explicitly reviewed scale where stored monetary precision requires it.
-
-Important transaction concepts:
-
-- original amount;
-- original currency;
-- exchange rate;
-- base amount;
-- base currency.
-
-## Currency Model
-
-Each user has a base currency, defaulting initially to `VND`.
-
-Accounts have a primary currency.
-
-Initial UI support should include at least:
-
-- VND
-- USD
-- EUR
-- JPY
-- CNY
-- KRW
-
-The data model must not hard-code the system to this list.
-
-## Historical FX Invariant
-
-A historical transaction must preserve the exchange rate used when that transaction was recorded.
-
-Example:
-
-```text
-1,000 USD × 26,200 VND/USD = 26,200,000 VND
-```
-
-If the current rate later changes, the historical base value must not silently change.
-
-## Current FX Valuation
-
-Current foreign-currency account balances may be valued using the latest available exchange rate for current net-worth calculations.
-
-Current valuation and historical reporting are separate concerns.
-
-## Transfer Invariant
-
-A same-currency transfer between the user's own accounts must not change total net worth.
-
-Example:
-
-```text
-Before: 100,000,000 VND net worth
-Transfer: 5,000,000 VND from VCB to MB
-After: 100,000,000 VND net worth
-```
-
-Cross-currency transfers must preserve both sides and the actual conversion used.
-
-## AI Credential Security
-
-Private Gemini API credentials must not be stored in normal client-readable tables.
-
-When credential storage is implemented:
-
-- keep it server-only;
-- encrypt stored secret material appropriately;
-- never return full saved credentials to the client;
-- never expose Supabase secret/service-role keys to the browser.
-
-## Migration Rules
-
-- All schema changes must be source controlled under `supabase/migrations/`.
-- Prefer additive migrations once user data may exist.
-- Review RLS whenever user-owned schema changes.
-- Do not disable RLS to work around application bugs.
-- Verify migrations against the target Supabase environment before marking a database phase complete.
+1. `supabase/migrations/20260828000000_phase_2_auth_rls.sql` — Phase 2: Profiles, user_settings, auth triggers, RLS policies.

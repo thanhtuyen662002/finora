@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,15 +18,22 @@ import {
   TrendingUp,
   ShieldCheck,
   Target,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  getCurrentUserSettings,
+  updateCurrentUserSettings,
+  updateCurrentProfile,
+} from '@/lib/auth';
 
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const totalSteps = 5;
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // State collected during onboarding (mock local only)
+  // State collected during onboarding
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('VND');
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([
     'bank-vcb',
@@ -37,6 +44,24 @@ export default function OnboardingPage() {
     'spending',
     'emergency',
   ]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadInitial() {
+      try {
+        const { data: settings } = await getCurrentUserSettings();
+        if (settings?.base_currency && isMounted) {
+          setBaseCurrency(settings.base_currency as CurrencyCode);
+        }
+      } catch (err) {
+        console.debug('Failed to load initial settings in onboarding', err);
+      }
+    }
+    loadInitial();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const currencies: { code: CurrencyCode; name: string; symbol: string }[] = [
     { code: 'VND', name: 'Việt Nam Đồng', symbol: '₫' },
@@ -117,11 +142,21 @@ export default function OnboardingPage() {
     );
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step < totalSteps) {
       setStep(step + 1);
     } else {
-      router.push('/dashboard');
+      setIsSubmitting(true);
+      try {
+        // Persist base currency and onboarding status
+        await updateCurrentUserSettings({ base_currency: baseCurrency });
+        await updateCurrentProfile({ onboarding_completed: true });
+      } catch (err) {
+        console.debug('Failed to save onboarding settings', err);
+      } finally {
+        router.push('/dashboard');
+        router.refresh();
+      }
     }
   };
 
@@ -170,7 +205,7 @@ export default function OnboardingPage() {
                       <span>An toàn & Riêng tư</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Không chia sẻ dữ liệu cho bên thứ ba, không quảng cáo.
+                      Không chia sẻ dữ liệu cho bên thứ ba, dữ liệu cô lập với RLS.
                     </p>
                   </div>
                   <div className="p-3.5 rounded-xl border bg-muted/30 space-y-1">
@@ -345,14 +380,14 @@ export default function OnboardingPage() {
                 <CardTitle className="text-2xl font-bold">Mọi thứ đã sẵn sàng!</CardTitle>
                 <CardDescription className="text-base max-w-md mx-auto pt-1">
                   Không gian tài chính cá nhân của bạn đã được thiết lập với tiền tệ gốc{' '}
-                  <strong className="text-foreground">{baseCurrency}</strong> và các tài khoản mẫu.
+                  <strong className="text-foreground">{baseCurrency}</strong> và các tài khoản ban đầu.
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-3">
                 <div className="p-4 rounded-xl border bg-muted/40 space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Tiền tệ chính:</span>
-                    <span className="font-semibold">{baseCurrency} (₫)</span>
+                    <span className="font-semibold">{baseCurrency}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Tài khoản ban đầu:</span>
@@ -370,7 +405,7 @@ export default function OnboardingPage() {
           {/* Card Footer Navigation */}
           <CardFooter className="flex justify-between pt-4 border-t">
             {step > 1 ? (
-              <Button variant="outline" onClick={handleBack} size="sm">
+              <Button variant="outline" onClick={handleBack} size="sm" disabled={isSubmitting}>
                 <ArrowLeft className="h-4 w-4 mr-1.5" />
                 Quay lại
               </Button>
@@ -378,9 +413,23 @@ export default function OnboardingPage() {
               <div />
             )}
 
-            <Button onClick={handleNext} size="sm">
-              {step === totalSteps ? 'Vào bảng điều khiển' : 'Tiếp tục'}
-              <ArrowRight className="h-4 w-4 ml-1.5" />
+            <Button onClick={handleNext} size="sm" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Đang khởi tạo...
+                </>
+              ) : step === totalSteps ? (
+                <>
+                  Vào bảng điều khiển
+                  <ArrowRight className="h-4 w-4 ml-1.5" />
+                </>
+              ) : (
+                <>
+                  Tiếp tục
+                  <ArrowRight className="h-4 w-4 ml-1.5" />
+                </>
+              )}
             </Button>
           </CardFooter>
         </Card>

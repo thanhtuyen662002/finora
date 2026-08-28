@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { getClientEnv } from "@/config/env";
+import type { Database } from "@/types/database";
 
 /**
  * Creates a browser-side Supabase client using public publishable credentials.
@@ -13,5 +14,5 @@ export function createClient() {
     );
   }
 
-  return createBrowserClient(supabaseUrl, supabasePublishableKey);
+  return createBrowserClient<Database>(supabaseUrl, supabasePublishableKey);
 }

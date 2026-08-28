@@ -116,3 +116,20 @@ This file records decisions with architectural consequences. New decisions shoul
 - `src/proxy.ts` delegates to `src/lib/supabase/proxy.ts` (`updateSession`) calling `supabase.auth.getClaims()` and forwarding Set-Cookie and cache headers.
 - `src/config/env.ts` provides strict runtime boundaries preventing server credentials from leaking to client contexts.
 - Node runtime contract is established as Node.js 22+ Active LTS.
+
+---
+
+## ADR-008 — Row Level Security and Profile Auto-Provisioning for User Isolation
+
+**Status:** Accepted
+
+**Decision:** Enforce user isolation via PostgreSQL Row Level Security (RLS) on `public.profiles` and `public.user_settings` tied to `auth.uid()`, with automated trigger provisioning on `auth.users` insert.
+
+**Reason:** Finora mandates non-negotiable user isolation (Invariant 1). Relying on client-side or frontend filtering for privacy is unsafe. Automatic provisioning ensures every registered user immediately has a corresponding profile and user settings row with defaults (`VND`, `vi-VN`, `Asia/Ho_Chi_Minh`, `system`).
+
+**Consequences:**
+
+- All user-owned tables enable RLS and require explicit `auth.uid() = id` / `auth.uid() = user_id` policies for SELECT and UPDATE operations.
+- Direct row insertions/updates are forbidden for unauthenticated (`anon`) users.
+- Route-level middleware (`src/proxy.ts`) protects authenticated application routes, while database RLS provides the authoritative security boundary.
+- Open-redirect mitigation enforces relative path targets for OAuth and callback redirects.

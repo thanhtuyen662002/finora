@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   Card,
   CardContent,
@@ -18,67 +18,108 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  CheckCircle2,
+  MailCheck,
 } from 'lucide-react';
-import { signInWithEmail, signInWithGoogle } from '@/lib/auth';
+import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 
-function LoginForm() {
+function SignUpForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/dashboard';
-  const urlError = searchParams.get('error');
-
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [customError, setCustomError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSuccessConfirmationRequired, setIsSuccessConfirmationRequired] =
+    useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const errorMessage = customError || (urlError ? decodeURIComponent(urlError) : null);
-
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCustomError(null);
+    setErrorMessage(null);
+
+    if (password.length < 8) {
+      setErrorMessage('Mật khẩu phải có tối thiểu 8 ký tự.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const { data, error } = await signInWithEmail(email, password);
+      const { data, error } = await signUpWithEmail(
+        email,
+        password,
+        displayName
+      );
 
       if (error) {
-        setCustomError(
-          error.message === 'Invalid login credentials'
-            ? 'Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.'
-            : error.message
-        );
+        setErrorMessage(error.message);
         setIsLoading(false);
         return;
       }
 
-      if (data?.user) {
-        router.push(next);
+      if (data?.session) {
+        // Direct session established (e.g. email confirmation off) -> onboarding
+        router.push('/onboarding');
         router.refresh();
+      } else if (data?.user) {
+        // Confirmation email dispatched
+        setIsSuccessConfirmationRequired(true);
+        setIsLoading(false);
       }
     } catch {
-      setCustomError('Đã xảy ra sự cố trong quá trình đăng nhập. Vui lòng thử lại.');
+      setErrorMessage('Đã xảy ra sự cố trong quá trình đăng ký. Vui lòng thử lại.');
       setIsLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    setCustomError(null);
+    setErrorMessage(null);
     setIsGoogleLoading(true);
 
     try {
       const { error } = await signInWithGoogle();
       if (error) {
-        setCustomError(error.message);
+        setErrorMessage(error.message);
         setIsGoogleLoading(false);
       }
-      // If successful, browser redirects to Google consent screen
     } catch {
-      setCustomError('Không thể khởi tạo đăng nhập Google. Vui lòng thử lại sau.');
+      setErrorMessage('Không thể khởi tạo đăng nhập Google. Vui lòng thử lại sau.');
       setIsGoogleLoading(false);
     }
   };
+
+  if (isSuccessConfirmationRequired) {
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center p-4 bg-muted/30">
+        <div className="w-full max-w-md space-y-6">
+          <Card className="shadow-lg border-border text-center">
+            <CardHeader className="space-y-3 pb-4">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
+                <MailCheck className="h-6 w-6" />
+              </div>
+              <CardTitle className="text-xl">Kiểm tra hộp thư của bạn</CardTitle>
+              <CardDescription className="text-sm leading-relaxed">
+                Chúng tôi đã gửi một liên kết xác thực đến địa chỉ{' '}
+                <strong className="text-foreground">{email}</strong>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Vui lòng nhấp vào liên kết trong email để kích hoạt tài khoản Finora, sau đó quay lại đăng nhập.
+              </p>
+              <Button asChild className="w-full font-semibold">
+                <Link href="/login">
+                  Đi đến trang Đăng nhập
+                  <ArrowRight className="h-4 w-4 ml-1.5" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col justify-center items-center p-4 bg-muted/30">
@@ -92,16 +133,16 @@ function LoginForm() {
             Finora
           </h1>
           <p className="text-sm text-muted-foreground">
-            Hệ điều hành tài chính cá nhân an toàn & riêng tư.
+            Tạo tài khoản tài chính cá nhân an toàn & riêng tư.
           </p>
         </div>
 
-        {/* Login Card */}
+        {/* Register Card */}
         <Card className="shadow-lg border-border">
           <CardHeader className="pb-3 text-center">
-            <CardTitle className="text-lg">Đăng nhập tài khoản</CardTitle>
+            <CardTitle className="text-lg">Tạo tài khoản mới</CardTitle>
             <CardDescription>
-              Đăng nhập để quản lý tài sản và dòng tiền của bạn.
+              Bắt đầu làm chủ dòng tiền và tài sản của bạn ngay hôm nay.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -112,7 +153,19 @@ function LoginForm() {
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-3.5">
+            <form onSubmit={handleSignUp} className="space-y-3.5">
+              <div className="space-y-1.5">
+                <Label htmlFor="displayName">Họ và tên</Label>
+                <Input
+                  id="displayName"
+                  placeholder="Nguyễn Văn A"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  required
+                  disabled={isLoading || isGoogleLoading}
+                />
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -128,22 +181,15 @@ function LoginForm() {
               </div>
 
               <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <Label htmlFor="password">Mật khẩu</Label>
-                  <Link
-                    href="/forgot-password"
-                    className="text-xs text-muted-foreground hover:underline"
-                  >
-                    Quên mật khẩu?
-                  </Link>
-                </div>
+                <Label htmlFor="password">Mật khẩu</Label>
                 <Input
                   id="password"
                   type="password"
+                  placeholder="Tối thiểu 8 ký tự"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   disabled={isLoading || isGoogleLoading}
                 />
               </div>
@@ -156,11 +202,11 @@ function LoginForm() {
                 {isLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Đang đăng nhập...
+                    Đang tạo tài khoản...
                   </>
                 ) : (
                   <>
-                    Đăng nhập
+                    Đăng ký tài khoản
                     <ArrowRight className="h-4 w-4 ml-1.5" />
                   </>
                 )}
@@ -212,12 +258,12 @@ function LoginForm() {
             </Button>
 
             <div className="pt-2 text-center text-xs text-muted-foreground">
-              Chưa có tài khoản?{' '}
+              Đã có tài khoản?{' '}
               <Link
-                href="/signup"
+                href="/login"
                 className="text-primary hover:underline font-semibold"
               >
-                Đăng ký ngay
+                Đăng nhập
               </Link>
             </div>
           </CardContent>
@@ -233,7 +279,7 @@ function LoginForm() {
   );
 }
 
-export default function LoginPage() {
+export default function SignUpPage() {
   return (
     <Suspense
       fallback={
@@ -242,7 +288,7 @@ export default function LoginPage() {
         </div>
       }
     >
-      <LoginForm />
+      <SignUpForm />
     </Suspense>
   );
 }

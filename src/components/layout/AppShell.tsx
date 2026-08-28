@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   WalletCards,
@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
 import { cn } from '@/lib/utils';
+import { getCurrentUser, getCurrentProfile, getCurrentUserSettings, signOut } from '@/lib/auth';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -26,7 +27,68 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const pathname = usePathname();
+  const router = useRouter();
   const [addTxOpen, setAddTxOpen] = useState(false);
+
+  // User state
+  const [displayName, setDisplayName] = useState<string>('Người dùng');
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [baseCurrency, setBaseCurrency] = useState<string>('VND');
+  const [locale, setLocale] = useState<string>('vi-VN');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadUserData() {
+      try {
+        const { user } = await getCurrentUser();
+        if (user && isMounted) {
+          setUserEmail(user.email || '');
+          const fallbackName =
+            user.user_metadata?.full_name ||
+            user.user_metadata?.name ||
+            user.email?.split('@')[0] ||
+            'Người dùng';
+          setDisplayName(fallbackName);
+        }
+
+        const { data: profile } = await getCurrentProfile();
+        if (profile && isMounted) {
+          if (profile.display_name) setDisplayName(profile.display_name);
+          if (profile.avatar_url) setAvatarUrl(profile.avatar_url);
+        }
+
+        const { data: settings } = await getCurrentUserSettings();
+        if (settings && isMounted) {
+          if (settings.base_currency) setBaseCurrency(settings.base_currency);
+          if (settings.locale) setLocale(settings.locale);
+        }
+      } catch (err) {
+        console.debug('Could not load user profile in AppShell', err);
+      }
+    }
+
+    loadUserData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+    router.refresh();
+  };
+
+  const initials = displayName
+    ? displayName
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase()
+    : 'FN';
 
   const navGroups = [
     {
@@ -140,28 +202,31 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           ))}
         </nav>
 
-        {/* User Footer */}
+        {/* Authenticated User Footer */}
         <div className="p-3 border-t bg-muted/30">
           <div className="flex items-center justify-between p-2 rounded-lg border bg-card">
-            <div className="flex items-center space-x-2.5 min-w-0">
+            <Link href="/settings" className="flex items-center space-x-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity">
               <Avatar className="h-8 w-8 shrink-0">
-                <AvatarImage src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" />
-                <AvatarFallback>TT</AvatarFallback>
+                {avatarUrl && <AvatarImage src={avatarUrl} />}
+                <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
               <div className="truncate">
                 <p className="text-xs font-semibold text-foreground truncate">
-                  Võ Thanh Tuyền
+                  {displayName}
                 </p>
-                <p className="text-[10px] text-muted-foreground">VND (₫) · vi-VN</p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {baseCurrency} · {locale}
+                </p>
               </div>
-            </div>
-            <Link
-              href="/login"
-              title="Đăng xuất (Mock)"
-              className="text-muted-foreground hover:text-foreground p-1 rounded-md"
+            </Link>
+            <button
+              onClick={handleSignOut}
+              title="Đăng xuất"
+              type="button"
+              className="text-muted-foreground hover:text-destructive p-1.5 rounded-md hover:bg-muted transition-colors shrink-0"
             >
               <LogOut className="h-4 w-4" />
-            </Link>
+            </button>
           </div>
         </div>
       </aside>
@@ -190,8 +255,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
           <Link href="/settings">
             <Avatar className="h-7 w-7">
-              <AvatarImage src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" />
-              <AvatarFallback>TT</AvatarFallback>
+              {avatarUrl && <AvatarImage src={avatarUrl} />}
+              <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
           </Link>
         </div>

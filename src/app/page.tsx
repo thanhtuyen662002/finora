@@ -96,7 +96,7 @@ export default function HomePage() {
             variant="default"
             className="gap-1 px-2.5 py-0.5 text-xs font-semibold uppercase font-mono"
           >
-            Phase 1: UI Foundation
+            Phase 2: Auth + RLS
           </Badge>
         </div>
         <p className="text-base text-muted-foreground leading-relaxed">
