@@ -86,7 +86,7 @@ export interface Database {
           name: string;
           type: string;
           currency_code: string;
-          opening_balance?: number;
+          opening_balance?: number | string;
           institution?: string | null;
           color?: string;
           is_archived?: boolean;
@@ -99,7 +99,7 @@ export interface Database {
           name?: string;
           type?: string;
           currency_code?: string;
-          opening_balance?: number;
+          opening_balance?: number | string;
           institution?: string | null;
           color?: string;
           is_archived?: boolean;
