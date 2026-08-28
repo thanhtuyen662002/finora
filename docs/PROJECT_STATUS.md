@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 4 — Transactions — FINAL SOURCE VERIFICATION
-- **Phase status:** SOURCE_PATCHED_PENDING_EXACT_HEAD_VERIFICATION
+- **Current phase:** Phase 4 — Transactions — REMOTE RUNTIME VERIFICATION
+- **Phase status:** SOURCE_PASS_STRUCTURAL_PASS_RUNTIME_PENDING
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -19,7 +19,8 @@
 - **Phase 4 initial implementation SHA:** `399f96327111ebf9abeb7c95d445ce0174f91e6f`
 - **Phase 4 first corrective baseline SHA:** `7a57a27029ffe86185b67bcceeddaac826e4985d`
 - **Phase 4 final-corrective agent SHA audited:** `890184010434e7b88ff8f4050dc6a1d54aae577e`
-- **Phase 4 direct residual patch SHA before ledger receipt:** `8655e9cf839966e0bc8beee5c70443773067d814`
+- **Accepted Phase 4 exact-head source SHA:** `13287e773eeaa65460bd0980d502bd8885c45f9c`
+- **Phase 4 structural-verifier syntax-fix SHA:** `bb6744692f786a0a86602971ee788567c2d44797`
 - **Phase 4 corrective prompt:** `prompts/PHASE_4_CORRECTIVE.md`
 - **Phase 4 final corrective prompt:** `prompts/PHASE_4_FINAL_CORRECTIVE.md`
 
@@ -123,34 +124,82 @@ FINORA_PHASE_3=PASS
 PHASE_4_AUTHORIZED=true
 ```
 
-## Phase 4 — Transactions — Audited Source State
+## Phase 4 — Transactions — Source Receipt
 
-The final-corrective agent revision `890184010434e7b88ff8f4050dc6a1d54aae577e` materially improved Phase 4: exact-read views, decimal-string handling, current-month summaries, runtime date filters, truthful CSV export, active/historical selection behavior, void/restore UI, and expanded verification scripts were all present.
+The final-corrective agent revision `890184010434e7b88ff8f4050dc6a1d54aae577e` materially improved Phase 4. A bounded repository audit then corrected residual issues directly on `main`.
 
-A repository audit still found bounded residual issues, so that revision was not accepted as the final exact-head source gate. The residuals were corrected directly on `main`:
+Accepted source behavior includes:
 
-1. transaction reads now fail closed on `public.transaction_details`; there is no fallback to direct numeric table reads;
+1. transaction reads fail closed on `public.transaction_details`; there is no fallback to direct numeric table reads;
 2. public transaction mutation contracts accept monetary `amount` as string only;
 3. create/update/void/restore read back through the exact text view;
 4. exact decimal normalization rejects invalid precision instead of silently truncating extra fractional digits;
 5. a new transaction never falls back to an archived account when no active account exists;
-6. the structural verifier now checks exact policy role/qual/with-check semantics, ordered composite FK columns, exact grants, security-invoker views, exact text money read columns, and prior-phase RLS regression;
-7. the runtime verifier now covers full A/B own lifecycle, bidirectional owned-row insertion denial, bidirectional account/category reference denial, bidirectional select/update isolation, ownership mutation, both category-type mismatch directions, currency mismatch, non-positive amounts, TRANSFER rejection, DELETE denial, bidirectional view isolation, deliberate database-error distinction, and verified cleanup.
+6. monthly summaries use the actual current calendar month and exact per-currency decimal accumulation;
+7. transaction filters derive runtime dates and do not perform cross-currency amount sorting;
+8. truthful RFC 4180 CSV export is implemented;
+9. void/restore UI is implemented with visible error handling;
+10. the runtime verifier contains the full two-user integrity/isolation matrix.
 
-These direct changes have not yet been accepted as a source PASS because exact-head TypeScript/lint/build/script-syntax verification has not been rerun after them.
+Exact-head verification against source SHA `13287e773eeaa65460bd0980d502bd8885c45f9c` returned:
 
-## Remote Phase 4 Database State
+- local HEAD = remote main: PASS
+- worktree clean: PASS
+- git diff check: PASS
+- TypeScript: PASS
+- lint: PASS
+- production build: PASS
+- runtime RLS script syntax: PASS
+- money coercion scan: PASS
+- `as any` mutation-path scan: PASS
+- exact read fail-closed: PASS
+- active/historical selection behavior: PASS
+- strict structural verifier inspection: PASS
+- runtime full-matrix inspection: PASS
 
-The Phase 4 migration has **NOT** been applied to the target Supabase database.
+**PHASE_4_SOURCE_GATE = PASS**
 
-The required order is:
+## Phase 4 — Remote Database Structural Receipt
 
-1. exact-head source verification on current remote `main`;
-2. only if TypeScript/lint/build/runtime-script syntax all PASS, authorize manual Phase 4 migration application;
-3. run `scripts/verify-phase4-db.sql` and require every mandatory row plus `99_OVERALL = PASS`;
-4. run `scripts/verify-phase4-rls.mjs` and require exit code `0`;
-5. perform live create/edit/void/restore/refresh/re-login persistence and derived-balance smoke;
-6. only then close Phase 4 and authorize Phase 5.
+The Phase 4 migration `supabase/migrations/20260828000002_phase_4_transactions.sql` has been applied to the target Supabase database.
+
+The strict read-only structural verifier was executed after a verifier-only PostgreSQL type-cast correction at `bb6744692f786a0a86602971ee788567c2d44797`.
+
+All 26 mandatory checks returned PASS and `99_OVERALL = PASS`.
+
+Accepted remote facts:
+
+- `public.transactions` exists and RLS is enabled;
+- exactly three authenticated ownership policies exist with the expected SELECT/INSERT/UPDATE semantics;
+- no DELETE policy exists;
+- `amount` is PostgreSQL `numeric(20,4)`;
+- positive-amount, INCOME/EXPENSE, merchant/note-length and currency-code constraints are present;
+- no transfer or FX persistence columns exist;
+- account FK is exactly `(account_id,user_id,currency_code) -> accounts(id,user_id,currency_code)` with RESTRICT delete action;
+- category FK is exactly `(category_id,user_id,type) -> categories(id,user_id,type)` with RESTRICT delete action;
+- required composite unique keys exist on accounts and categories;
+- the transaction updated-at trigger is wired to `public.handle_updated_at()`;
+- anon/PUBLIC have no transaction table or column privileges;
+- authenticated has table-level SELECT only plus exact INSERT/UPDATE column allowlists;
+- identity, ownership, and timestamps are not client-mutable;
+- `account_balances` and `transaction_details` both use `security_invoker=true`;
+- `account_balances.current_balance` and `transaction_details.amount` are exposed as text;
+- authenticated has SELECT-only access to the views while anon/PUBLIC are excluded;
+- no persisted `accounts.current_balance` exists;
+- Phase 2/3 RLS remains enabled on profiles, user_settings, accounts, and categories.
+
+**PHASE_4_REMOTE_DATABASE = PASS**
+**PHASE_4_STRUCTURAL_GATE = PASS**
+
+## Phase 4 — Remaining Gates
+
+The next mandatory gate is the hardened two-user runtime RLS/integrity verifier:
+
+`node scripts/verify-phase4-rls.mjs`
+
+It must use only the public Supabase URL/publishable key plus the two disposable test-user credentials, must not use service-role credentials, and must exit with code `0`.
+
+After runtime PASS, a live application smoke must verify create/edit/void/restore, exact balances, refresh persistence, and logout/login persistence before Phase 4 may close.
 
 ## Phase Authorization
 
@@ -158,9 +207,9 @@ The required order is:
 - **Phase 1:** PASS
 - **Phase 2:** PASS
 - **Phase 3:** PASS
-- **Phase 4 Code Gate:** PENDING_EXACT_HEAD_VERIFICATION
-- **Phase 4 Remote Database:** NOT_APPLIED
-- **Phase 4 Structural Gate:** NOT_RUN
+- **Phase 4 Source Gate:** PASS
+- **Phase 4 Remote Database:** PASS
+- **Phase 4 Structural Gate:** PASS
 - **Phase 4 Two-User Runtime RLS:** NOT_RUN
 - **Phase 4 Live Persistence Smoke:** NOT_RUN
 - **Phase 4 Overall:** PARTIAL
@@ -168,4 +217,4 @@ The required order is:
 
 ## Next Recommended Action
 
-Run verification-only against the exact current remote `main`. Do not modify source and do not apply the Phase 4 migration until that exact-head verification passes.
+Run `scripts/verify-phase4-rls.mjs` against the remote Supabase database with the existing disposable User A/User B credentials. Do not begin Phase 5.
