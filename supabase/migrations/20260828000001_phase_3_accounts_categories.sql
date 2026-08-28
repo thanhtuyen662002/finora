@@ -115,10 +115,10 @@ BEGIN
 END;
 $$;
 
--- Revoke direct execution of the seeding function from roles other than postgres/superuser
-REVOKE ALL EXECUTE ON FUNCTION public.seed_default_categories(UUID) FROM PUBLIC;
-REVOKE ALL EXECUTE ON FUNCTION public.seed_default_categories(UUID) FROM authenticated;
-REVOKE ALL EXECUTE ON FUNCTION public.seed_default_categories(UUID) FROM anon;
+-- Revoke direct execution of the seeding function from normal client roles.
+REVOKE EXECUTE ON FUNCTION public.seed_default_categories(UUID) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.seed_default_categories(UUID) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.seed_default_categories(UUID) FROM anon;
 
 -- Trigger to run on auth.users for seeding categories
 CREATE OR REPLACE FUNCTION public.handle_new_user_categories()
@@ -133,9 +133,9 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL EXECUTE ON FUNCTION public.handle_new_user_categories() FROM PUBLIC;
-REVOKE ALL EXECUTE ON FUNCTION public.handle_new_user_categories() FROM authenticated;
-REVOKE ALL EXECUTE ON FUNCTION public.handle_new_user_categories() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.handle_new_user_categories() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.handle_new_user_categories() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.handle_new_user_categories() FROM anon;
 
 DROP TRIGGER IF EXISTS on_auth_user_created_categories ON auth.users;
 CREATE TRIGGER on_auth_user_created_categories
