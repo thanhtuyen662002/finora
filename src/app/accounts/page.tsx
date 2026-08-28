@@ -8,7 +8,6 @@ import { AddAccountModal } from '@/components/finance/AddAccountModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
-import { formatMoney } from '@/lib/money/format';
 import { EmptyState } from '@/components/finance/EmptyState';
 import { Plus, Wallet, Globe } from 'lucide-react';
 import { getAccounts, createAccount, updateAccount } from '@/features/accounts/accounts';
@@ -17,6 +16,7 @@ import type { AccountRow, AccountInsert, AccountUpdate } from '@/types/database'
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<AccountRow | null>(null);
@@ -25,10 +25,12 @@ export default function AccountsPage() {
   const loadAccounts = async () => {
     try {
       setLoading(true);
+      setErrorMessage('');
       const data = await getAccounts();
       setAccounts(data);
     } catch (err: unknown) {
       console.error('Failed to load accounts', err);
+      setErrorMessage(err instanceof Error ? err.message : 'Không thể tải danh sách tài khoản');
     } finally {
       setLoading(false);
     }
@@ -39,23 +41,23 @@ export default function AccountsPage() {
     loadAccounts();
   }, []);
 
-  const activeAccounts = accounts.filter(a => !a.is_archived);
-  const archivedAccounts = accounts.filter(a => a.is_archived);
+  const activeAccounts = accounts.filter((account) => !account.is_archived);
+  const archivedAccounts = accounts.filter((account) => account.is_archived);
   const accountsToShow = showArchived ? archivedAccounts : activeAccounts;
 
-  const filteredAccounts = accountsToShow.filter((a) => {
-        if (filterType === 'ALL') return true;
-    if (filterType === 'FOREIGN') return a.currency_code !== 'VND';
-    return a.type === filterType;
+  const filteredAccounts = accountsToShow.filter((account) => {
+    if (filterType === 'ALL') return true;
+    if (filterType === 'FOREIGN') return account.currency_code !== 'VND';
+    return account.type === filterType;
   });
 
-  const foreignAccountsCount = accounts.filter((a) => a.currency_code !== 'VND' && !a.is_archived).length;
+  const foreignAccountsCount = activeAccounts.filter((account) => account.currency_code !== 'VND').length;
 
-  const handleCreateAccount = async (newAcc: Omit<AccountInsert, 'user_id'> | AccountUpdate) => {
+  const handleCreateAccount = async (accountInput: Omit<AccountInsert, 'user_id'> | AccountUpdate) => {
     if (editAccount) {
-      await updateAccount(editAccount.id, newAcc as AccountUpdate);
+      await updateAccount(editAccount.id, accountInput as AccountUpdate);
     } else {
-      await createAccount(newAcc as Omit<AccountInsert, 'user_id'>);
+      await createAccount(accountInput as Omit<AccountInsert, 'user_id'>);
     }
     await loadAccounts();
     setEditAccount(null);
@@ -63,16 +65,14 @@ export default function AccountsPage() {
 
   const handleArchiveAccount = async (id: string, archive: boolean) => {
     if (archive && !confirm('Bạn có chắc chắn muốn lưu trữ tài khoản này?')) return;
+
     try {
+      setErrorMessage('');
       await updateAccount(id, { is_archived: archive });
       await loadAccounts();
     } catch (err: unknown) {
       console.error('Failed to update account archive status', err);
-      if (err instanceof Error) {
-        alert(err.message);
-      } else {
-        alert('Có lỗi xảy ra');
-      }
+      setErrorMessage(err instanceof Error ? err.message : 'Không thể cập nhật trạng thái tài khoản');
     }
   };
 
@@ -82,13 +82,18 @@ export default function AccountsPage() {
         title="Tài khoản & Ví"
         subtitle="Quản lý toàn bộ ngân hàng, ví điện tử, tiền mặt và tài khoản ngoại tệ."
       >
-        <Button size="sm" onClick={() => setAddAccountOpen(true)}>
+        <Button size="sm" onClick={() => { setEditAccount(null); setAddAccountOpen(true); }}>
           <Plus className="h-4 w-4 mr-1.5" />
           Thêm tài khoản
         </Button>
       </PageHeader>
 
-      {/* Summary Banner */}
+      {errorMessage && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+          {errorMessage}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
         <Card className="bg-card border">
           <CardContent className="p-4 sm:p-5 flex flex-col justify-between">
@@ -114,8 +119,7 @@ export default function AccountsPage() {
         </Card>
       </div>
 
-      {/* Filters Bar */}
-      <div className="flex items-center justify-between gap-3 pt-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
         <Select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
@@ -125,30 +129,41 @@ export default function AccountsPage() {
             { value: 'BANK', label: 'Ngân hàng' },
             { value: 'CASH', label: 'Tiền mặt' },
             { value: 'EWALLET', label: 'Ví điện tử' },
-            { value: 'FOREIGN', label: 'Ngoại tệ' },
             { value: 'SAVINGS', label: 'Sổ tiết kiệm' },
+            { value: 'CREDIT_CARD', label: 'Thẻ tín dụng' },
+            { value: 'INVESTMENT', label: 'Đầu tư' },
+            { value: 'OTHER', label: 'Khác' },
+            { value: 'FOREIGN', label: 'Ngoại tệ' },
           ]}
-          />
+        />
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowArchived(!showArchived)}>
+          <Button variant="outline" size="sm" onClick={() => setShowArchived((current) => !current)}>
             {showArchived ? 'Hiện đang hoạt động' : 'Hiện đã lưu trữ'}
           </Button>
+          <span className="text-xs text-muted-foreground hidden sm:inline-block">
+            Hiển thị {filteredAccounts.length} / {accountsToShow.length} tài khoản
+          </span>
         </div>
-        <span className="text-xs text-muted-foreground hidden sm:inline-block">
-          Hiển thị {filteredAccounts.length} / {activeAccounts.length} tài khoản
-        </span>
       </div>
 
-      {/* Account Cards Grid or Empty States */}
       {loading ? (
         <div className="py-12 text-center text-muted-foreground text-sm">Đang tải tài khoản...</div>
-      ) : activeAccounts.length === 0 ? (
-        <EmptyState
-          title="Bạn chưa có tài khoản nào"
-          description="Thêm tài khoản đầu tiên để bắt đầu theo dõi tài chính."
-          actionLabel="+ Thêm tài khoản"
-          onAction={() => setAddAccountOpen(true)}
-        />
+      ) : accountsToShow.length === 0 ? (
+        showArchived ? (
+          <EmptyState
+            title="Chưa có tài khoản đã lưu trữ"
+            description="Các tài khoản bạn lưu trữ sẽ xuất hiện tại đây."
+            actionLabel="Hiện tài khoản đang hoạt động"
+            onAction={() => setShowArchived(false)}
+          />
+        ) : (
+          <EmptyState
+            title="Bạn chưa có tài khoản nào"
+            description="Thêm tài khoản đầu tiên để bắt đầu theo dõi tài chính."
+            actionLabel="+ Thêm tài khoản"
+            onAction={() => setAddAccountOpen(true)}
+          />
+        )
       ) : filteredAccounts.length === 0 ? (
         <EmptyState
           title="Không tìm thấy tài khoản phù hợp"
@@ -158,14 +173,24 @@ export default function AccountsPage() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredAccounts.map((acc) => (
-            <div key={acc.id} className="relative group">
-              <AccountCard account={acc} variant="detailed" />
+          {filteredAccounts.map((account) => (
+            <div key={account.id} className="relative group">
+              <AccountCard account={account} variant="detailed" />
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button variant="ghost" size="sm" onClick={() => { setEditAccount(acc); setAddAccountOpen(true); }} className="h-8 px-2 text-xs text-muted-foreground hover:text-primary">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setEditAccount(account); setAddAccountOpen(true); }}
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
+                >
                   Sửa
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleArchiveAccount(acc.id, !showArchived)} className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleArchiveAccount(account.id, !showArchived)}
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                >
                   {showArchived ? 'Khôi phục' : 'Lưu trữ'}
                 </Button>
               </div>
@@ -174,7 +199,6 @@ export default function AccountsPage() {
         </div>
       )}
 
-      {/* Add Account Modal */}
       <AddAccountModal
         open={addAccountOpen}
         onOpenChange={(open) => { setAddAccountOpen(open); if (!open) setEditAccount(null); }}
