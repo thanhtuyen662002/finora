@@ -1,3 +1,5 @@
+BEGIN;
+
 -- ==============================================================================
 -- FINORA — PHASE 3 MIGRATION: ACCOUNTS + CATEGORIES
 -- Target: Supabase PostgreSQL (qibfitbnlfgiqctntufr)
@@ -131,6 +133,10 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL EXECUTE ON FUNCTION public.handle_new_user_categories() FROM PUBLIC;
+REVOKE ALL EXECUTE ON FUNCTION public.handle_new_user_categories() FROM authenticated;
+REVOKE ALL EXECUTE ON FUNCTION public.handle_new_user_categories() FROM anon;
+
 DROP TRIGGER IF EXISTS on_auth_user_created_categories ON auth.users;
 CREATE TRIGGER on_auth_user_created_categories
     AFTER INSERT ON auth.users
@@ -218,3 +224,5 @@ GRANT UPDATE (name, type, currency_code, opening_balance, institution, color, is
 GRANT SELECT ON TABLE public.categories TO authenticated;
 GRANT INSERT (user_id, name, type, icon, color, is_archived) ON TABLE public.categories TO authenticated;
 GRANT UPDATE (name, type, icon, color, is_archived) ON TABLE public.categories TO authenticated;
+
+COMMIT;

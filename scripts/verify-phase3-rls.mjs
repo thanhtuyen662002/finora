@@ -54,9 +54,29 @@ async function run() {
 
   try {
     // ---------------------------------------------------------
+    // 0. DELIBERATE ERROR TEST
+    // ---------------------------------------------------------
+    console.log('[1/5] Testing deliberate normal database error...');
+    const { error: errDeliberate } = await clientA.from('accounts').insert({
+      user_id: userIdA,
+      name: 'Test',
+      type: 'INVALID_TYPE', // this will violate check constraint
+      currency_code: 'VND'
+    });
+    if (!errDeliberate) {
+       console.error('❌ FAIL: Deliberate check-constraint violation did not error!');
+       hasError = true;
+    } else if (errDeliberate.code === '23514' || errDeliberate.message.includes('check_constraint') || errDeliberate.message.includes('type')) {
+       console.log('✔ Correctly caught normal database error (check constraint).');
+    } else {
+       console.error('❌ FAIL: Deliberate error returned unexpected type:', errDeliberate);
+       hasError = true;
+    }
+
+    // ---------------------------------------------------------
     // 1. ACCOUNTS TESTS
     // ---------------------------------------------------------
-    console.log('[1/4] Testing Accounts RLS...');
+    console.log('\n[2/5] Testing Accounts RLS...');
 
     // A insert own account
     const { data: newAccA, error: errNewAccA } = await clientA.from('accounts').insert({
@@ -170,10 +190,11 @@ async function run() {
       console.log('✔ User A correctly blocked from inserting an account for User B.');
     }
 
+
     // ---------------------------------------------------------
     // 2. CATEGORIES TESTS
     // ---------------------------------------------------------
-    console.log('\n[2/4] Testing Categories RLS...');
+    console.log('\n[3/5] Testing Categories RLS...');
     
     // Check seeded categories visibility
     const { data: catsA, error: errCatsA } = await clientA.from('categories').select('*');
@@ -186,14 +207,40 @@ async function run() {
         console.error('❌ FAIL: User A can see foreign categories! RLS violation.');
         hasError = true;
       } else {
-        console.log(`✔ User A successfully read own categories (count: ${catsA.length}), no foreign categories visible.`);
+        const hasAllDefaults = catsA.length >= 12;
+        if (!hasAllDefaults) {
+           console.error('❌ FAIL: User A does not see all 12 baseline categories. Found: ' + catsA.length);
+           hasError = true;
+        } else {
+           console.log(`✔ User A successfully read own categories (count: ${catsA.length}, no foreign).`);
+        }
+      }
+    }
+
+    const { data: catsB, error: errCatsB } = await clientB.from('categories').select('*');
+    if (errCatsB) {
+      console.error('❌ FAIL: User B could not read categories.', errCatsB);
+      hasError = true;
+    } else {
+      const foreignCats = catsB.filter(c => c.user_id !== userIdB);
+      if (foreignCats.length > 0) {
+        console.error('❌ FAIL: User B can see foreign categories! RLS violation.');
+        hasError = true;
+      } else {
+        const hasAllDefaults = catsB.length >= 12;
+        if (!hasAllDefaults) {
+           console.error('❌ FAIL: User B does not see all 12 baseline categories. Found: ' + catsB.length);
+           hasError = true;
+        } else {
+           console.log(`✔ User B successfully read own categories (count: ${catsB.length}, no foreign).`);
+        }
       }
     }
 
     // A insert own category
     const { data: newCatA, error: errNewCatA } = await clientA.from('categories').insert({
       user_id: userIdA,
-      name: 'Test Category A',
+      name: 'Test Category A Verifier',
       type: 'EXPENSE',
       icon: 'Test',
       color: '#222222'
@@ -210,7 +257,7 @@ async function run() {
     // B insert own category
     const { data: newCatB, error: errNewCatB } = await clientB.from('categories').insert({
       user_id: userIdB,
-      name: 'Test Category B',
+      name: 'Test Category B Verifier',
       type: 'INCOME',
       icon: 'Test',
       color: '#333333'
@@ -226,7 +273,7 @@ async function run() {
 
     if (testCategoryA) {
        // A update own category
-       const { data: aUpdateCatA, error: errAUpdateCatA } = await clientA.from('categories').update({ name: 'Test Category A Updated' }).eq('id', testCategoryA).select();
+       const { data: aUpdateCatA, error: errAUpdateCatA } = await clientA.from('categories').update({ name: 'Test Category A Verifier Updated' }).eq('id', testCategoryA).select();
        if (errAUpdateCatA || aUpdateCatA.length === 0) {
          console.error('❌ FAIL: User A could not update own category.', errAUpdateCatA);
          hasError = true;
@@ -291,22 +338,22 @@ async function run() {
     // ---------------------------------------------------------
     // 3. CLEANUP
     // ---------------------------------------------------------
-    console.log('\n[3/4] Cleanup (Archive test records)...');
+    console.log('\n[4/5] Cleanup (Archive test records)...');
     if (testAccountA) {
-      const { error: cleanA1 } = await clientA.from('accounts').update({ is_archived: true, name: 'Test Account A Updated (Archived)' }).eq('id', testAccountA);
-      if (cleanA1) { console.error('❌ Cleanup failed for A account'); hasError = true; } else console.log('✔ Archived test account A.');
+      const { data: cleanA1Data, error: cleanA1 } = await clientA.from('accounts').update({ is_archived: true, name: 'Test Account A Updated (Archived)' }).eq('id', testAccountA).select('*');
+      if (cleanA1 || cleanA1Data.length === 0) { console.error('❌ Cleanup failed for A account'); hasError = true; } else console.log('✔ Archived test account A.');
     }
     if (testAccountB) {
-      const { error: cleanB1 } = await clientB.from('accounts').update({ is_archived: true, name: 'Test Account B (Archived)' }).eq('id', testAccountB);
-      if (cleanB1) { console.error('❌ Cleanup failed for B account'); hasError = true; } else console.log('✔ Archived test account B.');
+      const { data: cleanB1Data, error: cleanB1 } = await clientB.from('accounts').update({ is_archived: true, name: 'Test Account B (Archived)' }).eq('id', testAccountB).select('*');
+      if (cleanB1 || cleanB1Data.length === 0) { console.error('❌ Cleanup failed for B account'); hasError = true; } else console.log('✔ Archived test account B.');
     }
     if (testCategoryA) {
-      const { error: cleanA2 } = await clientA.from('categories').update({ is_archived: true, name: 'Test Category A (Archived)' }).eq('id', testCategoryA);
-      if (cleanA2) { console.error('❌ Cleanup failed for A category'); hasError = true; } else console.log('✔ Archived test category A.');
+      const { data: cleanA2Data, error: cleanA2 } = await clientA.from('categories').update({ is_archived: true, name: 'Test Category A Verifier (Archived)' }).eq('id', testCategoryA).select('*');
+      if (cleanA2 || cleanA2Data.length === 0) { console.error('❌ Cleanup failed for A category'); hasError = true; } else console.log('✔ Archived test category A.');
     }
     if (testCategoryB) {
-      const { error: cleanB2 } = await clientB.from('categories').update({ is_archived: true, name: 'Test Category B (Archived)' }).eq('id', testCategoryB);
-      if (cleanB2) { console.error('❌ Cleanup failed for B category'); hasError = true; } else console.log('✔ Archived test category B.');
+      const { data: cleanB2Data, error: cleanB2 } = await clientB.from('categories').update({ is_archived: true, name: 'Test Category B Verifier (Archived)' }).eq('id', testCategoryB).select('*');
+      if (cleanB2 || cleanB2Data.length === 0) { console.error('❌ Cleanup failed for B category'); hasError = true; } else console.log('✔ Archived test category B.');
     }
 
   } catch (err) {
@@ -314,7 +361,7 @@ async function run() {
     hasError = true;
   }
 
-  console.log('\n[4/4] Summary');
+  console.log('\n[5/5] Summary');
   if (hasError) {
     console.error('❌ FAIL: One or more two-user RLS isolation tests failed.');
     process.exit(1);

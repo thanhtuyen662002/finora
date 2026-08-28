@@ -3,12 +3,12 @@ WITH expected_tables AS (
     SELECT 'categories'
 ),
 expected_policies AS (
-    SELECT 'accounts' AS table_name, 'Users can select own accounts' AS policy_name UNION ALL
-    SELECT 'accounts', 'Users can insert own accounts' UNION ALL
-    SELECT 'accounts', 'Users can update own accounts' UNION ALL
-    SELECT 'categories', 'Users can select own categories' UNION ALL
-    SELECT 'categories', 'Users can insert own categories' UNION ALL
-    SELECT 'categories', 'Users can update own categories'
+    SELECT 'accounts' AS table_name, 'Users can select own accounts' AS policy_name, 'SELECT' as cmd UNION ALL
+    SELECT 'accounts', 'Users can insert own accounts', 'INSERT' UNION ALL
+    SELECT 'accounts', 'Users can update own accounts', 'UPDATE' UNION ALL
+    SELECT 'categories', 'Users can select own categories', 'SELECT' UNION ALL
+    SELECT 'categories', 'Users can insert own categories', 'INSERT' UNION ALL
+    SELECT 'categories', 'Users can update own categories', 'UPDATE'
 ),
 expected_insert_columns AS (
     SELECT 'accounts' AS table_name, 'user_id' AS column_name UNION ALL
@@ -83,8 +83,12 @@ checks AS (
         (
             SELECT count(*) = 6
             FROM pg_catalog.pg_policies p
-            JOIN expected_policies e ON e.table_name = p.tablename AND e.policy_name = p.policyname
+            JOIN expected_policies e ON e.table_name = p.tablename AND e.policy_name = p.policyname AND e.cmd = p.cmd
             WHERE p.schemaname = 'public'
+              AND array_to_string(p.roles, ',') = 'authenticated'
+              AND ((p.cmd = 'SELECT' AND p.qual = '(( SELECT auth.uid() AS uid) = user_id)') OR 
+                   (p.cmd = 'INSERT' AND p.with_check = '(( SELECT auth.uid() AS uid) = user_id)') OR
+                   (p.cmd = 'UPDATE' AND p.qual = '(( SELECT auth.uid() AS uid) = user_id)' AND p.with_check = '(( SELECT auth.uid() AS uid) = user_id)'))
         )
         AND NOT EXISTS (
             SELECT 1
@@ -98,7 +102,7 @@ checks AS (
               )
         ),
         COALESCE((
-            SELECT string_agg(tablename || ':' || policyname || ':' || cmd, ' | ' ORDER BY tablename, policyname)
+            SELECT string_agg(tablename || ':' || policyname || ':' || cmd || ':' || array_to_string(roles, ','), ' | ' ORDER BY tablename, policyname)
             FROM pg_catalog.pg_policies
             WHERE schemaname = 'public'
               AND tablename IN ('accounts', 'categories')
@@ -127,6 +131,31 @@ checks AS (
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'public'
               AND c.relname IN ('accounts', 'categories')
+              AND NOT t.tgisinternal
+        ), 'none')
+        
+    UNION ALL
+
+    SELECT
+        '04_b_on_auth_user_created_categories_trigger',
+        (
+            SELECT count(*) = 1
+            FROM pg_catalog.pg_trigger t
+            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'auth'
+              AND c.relname = 'users'
+              AND t.tgname = 'on_auth_user_created_categories'
+              AND NOT t.tgisinternal
+        ),
+        COALESCE((
+            SELECT string_agg(n.nspname || '.' || c.relname || ':' || t.tgname, ', ' ORDER BY c.relname, t.tgname)
+            FROM pg_catalog.pg_trigger t
+            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'auth'
+              AND c.relname = 'users'
+              AND t.tgname = 'on_auth_user_created_categories'
               AND NOT t.tgisinternal
         ), 'none')
 
@@ -173,14 +202,15 @@ checks AS (
             WHERE table_schema = 'public'
               AND table_name IN ('accounts', 'categories')
               AND grantee IN ('anon', 'PUBLIC')
-        ),
-        COALESCE((
-            SELECT string_agg(grantee || ':' || table_name || ':' || privilege_type, ' | ' ORDER BY grantee, table_name, privilege_type)
-            FROM information_schema.table_privileges
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM information_schema.column_privileges
             WHERE table_schema = 'public'
               AND table_name IN ('accounts', 'categories')
               AND grantee IN ('anon', 'PUBLIC')
-        ), 'no anon/public table privileges')
+        ),
+        'no anon/public table or column privileges'
 
     UNION ALL
 
@@ -295,6 +325,8 @@ checks AS (
               AND table_name = 'accounts'
               AND column_name = 'opening_balance'
               AND data_type = 'numeric'
+              AND numeric_precision = 20
+              AND numeric_scale = 4
         )
         AND NOT EXISTS (
             SELECT 1
@@ -304,7 +336,7 @@ checks AS (
               AND column_name IN ('current_balance', 'converted_balance_vnd', 'monthly_inflow', 'monthly_outflow')
         ),
         COALESCE((
-            SELECT string_agg(column_name || ':' || data_type, ', ' ORDER BY column_name)
+            SELECT string_agg(column_name || ':' || data_type || '(' || numeric_precision || ',' || numeric_scale || ')', ', ' ORDER BY column_name)
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = 'accounts'
@@ -354,15 +386,15 @@ checks AS (
             SELECT 1
             FROM information_schema.routine_privileges
             WHERE routine_schema = 'public'
-              AND routine_name = 'seed_default_categories'
+              AND routine_name IN ('seed_default_categories', 'handle_new_user_categories')
               AND grantee IN ('anon', 'PUBLIC', 'authenticated')
               AND privilege_type = 'EXECUTE'
         ),
         COALESCE((
-            SELECT string_agg(grantee || ':' || privilege_type, ' | ' ORDER BY grantee)
+            SELECT string_agg(routine_name || ':' || grantee || ':' || privilege_type, ' | ' ORDER BY routine_name, grantee)
             FROM information_schema.routine_privileges
             WHERE routine_schema = 'public'
-              AND routine_name = 'seed_default_categories'
+              AND routine_name IN ('seed_default_categories', 'handle_new_user_categories')
               AND grantee IN ('anon', 'PUBLIC', 'authenticated')
         ), 'none')
 )

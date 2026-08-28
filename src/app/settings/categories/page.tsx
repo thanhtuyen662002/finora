@@ -24,8 +24,11 @@ export default function CategoriesPage() {
       setLoading(true);
       const data = await getCategories();
       setCategories(data);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
+      if (err instanceof Error) {
+        alert(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -41,8 +44,11 @@ export default function CategoriesPage() {
     try {
       await updateCategory(id, { is_archived: archive });
       await loadCategories();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
+      if (err instanceof Error) {
+        alert(err.message);
+      }
     }
   };
 

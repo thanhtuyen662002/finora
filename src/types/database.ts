@@ -172,3 +172,6 @@ export type AccountUpdate = Omit<Database['public']['Tables']['accounts']['Updat
 export type CategoryRow = Database['public']['Tables']['categories']['Row'];
 export type CategoryInsert = Omit<Database['public']['Tables']['categories']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type CategoryUpdate = Omit<Database['public']['Tables']['categories']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
+
+export type AccountType = 'CASH' | 'BANK' | 'EWALLET' | 'SAVINGS' | 'CREDIT_CARD' | 'INVESTMENT' | 'OTHER';
+export type CategoryType = 'INCOME' | 'EXPENSE';

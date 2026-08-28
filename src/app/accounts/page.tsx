@@ -27,7 +27,7 @@ export default function AccountsPage() {
       setLoading(true);
       const data = await getAccounts();
       setAccounts(data);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to load accounts', err);
     } finally {
       setLoading(false);
@@ -66,8 +66,13 @@ export default function AccountsPage() {
     try {
       await updateAccount(id, { is_archived: archive });
       await loadAccounts();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to update account archive status', err);
+      if (err instanceof Error) {
+        alert(err.message);
+      } else {
+        alert('Có lỗi xảy ra');
+      }
     }
   };
 

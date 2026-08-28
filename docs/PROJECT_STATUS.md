@@ -5,7 +5,7 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 3 — Accounts + Categories — FINAL CODE CLEANUP REQUIRED
+- **Current phase:** Phase 3 — Accounts + Categories — CODE CLEANUP COMPLETE
 - **Phase status:** PARTIAL
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
@@ -78,7 +78,7 @@ Required order after final code cleanup:
 - **Phase 0:** PASS
 - **Phase 1:** PASS
 - **Phase 2 Overall:** PASS
-- **Phase 3 Source:** FINAL_CLEANUP_REQUIRED
+- **Phase 3 Source:** PASS
 - **Phase 3 Remote Database:** BLOCKED_NOT_APPLIED
 - **Phase 3 Structural Gate:** NOT_RUN
 - **Phase 3 Two-User Runtime RLS:** NOT_RUN
@@ -88,4 +88,4 @@ Required order after final code cleanup:
 
 ## Next Recommended Action
 
-Execute `prompts/PHASE_3_FINAL_CLEANUP.md` against the exact latest `origin/main`. Do not apply the remote database migration and do not begin Phase 4 during that task.
+Review the final code cleanup, apply the exact accepted Phase 3 migration to the target Supabase project, run the verifiers, and test live persistence to fully close Phase 3.

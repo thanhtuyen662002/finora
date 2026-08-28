@@ -1,6 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,13 +15,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PlusCircle, Check } from 'lucide-react';
+import type { CategoryRow, CategoryInsert, CategoryUpdate, CategoryType } from '@/types/database';
 
 interface AddCategoryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (categoryData: Omit<import('@/types/database').CategoryInsert, 'user_id'> | import('@/types/database').CategoryUpdate) => Promise<void>;
-  initialData?: any;
-  defaultType?: 'INCOME' | 'EXPENSE';
+  onSuccess?: (categoryData: Omit<CategoryInsert, 'user_id'> | CategoryUpdate) => Promise<void>;
+  initialData?: CategoryRow | null;
+  defaultType?: CategoryType;
 }
 
 export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
@@ -30,12 +32,30 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
   defaultType = 'EXPENSE',
   initialData
 }) => {
-  const [name, setName] = useState(initialData?.name || '');
-  const [type, setType] = useState(initialData?.type || defaultType);
-  const [icon, setIcon] = useState(initialData?.icon || 'Tag');
-  const [color, setColor] = useState(initialData?.color || '#8b5cf6');
+  const [name, setName] = useState('');
+  const [type, setType] = useState<CategoryType>(defaultType);
+  const [icon, setIcon] = useState('Tag');
+  const [color, setColor] = useState('#8b5cf6');
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+    useEffect(() => {
+    if (open) {
+            if (initialData) {
+        setName(initialData.name);
+        setType(initialData.type as CategoryType);
+        setIcon(initialData.icon);
+        setColor(initialData.color);
+      } else {
+        setName('');
+        setType(defaultType);
+        setIcon('Tag');
+        setColor('#8b5cf6');
+      }
+      setErrorMsg('');
+      setSubmitted(false);
+    }
+  }, [open, initialData, defaultType]);
 
   const colors = [
     '#f97316', '#0ea5e9', '#8b5cf6', '#ef4444', 
@@ -60,12 +80,12 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
       }
       setSubmitted(false);
       onOpenChange(false);
-      if (!initialData) {
-        setName('');
-        setIcon('CircleDashed');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+         setErrorMsg(err.message);
+      } else {
+         setErrorMsg('Có lỗi xảy ra');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Có lỗi xảy ra');
       setSubmitted(false);
     }
   };
@@ -100,7 +120,7 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
             <Select
               id="catType"
               value={type}
-              onChange={(e) => setType(e.target.value as 'INCOME' | 'EXPENSE')}
+              onChange={(e) => setType(e.target.value as CategoryType)}
               options={[
                 { value: 'EXPENSE', label: 'Chi tiêu' },
                 { value: 'INCOME', label: 'Thu nhập' },

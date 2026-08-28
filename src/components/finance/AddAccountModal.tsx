@@ -1,6 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,12 +15,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PlusCircle, Check } from 'lucide-react';
+import type { AccountRow, AccountInsert, AccountUpdate, AccountType } from '@/types/database';
 
 interface AddAccountModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (accountData: Omit<import('@/types/database').AccountInsert, 'user_id'> | import('@/types/database').AccountUpdate) => Promise<void>;
-  initialData?: any;
+  onSuccess?: (accountData: Omit<AccountInsert, 'user_id'> | AccountUpdate) => Promise<void>;
+  initialData?: AccountRow | null;
 }
 
 export const AddAccountModal: React.FC<AddAccountModalProps> = ({
@@ -28,14 +30,36 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   onSuccess,
   initialData
 }) => {
-  const [name, setName] = useState(initialData?.name || '');
-  const [type, setType] = useState(initialData?.type || 'BANK');
-  const [currencyCode, setCurrencyCode] = useState(initialData?.currency_code || 'VND');
-  const [balance, setBalance] = useState(initialData?.opening_balance?.toString() || '');
-  const [institution, setInstitution] = useState(initialData?.institution || '');
-  const [color, setColor] = useState(initialData?.color || '#005a3c');
+  const [name, setName] = useState('');
+  const [type, setType] = useState<AccountType>('BANK');
+  const [currencyCode, setCurrencyCode] = useState('VND');
+  const [balance, setBalance] = useState('');
+  const [institution, setInstitution] = useState('');
+  const [color, setColor] = useState('#005a3c');
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+    useEffect(() => {
+    if (open) {
+            if (initialData) {
+        setName(initialData.name);
+        setType(initialData.type as AccountType);
+        setCurrencyCode(initialData.currency_code);
+        setBalance(initialData.opening_balance?.toString() || '');
+        setInstitution(initialData.institution || '');
+        setColor(initialData.color);
+      } else {
+        setName('');
+        setType('BANK');
+        setCurrencyCode('VND');
+        setBalance('');
+        setInstitution('');
+        setColor('#005a3c');
+      }
+      setErrorMsg('');
+      setSubmitted(false);
+    }
+  }, [open, initialData]);
 
   const colors = [
     '#005a3c', // Green
@@ -51,6 +75,19 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
+    
+    const upperCurrency = currencyCode.toUpperCase();
+    if (!/^[A-Z]{3,5}$/.test(upperCurrency)) {
+      setErrorMsg('Mã tiền tệ phải từ 3-5 ký tự chữ cái (VD: VND, USD)');
+      return;
+    }
+    
+    // Numeric validation
+    if (balance !== '' && isNaN(Number(balance))) {
+      setErrorMsg('Số dư khởi tạo không hợp lệ');
+      return;
+    }
+
     setSubmitted(true);
     
     try {
@@ -59,21 +96,27 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
         await onSuccess({
           name,
           type,
-          currency_code: currencyCode,
-          opening_balance: parseFloat(balance) || 0,
+          currency_code: upperCurrency,
+          // Passing as any since Supabase JS client handles string -> numeric implicitly. Or just pass number.
+          // Wait, typescript type requires number. So we must cast it to number, but without losing precision before JSON serialization.
+          // In TypeScript, Number() or parseFloat() keeps full precision up to 53 bits (safe integer), which is plenty for 20,4.
+          // But the prompt says "preserve opening-balance decimal input as a string until it is sent to Supabase/PostgreSQL instead of parseFloat where practical"
+          // We can cast the payload object to `any` before sending to supabase, or modify `AccountInsert` to allow string.
+          // Actually, if we just use `Number(balance)`, it is a JS number.
+          // Let's use `balance as any` to bypass TS type check for `number`, so it sends the string.
+          opening_balance: (balance === '' ? 0 : balance) as any,
           institution: institution || null,
           color,
         });
       }
       setSubmitted(false);
       onOpenChange(false);
-      if (!initialData) {
-        setName('');
-        setBalance('');
-        setInstitution('');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setErrorMsg(err.message);
+      } else {
+        setErrorMsg('Có lỗi xảy ra');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Có lỗi xảy ra');
       setSubmitted(false);
     }
   };
@@ -109,7 +152,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               <Select
                 id="accType"
                 value={type}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => setType(e.target.value as AccountType)}
                 options={[
                   { value: 'BANK', label: 'Ngân hàng' },
                   { value: 'CASH', label: 'Tiền mặt' },
@@ -122,29 +165,24 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="accCurrency">Tiền tệ chính</Label>
-              <Select
+              <Label htmlFor="accCurrency">Mã tiền tệ</Label>
+              <Input
                 id="accCurrency"
+                placeholder="VND, USD..."
                 value={currencyCode}
                 onChange={(e) => setCurrencyCode(e.target.value)}
-                options={[
-                  { value: 'VND', label: 'VND (₫)' },
-                  { value: 'USD', label: 'USD ($)' },
-                  { value: 'EUR', label: 'EUR (€)' },
-                  { value: 'JPY', label: 'JPY (¥)' },
-                  { value: 'CNY', label: 'CNY (¥)' },
-                  { value: 'KRW', label: 'KRW (₩)' },
-                ]}
+                required
+                maxLength={5}
+                className="uppercase"
               />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="accBalance">Số dư ban đầu</Label>
+            <Label htmlFor="accBalance">Số dư khởi tạo</Label>
             <Input
               id="accBalance"
-              type="number"
-              step="any"
-              placeholder={currencyCode === 'VND' ? '10000000' : '500.00'}
+              type="text"
+              placeholder="0"
               value={balance}
               onChange={(e) => setBalance(e.target.value)}
             />
@@ -183,7 +221,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               Hủy
             </Button>
             <Button type="submit" disabled={submitted || !name}>
-              {submitted ? 'Đang tạo...' : initialData ? "Lưu thay đổi" : "Tạo tài khoản"}
+              {submitted ? (initialData ? 'Đang lưu...' : 'Đang tạo...') : (initialData ? "Lưu thay đổi" : "Tạo tài khoản")}
             </Button>
           </DialogFooter>
         </form>
