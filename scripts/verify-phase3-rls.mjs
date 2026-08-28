@@ -48,146 +48,278 @@ async function run() {
 
   let hasError = false;
   let testAccountA = null;
+  let testAccountB = null;
   let testCategoryA = null;
+  let testCategoryB = null;
 
-  // ACCOUNTS tests
-  console.log('[1/4] Testing Accounts RLS for User A...');
+  try {
+    // ---------------------------------------------------------
+    // 1. ACCOUNTS TESTS
+    // ---------------------------------------------------------
+    console.log('[1/4] Testing Accounts RLS...');
+
+    // A insert own account
+    const { data: newAccA, error: errNewAccA } = await clientA.from('accounts').insert({
+      user_id: userIdA,
+      name: 'Test Account A',
+      type: 'CASH',
+      currency_code: 'VND',
+      opening_balance: 1000000,
+      color: '#111111'
+    }).select('*').single();
+
+    if (errNewAccA) {
+      if (isMissingTableError(errNewAccA)) {
+        console.error('❌ BLOCKED: Remote database not migrated yet. Please apply migration to Supabase.');
+        process.exit(2);
+      }
+      console.error('❌ FAIL: User A could not insert own account.', errNewAccA);
+      hasError = true;
+    } else {
+      console.log('✔ User A successfully inserted own account.');
+      testAccountA = newAccA.id;
+    }
+
+    // B insert own account
+    const { data: newAccB, error: errNewAccB } = await clientB.from('accounts').insert({
+      user_id: userIdB,
+      name: 'Test Account B',
+      type: 'BANK',
+      currency_code: 'USD',
+      opening_balance: 500,
+      color: '#222222'
+    }).select('*').single();
+
+    if (errNewAccB) {
+      console.error('❌ FAIL: User B could not insert own account.', errNewAccB);
+      hasError = true;
+    } else {
+      console.log('✔ User B successfully inserted own account.');
+      testAccountB = newAccB.id;
+    }
+
+    if (testAccountA) {
+      // A update own account
+      const { data: aUpdateA, error: errAUpdateA } = await clientA.from('accounts').update({ name: 'Test Account A Updated' }).eq('id', testAccountA).select();
+      if (errAUpdateA || aUpdateA.length === 0) {
+        console.error('❌ FAIL: User A could not update own account.', errAUpdateA);
+        hasError = true;
+      } else {
+        console.log('✔ User A successfully updated own account.');
+      }
+
+      // A cannot update A's account to be owned by B
+      const { data: aUpdateAOwner, error: errAUpdateAOwner } = await clientA.from('accounts').update({ user_id: userIdB }).eq('id', testAccountA).select();
+      if (errAUpdateAOwner || aUpdateAOwner.length === 0) {
+        console.log('✔ User A correctly blocked from changing ownership of own account.');
+      } else {
+        console.error('❌ FAIL: User A successfully changed ownership of own account! RLS violation.');
+        hasError = true;
+      }
+
+      // B read A's account
+      const { data: bReadA, error: errBReadA } = await clientB.from('accounts').select('*').eq('id', testAccountA);
+      if (!errBReadA && bReadA.length > 0) {
+        console.error('❌ FAIL: User B successfully read User A account! RLS violation.');
+        hasError = true;
+      } else {
+        console.log('✔ User B correctly blocked from reading User A account.');
+      }
+
+      // B update A's account
+      const { data: bUpdateA, error: errBUpdateA } = await clientB.from('accounts').update({ name: 'Hacked by B' }).eq('id', testAccountA).select();
+      if (!errBUpdateA && bUpdateA.length > 0) {
+        console.error('❌ FAIL: User B successfully updated User A account! RLS violation.');
+        hasError = true;
+      } else {
+        console.log('✔ User B correctly blocked from updating User A account.');
+      }
+    }
+
+    if (testAccountB) {
+      // A read B's account
+      const { data: aReadB, error: errAReadB } = await clientA.from('accounts').select('*').eq('id', testAccountB);
+      if (!errAReadB && aReadB.length > 0) {
+        console.error('❌ FAIL: User A successfully read User B account! RLS violation.');
+        hasError = true;
+      } else {
+        console.log('✔ User A correctly blocked from reading User B account.');
+      }
+
+      // A update B's account
+      const { data: aUpdateB, error: errAUpdateB } = await clientA.from('accounts').update({ name: 'Hacked by A' }).eq('id', testAccountB).select();
+      if (!errAUpdateB && aUpdateB.length > 0) {
+        console.error('❌ FAIL: User A successfully updated User B account! RLS violation.');
+        hasError = true;
+      } else {
+        console.log('✔ User A correctly blocked from updating User B account.');
+      }
+    }
+
+    // A insert for B
+    const { error: errAInsertB } = await clientA.from('accounts').insert({
+      user_id: userIdB,
+      name: 'A inserting for B',
+      type: 'CASH',
+      currency_code: 'VND'
+    });
+    if (!errAInsertB) {
+      console.error('❌ FAIL: User A successfully inserted an account for User B! RLS violation.');
+      hasError = true;
+    } else {
+      console.log('✔ User A correctly blocked from inserting an account for User B.');
+    }
+
+    // ---------------------------------------------------------
+    // 2. CATEGORIES TESTS
+    // ---------------------------------------------------------
+    console.log('\n[2/4] Testing Categories RLS...');
+    
+    // Check seeded categories visibility
+    const { data: catsA, error: errCatsA } = await clientA.from('categories').select('*');
+    if (errCatsA) {
+      console.error('❌ FAIL: User A could not read categories.', errCatsA);
+      hasError = true;
+    } else {
+      const foreignCats = catsA.filter(c => c.user_id !== userIdA);
+      if (foreignCats.length > 0) {
+        console.error('❌ FAIL: User A can see foreign categories! RLS violation.');
+        hasError = true;
+      } else {
+        console.log(`✔ User A successfully read own categories (count: ${catsA.length}), no foreign categories visible.`);
+      }
+    }
+
+    // A insert own category
+    const { data: newCatA, error: errNewCatA } = await clientA.from('categories').insert({
+      user_id: userIdA,
+      name: 'Test Category A',
+      type: 'EXPENSE',
+      icon: 'Test',
+      color: '#222222'
+    }).select('*').single();
+
+    if (errNewCatA) {
+      console.error('❌ FAIL: User A could not insert own category.', errNewCatA);
+      hasError = true;
+    } else {
+      console.log('✔ User A successfully inserted own category.');
+      testCategoryA = newCatA.id;
+    }
+
+    // B insert own category
+    const { data: newCatB, error: errNewCatB } = await clientB.from('categories').insert({
+      user_id: userIdB,
+      name: 'Test Category B',
+      type: 'INCOME',
+      icon: 'Test',
+      color: '#333333'
+    }).select('*').single();
+
+    if (errNewCatB) {
+      console.error('❌ FAIL: User B could not insert own category.', errNewCatB);
+      hasError = true;
+    } else {
+      console.log('✔ User B successfully inserted own category.');
+      testCategoryB = newCatB.id;
+    }
+
+    if (testCategoryA) {
+       // A update own category
+       const { data: aUpdateCatA, error: errAUpdateCatA } = await clientA.from('categories').update({ name: 'Test Category A Updated' }).eq('id', testCategoryA).select();
+       if (errAUpdateCatA || aUpdateCatA.length === 0) {
+         console.error('❌ FAIL: User A could not update own category.', errAUpdateCatA);
+         hasError = true;
+       } else {
+         console.log('✔ User A successfully updated own category.');
+       }
+ 
+       // B read A's category
+       const { data: bReadCatA, error: errBReadCatA } = await clientB.from('categories').select('*').eq('id', testCategoryA);
+       if (!errBReadCatA && bReadCatA.length > 0) {
+         console.error('❌ FAIL: User B successfully read User A category! RLS violation.');
+         hasError = true;
+       } else {
+         console.log('✔ User B correctly blocked from reading User A category.');
+       }
+ 
+       // B update A's category
+       const { data: bUpdateCatA, error: errBUpdateCatA } = await clientB.from('categories').update({ name: 'Hacked by B' }).eq('id', testCategoryA).select();
+       if (!errBUpdateCatA && bUpdateCatA.length > 0) {
+         console.error('❌ FAIL: User B successfully updated User A category! RLS violation.');
+         hasError = true;
+       } else {
+         console.log('✔ User B correctly blocked from updating User A category.');
+       }
+    }
+
+    if (testCategoryB) {
+        // A read B's category
+        const { data: aReadCatB, error: errAReadCatB } = await clientA.from('categories').select('*').eq('id', testCategoryB);
+        if (!errAReadCatB && aReadCatB.length > 0) {
+          console.error('❌ FAIL: User A successfully read User B category! RLS violation.');
+          hasError = true;
+        } else {
+          console.log('✔ User A correctly blocked from reading User B category.');
+        }
   
-  // A insert own account
-  const { data: newAccA, error: errNewAccA } = await clientA.from('accounts').insert({
-    user_id: userIdA,
-    name: 'Test Account A',
-    type: 'CASH',
-    currency_code: 'VND',
-    opening_balance: 1000000,
-    color: '#111111'
-  }).select('*').single();
-
-  if (errNewAccA) {
-    if (isMissingTableError(errNewAccA)) {
-      console.error('❌ BLOCKED: Remote database not migrated yet. Please apply migration to Supabase.');
-      process.exit(2);
+        // A update B's category
+        const { data: aUpdateCatB, error: errAUpdateCatB } = await clientA.from('categories').update({ name: 'Hacked by A' }).eq('id', testCategoryB).select();
+        if (!errAUpdateCatB && aUpdateCatB.length > 0) {
+          console.error('❌ FAIL: User A successfully updated User B category! RLS violation.');
+          hasError = true;
+        } else {
+          console.log('✔ User A correctly blocked from updating User B category.');
+        }
     }
-    console.error('❌ FAIL: User A could not insert own account.', errNewAccA);
-    hasError = true;
-  } else {
-    console.log('✔ User A successfully inserted own account.');
-    testAccountA = newAccA.id;
-  }
 
-  // A update own account
-  if (testAccountA) {
-    const { error: errUpdateAccA } = await clientA.from('accounts').update({ name: 'Test Account A Updated' }).eq('id', testAccountA);
-    if (errUpdateAccA) {
-      console.error('❌ FAIL: User A could not update own account.', errUpdateAccA);
+    // A insert for B
+    const { error: errAInsertCatB } = await clientA.from('categories').insert({
+      user_id: userIdB,
+      name: 'A inserting for B',
+      type: 'EXPENSE',
+      icon: 'Test',
+      color: '#333333'
+    });
+    if (!errAInsertCatB) {
+      console.error('❌ FAIL: User A successfully inserted a category for User B! RLS violation.');
       hasError = true;
     } else {
-      console.log('✔ User A successfully updated own account.');
-    }
-  }
-
-  // A insert for B
-  const { error: errAInsertB } = await clientA.from('accounts').insert({
-    user_id: userIdB,
-    name: 'A inserting for B',
-    type: 'CASH',
-    currency_code: 'VND'
-  });
-  if (!errAInsertB) {
-    console.error('❌ FAIL: User A successfully inserted an account for User B! RLS violation.');
-    hasError = true;
-  } else {
-    console.log('✔ User A correctly blocked from inserting an account for User B.');
-  }
-
-  // CATEGORIES tests
-  console.log('\n[2/4] Testing Categories RLS for User A...');
-  const { data: catsA, error: errCatsA } = await clientA.from('categories').select('*').eq('user_id', userIdA);
-  if (errCatsA) {
-    console.error('❌ FAIL: User A could not read own categories.', errCatsA);
-    hasError = true;
-  } else {
-    console.log(`✔ User A successfully read own categories (count: ${catsA.length}).`);
-  }
-
-  const { data: newCatA, error: errNewCatA } = await clientA.from('categories').insert({
-    user_id: userIdA,
-    name: 'Test Category A',
-    type: 'EXPENSE',
-    icon: 'Test',
-    color: '#222222'
-  }).select('*').single();
-
-  if (errNewCatA) {
-    console.error('❌ FAIL: User A could not insert own category.', errNewCatA);
-    hasError = true;
-  } else {
-    console.log('✔ User A successfully inserted own category.');
-    testCategoryA = newCatA.id;
-  }
-
-  const { error: errAInsertCatB } = await clientA.from('categories').insert({
-    user_id: userIdB,
-    name: 'A inserting for B',
-    type: 'EXPENSE',
-    icon: 'Test',
-    color: '#333333'
-  });
-  if (!errAInsertCatB) {
-    console.error('❌ FAIL: User A successfully inserted a category for User B! RLS violation.');
-    hasError = true;
-  } else {
-    console.log('✔ User A correctly blocked from inserting a category for User B.');
-  }
-
-  // CROSS USER TESTS
-  console.log('\n[3/4] Testing Cross-User RLS (B attempting to access A data)...');
-  
-  if (testAccountA) {
-    // B select A's account
-    const { data: bReadA, error: bReadAErr } = await clientB.from('accounts').select('*').eq('id', testAccountA);
-    if (!bReadAErr && bReadA.length > 0) {
-      console.error('❌ FAIL: User B successfully read User A account! RLS violation.');
-      hasError = true;
-    } else {
-      console.log('✔ User B correctly blocked from reading User A account.');
+      console.log('✔ User A correctly blocked from inserting a category for User B.');
     }
 
-    // B update A's account
-    const { error: bUpdateAErr } = await clientB.from('accounts').update({ name: 'Hacked by B' }).eq('id', testAccountA);
-    if (!bUpdateAErr) {
-      console.error('❌ FAIL: User B successfully updated User A account! RLS violation.');
-      hasError = true;
-    } else {
-      console.log('✔ User B correctly blocked from updating User A account.');
+    // ---------------------------------------------------------
+    // 3. CLEANUP
+    // ---------------------------------------------------------
+    console.log('\n[3/4] Cleanup (Archive test records)...');
+    if (testAccountA) {
+      const { error: cleanA1 } = await clientA.from('accounts').update({ is_archived: true, name: 'Test Account A Updated (Archived)' }).eq('id', testAccountA);
+      if (cleanA1) { console.error('❌ Cleanup failed for A account'); hasError = true; } else console.log('✔ Archived test account A.');
     }
-  }
-
-  if (testCategoryA) {
-    const { data: bReadCatA, error: bReadCatAErr } = await clientB.from('categories').select('*').eq('id', testCategoryA);
-    if (!bReadCatAErr && bReadCatA.length > 0) {
-      console.error('❌ FAIL: User B successfully read User A category! RLS violation.');
-      hasError = true;
-    } else {
-      console.log('✔ User B correctly blocked from reading User A category.');
+    if (testAccountB) {
+      const { error: cleanB1 } = await clientB.from('accounts').update({ is_archived: true, name: 'Test Account B (Archived)' }).eq('id', testAccountB);
+      if (cleanB1) { console.error('❌ Cleanup failed for B account'); hasError = true; } else console.log('✔ Archived test account B.');
     }
+    if (testCategoryA) {
+      const { error: cleanA2 } = await clientA.from('categories').update({ is_archived: true, name: 'Test Category A (Archived)' }).eq('id', testCategoryA);
+      if (cleanA2) { console.error('❌ Cleanup failed for A category'); hasError = true; } else console.log('✔ Archived test category A.');
+    }
+    if (testCategoryB) {
+      const { error: cleanB2 } = await clientB.from('categories').update({ is_archived: true, name: 'Test Category B (Archived)' }).eq('id', testCategoryB);
+      if (cleanB2) { console.error('❌ Cleanup failed for B category'); hasError = true; } else console.log('✔ Archived test category B.');
+    }
+
+  } catch (err) {
+    console.error('❌ Unexpected error during tests:', err);
+    hasError = true;
   }
 
-  console.log('\n[4/4] Cleanup (Archive test records)...');
-  if (testAccountA) {
-    await clientA.from('accounts').update({ is_archived: true, name: 'Test Account A Updated (Archived)' }).eq('id', testAccountA);
-    console.log('✔ Archived test account A.');
-  }
-  if (testCategoryA) {
-    await clientA.from('categories').update({ is_archived: true, name: 'Test Category A (Archived)' }).eq('id', testCategoryA);
-    console.log('✔ Archived test category A.');
-  }
-
+  console.log('\n[4/4] Summary');
   if (hasError) {
-    console.error('\n❌ FAIL: One or more two-user RLS isolation tests failed.');
+    console.error('❌ FAIL: One or more two-user RLS isolation tests failed.');
     process.exit(1);
   } else {
-    console.log('\n✅ PASS: Two-user runtime RLS isolation passed for accounts and categories.');
+    console.log('✅ PASS: Two-user runtime RLS isolation passed for accounts and categories.');
   }
 }
 

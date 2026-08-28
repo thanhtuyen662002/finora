@@ -18,21 +18,24 @@ import { PlusCircle, Check } from 'lucide-react';
 interface AddAccountModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (accountData: any) => void;
+  onSuccess?: (accountData: Omit<import('@/types/database').AccountInsert, 'user_id'> | import('@/types/database').AccountUpdate) => Promise<void>;
+  initialData?: any;
 }
 
 export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   open,
   onOpenChange,
   onSuccess,
+  initialData
 }) => {
-  const [name, setName] = useState('');
-  const [type, setType] = useState('BANK');
-  const [currencyCode, setCurrencyCode] = useState('VND');
-  const [balance, setBalance] = useState('');
-  const [institution, setInstitution] = useState('');
-  const [color, setColor] = useState('#005a3c');
+  const [name, setName] = useState(initialData?.name || '');
+  const [type, setType] = useState(initialData?.type || 'BANK');
+  const [currencyCode, setCurrencyCode] = useState(initialData?.currency_code || 'VND');
+  const [balance, setBalance] = useState(initialData?.opening_balance?.toString() || '');
+  const [institution, setInstitution] = useState(initialData?.institution || '');
+  const [color, setColor] = useState(initialData?.color || '#005a3c');
   const [submitted, setSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const colors = [
     '#005a3c', // Green
@@ -45,29 +48,32 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
     '#7c3aed', // Purple
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
     setSubmitted(true);
     
     try {
+      setErrorMsg('');
       if (onSuccess) {
-        onSuccess({
+        await onSuccess({
           name,
           type,
           currency_code: currencyCode,
           opening_balance: parseFloat(balance) || 0,
           institution: institution || null,
           color,
-          is_archived: false,
         });
       }
       setSubmitted(false);
       onOpenChange(false);
-      setName('');
-      setBalance('');
-      setInstitution('');
-    } catch (err) {
+      if (!initialData) {
+        setName('');
+        setBalance('');
+        setInstitution('');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Có lỗi xảy ra');
       setSubmitted(false);
     }
   };
@@ -78,13 +84,14 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <PlusCircle className="h-5 w-5 text-primary" />
-            <span>Thêm tài khoản / ví</span>
+            <span>{initialData ? "Sửa tài khoản" : "Thêm tài khoản / ví"}</span>
           </DialogTitle>
           <DialogDescription>
-            Tạo tài khoản ngân hàng, ví điện tử hoặc quỹ tiền mặt để quản lý.
+            {initialData ? "Chỉnh sửa thông tin tài khoản." : "Tạo tài khoản ngân hàng, ví điện tử hoặc quỹ tiền mặt để quản lý."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          {errorMsg && <div className="text-sm font-medium text-destructive">{errorMsg}</div>}
           <div className="space-y-1.5">
             <Label htmlFor="accName">Tên tài khoản</Label>
             <Input
@@ -176,7 +183,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               Hủy
             </Button>
             <Button type="submit" disabled={submitted || !name}>
-              {submitted ? 'Đang tạo...' : 'Tạo tài khoản'}
+              {submitted ? 'Đang tạo...' : initialData ? "Lưu thay đổi" : "Tạo tài khoản"}
             </Button>
           </DialogFooter>
         </form>

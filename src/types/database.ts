@@ -166,9 +166,9 @@ export type UserSettings = Database['public']['Tables']['user_settings']['Row'];
 export type UserSettingsUpdate = Database['public']['Tables']['user_settings']['Update'];
 
 export type AccountRow = Database['public']['Tables']['accounts']['Row'];
-export type AccountInsert = Database['public']['Tables']['accounts']['Insert'];
-export type AccountUpdate = Database['public']['Tables']['accounts']['Update'];
+export type AccountInsert = Omit<Database['public']['Tables']['accounts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type AccountUpdate = Omit<Database['public']['Tables']['accounts']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
 export type CategoryRow = Database['public']['Tables']['categories']['Row'];
-export type CategoryInsert = Database['public']['Tables']['categories']['Insert'];
-export type CategoryUpdate = Database['public']['Tables']['categories']['Update'];
+export type CategoryInsert = Omit<Database['public']['Tables']['categories']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type CategoryUpdate = Omit<Database['public']['Tables']['categories']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;

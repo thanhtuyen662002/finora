@@ -62,22 +62,54 @@ SET search_path = ''
 AS $$
 BEGIN
     -- INCOME CATEGORIES
-    INSERT INTO public.categories (user_id, name, type, icon, color) VALUES
-        (p_user_id, 'Lương', 'INCOME', 'Briefcase', '#22c55e'),
-        (p_user_id, 'YouTube & AdSense', 'INCOME', 'Video', '#dc2626'),
-        (p_user_id, 'Freelance', 'INCOME', 'Laptop', '#3b82f6'),
-        (p_user_id, 'Đầu tư', 'INCOME', 'TrendingUp', '#14b8a6'),
-        (p_user_id, 'Khác', 'INCOME', 'MoreHorizontal', '#64748b');
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Lương', 'INCOME', 'Briefcase', '#22c55e'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Lương' AND type = 'INCOME');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'YouTube & AdSense', 'INCOME', 'Video', '#dc2626'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'YouTube & AdSense' AND type = 'INCOME');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Freelance', 'INCOME', 'Laptop', '#3b82f6'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Freelance' AND type = 'INCOME');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Đầu tư', 'INCOME', 'TrendingUp', '#14b8a6'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Đầu tư' AND type = 'INCOME');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Khác', 'INCOME', 'MoreHorizontal', '#64748b'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Khác' AND type = 'INCOME');
 
     -- EXPENSE CATEGORIES
-    INSERT INTO public.categories (user_id, name, type, icon, color) VALUES
-        (p_user_id, 'Ăn uống', 'EXPENSE', 'Utensils', '#f97316'),
-        (p_user_id, 'Di chuyển', 'EXPENSE', 'Car', '#0ea5e9'),
-        (p_user_id, 'Mua sắm', 'EXPENSE', 'ShoppingBag', '#8b5cf6'),
-        (p_user_id, 'Hóa đơn & Nhà cửa', 'EXPENSE', 'Home', '#ef4444'),
-        (p_user_id, 'Giải trí', 'EXPENSE', 'Film', '#ec4899'),
-        (p_user_id, 'Sức khỏe', 'EXPENSE', 'HeartPulse', '#10b981'),
-        (p_user_id, 'Khác', 'EXPENSE', 'MoreHorizontal', '#64748b');
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Ăn uống', 'EXPENSE', 'Utensils', '#f97316'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Ăn uống' AND type = 'EXPENSE');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Di chuyển', 'EXPENSE', 'Car', '#0ea5e9'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Di chuyển' AND type = 'EXPENSE');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Mua sắm', 'EXPENSE', 'ShoppingBag', '#8b5cf6'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Mua sắm' AND type = 'EXPENSE');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Hóa đơn & Nhà cửa', 'EXPENSE', 'Home', '#ef4444'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Hóa đơn & Nhà cửa' AND type = 'EXPENSE');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Giải trí', 'EXPENSE', 'Film', '#ec4899'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Giải trí' AND type = 'EXPENSE');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Sức khỏe', 'EXPENSE', 'HeartPulse', '#10b981'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Sức khỏe' AND type = 'EXPENSE');
+
+    INSERT INTO public.categories (user_id, name, type, icon, color)
+    SELECT p_user_id, 'Khác', 'EXPENSE', 'MoreHorizontal', '#64748b'
+    WHERE NOT EXISTS (SELECT 1 FROM public.categories WHERE user_id = p_user_id AND name = 'Khác' AND type = 'EXPENSE');
 END;
 $$;
 
@@ -110,12 +142,12 @@ DO $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN SELECT id FROM auth.users WHERE id NOT IN (SELECT DISTINCT user_id FROM public.categories)
+    FOR r IN SELECT id FROM auth.users
     LOOP
         PERFORM public.seed_default_categories(r.id);
     END LOOP;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+$$;
 
 -- 6. Enable Row Level Security (RLS)
 ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;

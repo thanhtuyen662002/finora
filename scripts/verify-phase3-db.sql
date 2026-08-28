@@ -315,18 +315,56 @@ checks AS (
     SELECT
         '11_categories_backfill_complete',
         NOT EXISTS (
-            SELECT 1
+            SELECT u.id, b.type, b.name
             FROM auth.users u
+            CROSS JOIN (
+                VALUES
+                    ('INCOME', 'Lương'),
+                    ('INCOME', 'YouTube & AdSense'),
+                    ('INCOME', 'Freelance'),
+                    ('INCOME', 'Đầu tư'),
+                    ('INCOME', 'Khác'),
+                    ('EXPENSE', 'Ăn uống'),
+                    ('EXPENSE', 'Di chuyển'),
+                    ('EXPENSE', 'Mua sắm'),
+                    ('EXPENSE', 'Hóa đơn & Nhà cửa'),
+                    ('EXPENSE', 'Giải trí'),
+                    ('EXPENSE', 'Sức khỏe'),
+                    ('EXPENSE', 'Khác')
+            ) AS b(type, name)
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM public.categories c
-                WHERE c.user_id = u.id
+                WHERE c.user_id = u.id AND c.type = b.type AND c.name = b.name
             )
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM public.categories WHERE name = 'Chuyển tiền'
         ),
         concat(
             'auth_users=', (SELECT count(*) FROM auth.users),
             ', categories=', (SELECT count(*) FROM public.categories)
         )
+
+    UNION ALL
+
+    SELECT
+        '12_execute_privileges_revoked',
+        NOT EXISTS (
+            SELECT 1
+            FROM information_schema.routine_privileges
+            WHERE routine_schema = 'public'
+              AND routine_name = 'seed_default_categories'
+              AND grantee IN ('anon', 'PUBLIC', 'authenticated')
+              AND privilege_type = 'EXECUTE'
+        ),
+        COALESCE((
+            SELECT string_agg(grantee || ':' || privilege_type, ' | ' ORDER BY grantee)
+            FROM information_schema.routine_privileges
+            WHERE routine_schema = 'public'
+              AND routine_name = 'seed_default_categories'
+              AND grantee IN ('anon', 'PUBLIC', 'authenticated')
+        ), 'none')
 )
 SELECT
     check_name,

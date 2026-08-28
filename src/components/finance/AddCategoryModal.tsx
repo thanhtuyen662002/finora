@@ -18,7 +18,8 @@ import { PlusCircle, Check } from 'lucide-react';
 interface AddCategoryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (categoryData: any) => void;
+  onSuccess?: (categoryData: Omit<import('@/types/database').CategoryInsert, 'user_id'> | import('@/types/database').CategoryUpdate) => Promise<void>;
+  initialData?: any;
   defaultType?: 'INCOME' | 'EXPENSE';
 }
 
@@ -27,12 +28,14 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
   onOpenChange,
   onSuccess,
   defaultType = 'EXPENSE',
+  initialData
 }) => {
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialData?.name || '');
   const [type, setType] = useState(defaultType);
   const [icon, setIcon] = useState('Tag');
   const [color, setColor] = useState('#8b5cf6');
   const [submitted, setSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const colors = [
     '#f97316', '#0ea5e9', '#8b5cf6', '#ef4444', 
@@ -40,26 +43,29 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
     '#dc2626', '#3b82f6', '#14b8a6'
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
     setSubmitted(true);
     
     try {
+      setErrorMsg('');
       if (onSuccess) {
-        onSuccess({
+        await onSuccess({
           name,
           type,
           icon,
           color,
-          is_archived: false,
         });
       }
       setSubmitted(false);
       onOpenChange(false);
-      setName('');
-      setIcon('Tag');
-    } catch (err) {
+      if (!initialData) {
+        setName('');
+        setIcon('CircleDashed');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Có lỗi xảy ra');
       setSubmitted(false);
     }
   };
@@ -70,13 +76,14 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <PlusCircle className="h-5 w-5 text-primary" />
-            <span>Thêm danh mục</span>
+            <span>{initialData ? "Sửa danh mục" : "Thêm danh mục"}</span>
           </DialogTitle>
           <DialogDescription>
             Tạo danh mục mới để phân loại giao dịch của bạn.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          {errorMsg && <div className="text-sm font-medium text-destructive">{errorMsg}</div>}
           <div className="space-y-1.5">
             <Label htmlFor="catName">Tên danh mục</Label>
             <Input
