@@ -24,27 +24,21 @@ export async function GET(request: Request) {
       await supabase.auth.exchangeCodeForSession(code);
 
     if (!exchangeError) {
-      // Check onboarding completion to direct new users appropriately
+      // Check onboarding completion for normal logins, but preserve recovery targets
       const { data: profile } = await supabase
         .from('profiles')
         .select('onboarding_completed')
         .single();
 
       const targetPath =
-        profile && profile.onboarding_completed === false
+        safeNext === '/reset-password'
+          ? safeNext
+          : profile && profile.onboarding_completed === false
           ? '/onboarding'
           : safeNext;
 
-      const forwardedHost = request.headers.get('x-forwarded-host');
-      const isLocalEnv = process.env.NODE_ENV === 'development';
-
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${targetPath}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${targetPath}`);
-      } else {
-        return NextResponse.redirect(`${origin}${targetPath}`);
-      }
+      // Always use validated request URL origin
+      return NextResponse.redirect(`${origin}${targetPath}`);
     }
 
     return NextResponse.redirect(

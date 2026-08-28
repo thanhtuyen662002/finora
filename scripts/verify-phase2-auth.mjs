@@ -24,6 +24,20 @@ async function run() {
 
   let hasError = false;
 
+  function isMissingTableError(err) {
+    if (!err) return false;
+    const msg = (err.message || '').toLowerCase();
+    const code = err.code || '';
+    return (
+      code === '42P01' ||
+      code === 'PGRST200' ||
+      code === 'PGRST205' ||
+      msg.includes('schema cache') ||
+      msg.includes('does not exist') ||
+      msg.includes('could not find the table')
+    );
+  }
+
   // 1. Verify Anonymous SELECT on public.profiles
   console.log('\n[1/4] Testing Anonymous SELECT on profiles...');
   const { data: profiles, error: profilesErr } = await anonClient
@@ -31,9 +45,8 @@ async function run() {
     .select('*');
 
   if (profilesErr) {
-    // Check if table missing
-    if (profilesErr.code === '42P01' || profilesErr.message?.includes('does not exist')) {
-      console.error('❌ Assertion failed: table "public.profiles" does not exist in target database.');
+    if (isMissingTableError(profilesErr)) {
+      console.error('❌ Assertion failed: table "public.profiles" does not exist in target database:', profilesErr.message);
       hasError = true;
     } else {
       console.log('  ✔ Anonymous SELECT profiles rejected by database/RLS:', profilesErr.message);
@@ -54,8 +67,8 @@ async function run() {
     .select('*');
 
   if (settingsErr) {
-    if (settingsErr.code === '42P01' || settingsErr.message?.includes('does not exist')) {
-      console.error('❌ Assertion failed: table "public.user_settings" does not exist in target database.');
+    if (isMissingTableError(settingsErr)) {
+      console.error('❌ Assertion failed: table "public.user_settings" does not exist in target database:', settingsErr.message);
       hasError = true;
     } else {
       console.log('  ✔ Anonymous SELECT user_settings rejected by database/RLS:', settingsErr.message);
@@ -78,7 +91,12 @@ async function run() {
     .select();
 
   if (updateProfilesErr) {
-    console.log('  ✔ Anonymous UPDATE profiles rejected by database/RLS:', updateProfilesErr.message);
+    if (isMissingTableError(updateProfilesErr)) {
+      console.error('❌ Assertion failed: table "public.profiles" does not exist in target database:', updateProfilesErr.message);
+      hasError = true;
+    } else {
+      console.log('  ✔ Anonymous UPDATE profiles rejected by database/RLS:', updateProfilesErr.message);
+    }
   } else if (updatedProfiles && updatedProfiles.length > 0) {
     console.error(`❌ Invariant 1 Violation: Anonymous UPDATE modified ${updatedProfiles.length} profile rows!`);
     hasError = true;
@@ -95,7 +113,12 @@ async function run() {
     .select();
 
   if (updateSettingsErr) {
-    console.log('  ✔ Anonymous UPDATE user_settings rejected by database/RLS:', updateSettingsErr.message);
+    if (isMissingTableError(updateSettingsErr)) {
+      console.error('❌ Assertion failed: table "public.user_settings" does not exist in target database:', updateSettingsErr.message);
+      hasError = true;
+    } else {
+      console.log('  ✔ Anonymous UPDATE user_settings rejected by database/RLS:', updateSettingsErr.message);
+    }
   } else if (updatedSettings && updatedSettings.length > 0) {
     console.error(`❌ Invariant 1 Violation: Anonymous UPDATE modified ${updatedSettings.length} settings rows!`);
     hasError = true;

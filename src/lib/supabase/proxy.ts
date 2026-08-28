@@ -5,8 +5,34 @@ import type { Database } from "@/types/database";
 import { getSafeRedirectUrl } from "@/lib/auth/redirect";
 
 /**
+ * Helper to copy Supabase session cookies and response headers to a redirect response
+ * without overriding the Location header or interfering with redirect body headers.
+ */
+function createSafeRedirectResponse(
+  redirectUrl: URL,
+  supabaseResponse: NextResponse
+): NextResponse {
+  const redirectResponse = NextResponse.redirect(redirectUrl);
+
+  // 1. Preserve all cookies accumulated/refreshed by the Supabase client
+  supabaseResponse.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+  });
+
+  // 2. Preserve Supabase & cache headers while avoiding Location and Content-* collisions
+  supabaseResponse.headers.forEach((value, key) => {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey !== "location" && !lowerKey.startsWith("content-")) {
+      redirectResponse.headers.set(key, value);
+    }
+  });
+
+  return redirectResponse;
+}
+
+/**
  * Updates user session, enforces route protection, and propagates authentication cookies
- * at the Next.js request boundary (Proxy).
+ * and cache headers at the Next.js request boundary (Proxy).
  */
 export async function updateSession(request: NextRequest) {
   const { supabaseUrl, supabasePublishableKey, isConfigured } = getClientEnv();
@@ -60,10 +86,9 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Authenticate user via verified Supabase server identity check
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Trigger immediate session refresh and retrieve verified JWT claims at request boundary
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const isAuthenticated = Boolean(claimsData?.claims?.sub);
 
   const pathname = request.nextUrl.pathname;
 
@@ -92,30 +117,21 @@ export async function updateSession(request: NextRequest) {
   );
 
   // 1. If unauthenticated user tries to access protected route -> redirect to /login
-  if (!user && isProtectedRoute) {
+  if (!isAuthenticated && isProtectedRoute) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/login';
     redirectUrl.searchParams.set('next', pathname);
 
-    const redirectResponse = NextResponse.redirect(redirectUrl);
-    // Copy any cookies and headers accumulated by Supabase client
-    supabaseResponse.cookies.getAll().forEach((cookie) => {
-      redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
-    });
-    return redirectResponse;
+    return createSafeRedirectResponse(redirectUrl, supabaseResponse);
   }
 
   // 2. If authenticated user tries to access auth pages -> redirect to /dashboard or next param
-  if (user && isAuthRoute) {
+  if (isAuthenticated && isAuthRoute) {
     const nextParam = request.nextUrl.searchParams.get('next');
     const safeTargetPath = getSafeRedirectUrl(nextParam, '/dashboard');
     const redirectUrl = new URL(safeTargetPath, request.nextUrl.origin);
 
-    const redirectResponse = NextResponse.redirect(redirectUrl);
-    supabaseResponse.cookies.getAll().forEach((cookie) => {
-      redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
-    });
-    return redirectResponse;
+    return createSafeRedirectResponse(redirectUrl, supabaseResponse);
   }
 
   return supabaseResponse;

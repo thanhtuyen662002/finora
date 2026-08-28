@@ -133,3 +133,28 @@ This file records decisions with architectural consequences. New decisions shoul
 - Direct row insertions/updates are forbidden for unauthenticated (`anon`) users.
 - Route-level middleware (`src/proxy.ts`) protects authenticated application routes, while database RLS provides the authoritative security boundary.
 - Open-redirect mitigation enforces relative path targets for OAuth and callback redirects.
+
+---
+
+## ADR-009 — Request Boundary Proxy Pattern, Redirect Origin Hardening, and SSR Recovery Architecture
+
+**Status:** Accepted
+
+**Decision:**
+1. Standardize proxy request-boundary session refresh on `supabase.auth.getClaims()`, immediately following client construction, while preserving refreshed cookies and response/cache headers on redirects.
+2. Remove any reliance on arbitrary `x-forwarded-host` headers for OAuth and authentication callback redirects, strictly constructing redirect origins from validated request URLs or explicit application environment configuration.
+3. Support the official Supabase SSR password recovery and email verification workflow via `/auth/confirm` route handler (for `verifyOtp` with `token_hash` and `type=recovery|signup|email`) and `/auth/callback` (for PKCE `exchangeCodeForSession`), establishing a valid authenticated session before routing to `/reset-password`.
+4. Enforce strict, non-zero exit assertion semantics in verification scripts (`verify-phase2-rls.mjs` and `verify-phase2-auth.mjs`) when test credentials or target tables are missing.
+
+**Reason:**
+- Satisfies modern Supabase SSR recommendations for edge/request boundary validation without excessive round-trip overhead while maintaining cookie and header consistency.
+- Eliminates host-header injection and open redirect attack surfaces.
+- Ensures users attempting password recovery have a verified authenticated session before calling `auth.updateUser({ password })`.
+- Ensures automated CI/CD and verification gates accurately report `BLOCKED` status rather than false positive passes when credentials or database tables are absent.
+
+**Consequences:**
+- Route protection in `src/lib/supabase/proxy.ts` uses `getClaims()` and safe redirect response copying.
+- Auth callbacks use validated request origin and sanitized destination paths (`getSafeRedirectUrl`).
+- SSR password recovery flow is robust across email link mechanisms (PKCE code vs. OTP token_hash).
+- Verification tools act as authoritative test runners for RLS isolation.
+

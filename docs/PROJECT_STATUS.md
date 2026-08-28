@@ -5,80 +5,74 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 2 — Authentication + RLS (Corrective Pass Completed)
-- **Phase status:** CODE_CORRECTED / AWAITING_REMOTE_E2E_CONFIRMATION
+- **Current phase:** Phase 2 — Authentication + RLS (Final Gate Completed)
+- **Phase status:** GATE_EVALUATED / CODE_READY / REMOTE_DB_PENDING
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql` (Hardened)
 - **Verification Tooling:**
-  - `scripts/verify-phase2-auth.mjs`: Strict assertion-based anonymous RLS validation without hardcoded credentials.
-  - `scripts/verify-phase2-rls.mjs`: Dynamic two-user cross-tenant isolation and RLS authorization testing script.
+  - `scripts/verify-phase2-auth.mjs`: Strict assertion-based anonymous RLS validation (exits non-zero on violation or missing tables).
+  - `scripts/verify-phase2-rls.mjs`: Dynamic two-user cross-tenant isolation and RLS authorization testing script (exits non-zero on violation or missing credentials).
+  - `scripts/verify-phase2-redirect.mjs`: Automated redirect sanitization and path validation suite.
 - **AI integration:** Mock presentation preserved. Real Gemini integration and credential storage remain deferred.
 - **PWA:** Deferred to Phase 15.
 
-## Corrective Pass Implementation Summary
+## Final Gate Verification Matrix
 
-1. **Removed Hard-Coded Credentials:**
-   - Stripped fallback publishable key from `scripts/verify-phase2-auth.mjs`.
-   - Script strictly uses `process.env.NEXT_PUBLIC_SUPABASE_URL` and `process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) and fails non-zero if missing.
-
-2. **Assertion-Based Anonymous Verification (`scripts/verify-phase2-auth.mjs`):**
-   - Asserts anonymous SELECT on `public.profiles` returns 0 rows or is rejected.
-   - Asserts anonymous SELECT on `public.user_settings` returns 0 rows or is rejected.
-   - Asserts anonymous UPDATE on `public.profiles` and `public.user_settings` modifies 0 rows or is rejected.
-   - Exits non-zero (`process.exit(1)`) on any assertion violation or table missing error.
-
-3. **Two-User RLS Verification Tooling (`scripts/verify-phase2-rls.mjs`):**
-   - Tests User A reading/updating own data (allowed).
-   - Tests User A attempting to read/update User B's profile and user_settings (asserted 0 rows / blocked).
-   - Tests User B attempting to read/update User A's data (asserted 0 rows / blocked).
-   - Exits non-zero on any isolation breach.
-
-4. **Sanitized Login and Callback Redirects:**
-   - Implemented centralized `getSafeRedirectUrl()` in `src/lib/auth/redirect.ts` with strict relative-path, control-character, backslash, and protocol-relative (`//`) checks.
-   - Integrated into `src/app/login/page.tsx`, `src/app/auth/callback/route.ts`, and `src/lib/supabase/proxy.ts`.
-
-5. **Enforced Onboarding Routing After Email Login:**
-   - In `src/app/login/page.tsx`, successful password authentication queries `getCurrentProfile()`.
-   - If `profile.onboarding_completed === false`, user is routed to `/onboarding` regardless of raw `next` destination.
-
-6. **Truthful Settings Persistence:**
-   - In `src/app/settings/page.tsx`, database update errors from `updateCurrentProfile` or `updateCurrentUserSettings` immediately halt execution, display error feedback, and suppress success notifications.
-
-7. **Onboarding Persistence Error Handling:**
-   - In `src/app/onboarding/page.tsx`, database update errors prevent redirect to `/dashboard`, display actionable error alerts, and allow the user to retry.
-
-8. **Migration Hardening:**
-   - `handle_updated_at()`: Changed to `SECURITY INVOKER`, `SET search_path = ''`, uses `pg_catalog.now()`.
-   - `handle_new_user()`: Configured with `SECURITY DEFINER`, `SET search_path = ''`, and all schema functions (`pg_catalog.coalesce`, `pg_catalog.split_part`, `pg_catalog.now()`, `public.profiles`, `public.user_settings`) fully qualified.
-   - Applied column-level UPDATE grants on `public.profiles` and `public.user_settings` to authenticated users to protect immutable system columns (`id`, `user_id`, `created_at`).
-
-9. **Documentation Alignment:**
-   - Updated `docs/DATABASE.md` to exactly match SQL migration tables, columns, constraints, triggers, privileges, and RLS policies.
-
-## Verification State
-
-| Check | Status | Notes |
+| Gate | Status | Notes / Evidence |
 |---|---|---|
-| Redirect safety & sanitization | PASS | `getSafeRedirectUrl` tested across login, callback, and proxy |
-| Onboarding routing enforcement | PASS | Incomplete profile check added to password login flow |
-| Settings persistence truthfulness | PASS | Failure stops success feedback and displays error banner |
-| Onboarding persistence safety | PASS | Failure prevents navigation to dashboard and surfaces error |
-| Anonymous lockdown script | PASS | Assertion-based script without hardcoded secrets |
-| Two-user RLS script | PASS | Automated two-user cross-tenant test script implemented |
-| Migration hardening | PASS | Invoker permissions, empty search_path, column grants applied |
-| Database documentation | PASS | Matches migration SQL exactly |
-| TypeScript verification | PASS | `npm run typecheck` passes with zero errors |
-| Lint verification | PASS | ESLint passes with zero errors |
-| Production build | PASS | `npm run build` succeeds |
+| Remote Database Access | BLOCKED | Direct SQL execution / Service-role access not available in container; migration pending remote execution |
+| Migration Applied | NO | Tables `public.profiles` & `public.user_settings` not yet created in remote project `qibfitbnlfgiqctntufr` |
+| Anonymous Lockdown Assertion | PASS (Code) / BLOCKED (DB) | `scripts/verify-phase2-auth.mjs` correctly detects missing tables and halts non-zero |
+| Two-User RLS Isolation Script | PASS (Code) / BLOCKED (Creds) | `scripts/verify-phase2-rls.mjs` strictly halts non-zero when test credentials are absent |
+| Request-Boundary Proxy Pattern | PASS | `supabase.auth.getClaims()` restored immediately after client creation in `src/lib/supabase/proxy.ts` |
+| Proxy Header & Cookie Preservation | PASS | `createSafeRedirectResponse` preserves all cookies and non-colliding Supabase cache headers |
+| Redirect Origin Sanitization | PASS | `src/app/auth/callback/route.ts` removed untrusted `x-forwarded-host`, uses validated request origin |
+| SSR Password Recovery Flow | PASS | Implemented `/auth/confirm` (`verifyOtp`), `/auth/callback` code exchange, and safe `/reset-password` flow |
+| Redirect Path Validation | PASS | `scripts/verify-phase2-redirect.mjs` passes all test cases (open redirects, backslashes, control chars) |
+| Onboarding Route Enforcement | PASS | Incomplete onboarding redirects enforce `/onboarding` destination after password & OAuth login |
+| Settings & Onboarding Persistence | PASS | UI stops success feedback and displays errors when DB operations fail |
+| TypeScript Check (`typecheck`) | PASS | `npm run typecheck` passes with zero errors |
+| Lint Check (`lint`) | PASS | ESLint passes with zero errors |
+| Production Build (`build`) | PASS | `npm run build` succeeds |
 
-## Blockers
+## Implementation Changes in Final Gate
 
-- Remote live database execution on target Supabase project `qibfitbnlfgiqctntufr` requires direct project database access or running the hardened migration via Supabase SQL Editor.
-- When test users are provisioned, run `FINORA_TEST_USER_A_EMAIL=... FINORA_TEST_USER_A_PASSWORD=... FINORA_TEST_USER_B_EMAIL=... FINORA_TEST_USER_B_PASSWORD=... node scripts/verify-phase2-rls.mjs`.
+1. **Strict Two-User Verification Semantics (`scripts/verify-phase2-rls.mjs`):**
+   - Missing test credentials return non-zero exit code (`process.exit(1)`) with explicit `BLOCKED` diagnostic output.
+   - Asserts full bidirectional isolation across 12 distinct checks:
+     - User A SELECT own profile & user_settings (allowed).
+     - User A UPDATE own profile and restore (allowed).
+     - User A SELECT User B profile & user_settings (blocked: 0 rows returned).
+     - User A UPDATE User B profile & user_settings (blocked: 0 rows modified).
+     - User B SELECT own profile & user_settings (allowed).
+     - User B UPDATE own user_settings and restore (allowed).
+     - User B SELECT User A profile & user_settings (blocked: 0 rows returned).
+     - User B UPDATE User A profile & user_settings (blocked: 0 rows modified).
+
+2. **Restored Supabase SSR `getClaims()` Proxy Identity Pattern (`src/lib/supabase/proxy.ts`):**
+   - Calls `supabase.auth.getClaims()` immediately after creating the server client at the request boundary.
+   - Avoids extra server roundtrips while ensuring valid JWT claim validation.
+
+3. **Preserved Supabase Response and Cache Headers on Redirects (`src/lib/supabase/proxy.ts`):**
+   - `createSafeRedirectResponse()` iterates over all refreshed cookies and headers from `supabaseResponse`, attaching them to `NextResponse.redirect()` without overriding the `Location` header or interfering with response content.
+
+4. **Hardened Callback Origin Strategy (`src/app/auth/callback/route.ts`):**
+   - Removed usage of arbitrary `x-forwarded-host` headers.
+   - Derives origin strictly from the validated request URL and validates paths via `getSafeRedirectUrl()`.
+
+5. **Completed SSR/PKCE Password Recovery and Email Confirmation Flow:**
+   - Created `src/app/auth/confirm/route.ts` to handle Supabase email links with `verifyOtp({ token_hash, type })` for `type=recovery`, `type=signup`, and `type=email_change`.
+   - Updated `src/lib/auth/index.ts` `requestPasswordReset` to specify `redirectTo: ${origin}/auth/callback?next=/reset-password`.
+   - Auth callback and confirmation routes preserve `/reset-password` target so users with recovery tokens land directly on the password reset form with an active session.
 
 ## Next Recommended Action
 
-1. Apply the hardened migration `supabase/migrations/20260828000000_phase_2_auth_rls.sql` to Supabase project `qibfitbnlfgiqctntufr`.
-2. Run `node scripts/verify-phase2-auth.mjs` against the remote project.
-3. Run `scripts/verify-phase2-rls.mjs` with two test accounts.
-4. Proceed to Phase 3 (Accounts + Categories) only after remote verification is confirmed.
+1. Apply the source-controlled migration `supabase/migrations/20260828000000_phase_2_auth_rls.sql` to Supabase project `qibfitbnlfgiqctntufr` (via Supabase dashboard SQL editor or Supabase CLI).
+2. Configure Supabase Auth Email Templates (if using token hash links):
+   - Confirmation URL: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup`
+   - Recovery URL: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
+3. Provide two distinct test user credentials in the environment:
+   - `FINORA_TEST_USER_A_EMAIL`, `FINORA_TEST_USER_A_PASSWORD`
+   - `FINORA_TEST_USER_B_EMAIL`, `FINORA_TEST_USER_B_PASSWORD`
+4. Run `node scripts/verify-phase2-auth.mjs` and `node scripts/verify-phase2-rls.mjs` to achieve complete live verification.
+5. Proceed to Phase 3 (Accounts + Categories).
