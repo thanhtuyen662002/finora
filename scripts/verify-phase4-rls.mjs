@@ -1,385 +1,475 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const USER_A_EMAIL = process.env.FINORA_TEST_USER_A_EMAIL;
 const USER_A_PASSWORD = process.env.FINORA_TEST_USER_A_PASSWORD;
 const USER_B_EMAIL = process.env.FINORA_TEST_USER_B_EMAIL;
 const USER_B_PASSWORD = process.env.FINORA_TEST_USER_B_PASSWORD;
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !USER_A_EMAIL || !USER_B_EMAIL || !USER_A_PASSWORD || !USER_B_PASSWORD) {
-  console.error("FAIL: Missing Supabase environment variables or test user credentials.");
+if (
+  !SUPABASE_URL ||
+  !SUPABASE_KEY ||
+  !USER_A_EMAIL ||
+  !USER_A_PASSWORD ||
+  !USER_B_EMAIL ||
+  !USER_B_PASSWORD
+) {
+  console.error('BLOCKED: missing Supabase URL/publishable key or two-user credentials');
   process.exit(1);
 }
 
-const clientA = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const clientB = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const clientA = createClient(SUPABASE_URL, SUPABASE_KEY);
+const clientB = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function assert(condition, message) {
-  if (!condition) {
-    console.error(`FAIL: ${message}`);
-    process.exit(1);
-  }
+  if (!condition) throw new Error(message);
+}
+
+function pass(name) {
+  console.log(`${name}=PASS`);
+}
+
+async function readDetail(client, id) {
+  const { data, error } = await client
+    .from('transaction_details')
+    .select('*')
+    .eq('id', id)
+    .single();
+  assert(!error && data, `transaction_details read failed for ${id}: ${error?.message}`);
+  assert(typeof data.amount === 'string', 'transaction_details.amount must be returned as text');
+  return data;
+}
+
+async function readBalance(client, accountId) {
+  const { data, error } = await client
+    .from('account_balances')
+    .select('account_id,user_id,currency_code,current_balance')
+    .eq('account_id', accountId)
+    .single();
+  assert(!error && data, `account_balances read failed for ${accountId}: ${error?.message}`);
+  assert(typeof data.current_balance === 'string', 'account_balances.current_balance must be text');
+  return data;
+}
+
+async function assertCrossSelectEmpty(client, transactionId, label) {
+  const { data, error } = await client
+    .from('transactions')
+    .select('id')
+    .eq('id', transactionId);
+  assert(!error, `${label}: cross-user SELECT returned a database error instead of an RLS-empty result`);
+  assert(Array.isArray(data) && data.length === 0, `${label}: cross-user SELECT leaked a transaction`);
+}
+
+async function archiveFixture(client, table, id) {
+  const { data, error } = await client
+    .from(table)
+    .update({ is_archived: true })
+    .eq('id', id)
+    .select('id,is_archived')
+    .single();
+  assert(!error && data?.is_archived === true, `cleanup failed to archive ${table}:${id}: ${error?.message}`);
+}
+
+async function voidFixture(client, id) {
+  const { data, error } = await client
+    .from('transactions')
+    .update({ is_voided: true })
+    .eq('id', id)
+    .select('id,is_voided')
+    .single();
+  assert(!error && data?.is_voided === true, `cleanup failed to void transaction ${id}: ${error?.message}`);
 }
 
 async function run() {
-  console.log("--- FINORA PHASE 4 TWO-USER RUNTIME RLS & INTEGRITY MATRIX ---");
+  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const today = new Date().toISOString().slice(0, 10);
 
-  // 1. Authenticate User A and User B
-  console.log("1. Authenticating User A & User B...");
-  const { data: authA, error: errA } = await clientA.auth.signInWithPassword({
-    email: USER_A_EMAIL,
-    password: USER_A_PASSWORD,
-  });
-  assert(!errA && authA?.user, `User A login failed: ${errA?.message}`);
-  const uidA = authA.user.id;
-
-  const { data: authB, error: errB } = await clientB.auth.signInWithPassword({
-    email: USER_B_EMAIL,
-    password: USER_B_PASSWORD,
-  });
-  assert(!errB && authB?.user, `User B login failed: ${errB?.message}`);
-  const uidB = authB.user.id;
-
-  assert(uidA !== uidB, "User A and User B must be distinct test users");
-
-  // 2. Setup Fixtures for User A
-  console.log("2. Setting up fixtures for User A...");
-  const { data: catA_Exp, error: catAErr1 } = await clientA.from('categories').insert({
-    user_id: uidA,
-    name: 'P4_Test_CatA_Exp',
-    type: 'EXPENSE',
-    icon: 'Car',
-    color: '#e11d48',
-  }).select().single();
-  assert(!catAErr1 && catA_Exp, `User A Expense category insert failed: ${catAErr1?.message}`);
-
-  const { data: catA_Inc, error: catAErr2 } = await clientA.from('categories').insert({
-    user_id: uidA,
-    name: 'P4_Test_CatA_Inc',
-    type: 'INCOME',
-    icon: 'Briefcase',
-    color: '#10b981',
-  }).select().single();
-  assert(!catAErr2 && catA_Inc, `User A Income category insert failed: ${catAErr2?.message}`);
-
-  const { data: accA, error: accAErr } = await clientA.from('accounts').insert({
-    user_id: uidA,
-    name: 'P4_Test_AccA_VND',
-    type: 'CASH',
-    currency_code: 'VND',
-    opening_balance: 1000000,
-    color: '#2563eb',
-  }).select().single();
-  assert(!accAErr && accA, `User A account insert failed: ${accAErr?.message}`);
-
-  // 3. Setup Fixtures for User B
-  console.log("3. Setting up fixtures for User B...");
-  const { data: catB_Exp, error: catBErr1 } = await clientB.from('categories').insert({
-    user_id: uidB,
-    name: 'P4_Test_CatB_Exp',
-    type: 'EXPENSE',
-    icon: 'Film',
-    color: '#7c3aed',
-  }).select().single();
-  assert(!catBErr1 && catB_Exp, `User B Expense category insert failed: ${catBErr1?.message}`);
-
-  const { data: catB_Inc, error: catBErr2 } = await clientB.from('categories').insert({
-    user_id: uidB,
-    name: 'P4_Test_CatB_Inc',
-    type: 'INCOME',
-    icon: 'TrendingUp',
-    color: '#059669',
-  }).select().single();
-  assert(!catBErr2 && catB_Inc, `User B Income category insert failed: ${catBErr2?.message}`);
-
-  const { data: accB, error: accBErr } = await clientB.from('accounts').insert({
-    user_id: uidB,
-    name: 'P4_Test_AccB_VND',
-    type: 'BANK',
-    currency_code: 'VND',
-    opening_balance: 2000000,
-    color: '#d97706',
-  }).select().single();
-  assert(!accBErr && accB, `User B account insert failed: ${accBErr?.message}`);
-
-  // Fixture IDs to clean up
-  const createdTxsA = [];
-  const createdTxsB = [];
+  const transactionFixtures = [];
+  const archiveFixtures = [];
+  let cleanupStarted = false;
 
   try {
-    // 4. User A Own Transaction Lifecycle & Derived Balance Check
-    console.log("4. Testing User A own transactions & exact derived balances...");
-    // A creates EXPENSE: 200,000 VND
-    const { data: txA1, error: txA1Err } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accA.id,
-      category_id: catA_Exp.id,
-      type: 'EXPENSE',
-      amount: '200000.0000',
-      currency_code: 'VND',
-      merchant: 'A_Merchant_1',
-      note: 'A Expense',
-      occurred_on: '2026-08-28',
-    }).select().single();
-    assert(!txA1Err && txA1, `User A tx1 insert failed: ${txA1Err?.message}`);
-    createdTxsA.push(txA1.id);
-
-    // Verify User A derived balance: 1,000,000 - 200,000 = 800,000.0000
-    const { data: balA1, error: balA1Err } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
-    assert(!balA1Err && balA1?.current_balance === '800000.0000', `Balance A1 mismatch (expected 800000.0000, got ${balA1?.current_balance})`);
-
-    // A creates INCOME: 500,000 VND
-    const { data: txA2, error: txA2Err } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accA.id,
-      category_id: catA_Inc.id,
-      type: 'INCOME',
-      amount: '500000.0000',
-      currency_code: 'VND',
-      merchant: 'A_Income_Source',
-      occurred_on: '2026-08-28',
-    }).select().single();
-    assert(!txA2Err && txA2, `User A tx2 insert failed: ${txA2Err?.message}`);
-    createdTxsA.push(txA2.id);
-
-    // Verify User A derived balance: 800,000 + 500,000 = 1,300,000.0000
-    const { data: balA2 } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
-    assert(balA2?.current_balance === '1300000.0000', `Balance A2 mismatch (expected 1300000.0000, got ${balA2?.current_balance})`);
-
-    // A updates tx1 amount to 300,000
-    const { error: upTxA1Err } = await clientA.from('transactions').update({
-      amount: '300000.0000',
-    }).eq('id', txA1.id);
-    assert(!upTxA1Err, `User A tx1 update failed: ${upTxA1Err?.message}`);
-
-    // Verify User A derived balance: 1,000,000 - 300,000 + 500,000 = 1,200,000.0000
-    const { data: balA3 } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
-    assert(balA3?.current_balance === '1200000.0000', `Balance A3 mismatch (expected 1200000.0000, got ${balA3?.current_balance})`);
-
-    // A voids tx1
-    const { error: voidA1Err } = await clientA.from('transactions').update({
-      is_voided: true,
-    }).eq('id', txA1.id);
-    assert(!voidA1Err, `User A void tx1 failed: ${voidA1Err?.message}`);
-
-    // Verify User A derived balance: 1,000,000 + 500,000 = 1,500,000.0000
-    const { data: balA4 } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
-    assert(balA4?.current_balance === '1500000.0000', `Balance A4 void mismatch (expected 1500000.0000, got ${balA4?.current_balance})`);
-
-    // A restores tx1
-    const { error: restoreA1Err } = await clientA.from('transactions').update({
-      is_voided: false,
-    }).eq('id', txA1.id);
-    assert(!restoreA1Err, `User A restore tx1 failed: ${restoreA1Err?.message}`);
-
-    // Verify User A derived balance: back to 1,200,000.0000
-    const { data: balA5 } = await clientA.from('account_balances').select().eq('account_id', accA.id).single();
-    assert(balA5?.current_balance === '1200000.0000', `Balance A5 restore mismatch (expected 1200000.0000, got ${balA5?.current_balance})`);
-
-    // 5. User B Own Transaction Lifecycle & Balance Check
-    console.log("5. Testing User B own transactions & balance...");
-    const { data: txB1, error: txB1Err } = await clientB.from('transactions').insert({
-      user_id: uidB,
-      account_id: accB.id,
-      category_id: catB_Exp.id,
-      type: 'EXPENSE',
-      amount: '400000.0000',
-      currency_code: 'VND',
-      merchant: 'B_Merchant_1',
-      occurred_on: '2026-08-28',
-    }).select().single();
-    assert(!txB1Err && txB1, `User B tx1 insert failed: ${txB1Err?.message}`);
-    createdTxsB.push(txB1.id);
-
-    // Verify User B derived balance: 2,000,000 - 400,000 = 1,600,000.0000
-    const { data: balB1 } = await clientB.from('account_balances').select().eq('account_id', accB.id).single();
-    assert(balB1?.current_balance === '1600000.0000', `Balance B1 mismatch (expected 1600000.0000, got ${balB1?.current_balance})`);
-
-    // 6. Cross-User Transaction Isolation Matrix
-    console.log("6. Testing cross-user isolation barriers...");
-
-    // B tries to SELECT A's transaction
-    const { data: bReadA } = await clientB.from('transactions').select().eq('id', txA1.id);
-    assert(!bReadA || bReadA.length === 0, "Security violation: User B was able to read User A transaction");
-
-    // A tries to SELECT B's transaction
-    const { data: aReadB } = await clientA.from('transactions').select().eq('id', txB1.id);
-    assert(!aReadB || aReadB.length === 0, "Security violation: User A was able to read User B transaction");
-
-    // B tries to UPDATE A's transaction
-    const { error: bUpA } = await clientB.from('transactions').update({ merchant: 'HACKED_BY_B' }).eq('id', txA1.id);
-    const { data: verifyA1 } = await clientA.from('transactions').select().eq('id', txA1.id).single();
-    assert(verifyA1.merchant !== 'HACKED_BY_B', "Security violation: User B was able to update User A transaction");
-
-    // A tries to UPDATE B's transaction
-    const { error: aUpB } = await clientA.from('transactions').update({ merchant: 'HACKED_BY_A' }).eq('id', txB1.id);
-    const { data: verifyB1 } = await clientB.from('transactions').select().eq('id', txB1.id).single();
-    assert(verifyB1.merchant !== 'HACKED_BY_A', "Security violation: User A was able to update User B transaction");
-
-    // B tries to DELETE A's transaction
-    const { error: bDelA } = await clientB.from('transactions').delete().eq('id', txA1.id);
-    const { data: verifyA1StillExists } = await clientA.from('transactions').select().eq('id', txA1.id);
-    assert(verifyA1StillExists && verifyA1StillExists.length === 1, "Security violation: User B was able to delete User A transaction or DELETE policy allowed");
-
-    // A tries to DELETE own transaction (should be blocked by 0 DELETE policies / privilege revoke)
-    const { error: aDelA } = await clientA.from('transactions').delete().eq('id', txA1.id);
-    const { data: verifyA1AfterDel } = await clientA.from('transactions').select().eq('id', txA1.id);
-    assert(verifyA1AfterDel && verifyA1AfterDel.length === 1, "Security violation: DELETE operation on transactions must be rejected");
-
-    // 7. Composite Foreign Key & Cross-User Reference Integrity
-    console.log("7. Testing composite foreign key & cross-user reference boundaries...");
-
-    // A tries to insert transaction referencing B's account
-    const { data: crossAccA, error: crossAccAErr } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accB.id,
-      category_id: catA_Exp.id,
-      type: 'EXPENSE',
-      amount: '50000.0000',
-      currency_code: 'VND',
-      merchant: 'Cross_Acc',
-    }).select();
-    assert(crossAccAErr, "Integrity violation: User A was able to reference User B account");
-
-    // A tries to insert transaction referencing B's category
-    const { data: crossCatA, error: crossCatAErr } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accA.id,
-      category_id: catB_Exp.id,
-      type: 'EXPENSE',
-      amount: '50000.0000',
-      currency_code: 'VND',
-      merchant: 'Cross_Cat',
-    }).select();
-    assert(crossCatAErr, "Integrity violation: User A was able to reference User B category");
-
-    // B tries to insert transaction referencing A's account
-    const { data: crossAccB, error: crossAccBErr } = await clientB.from('transactions').insert({
-      user_id: uidB,
-      account_id: accA.id,
-      category_id: catB_Exp.id,
-      type: 'EXPENSE',
-      amount: '50000.0000',
-      currency_code: 'VND',
-      merchant: 'Cross_Acc_B',
-    }).select();
-    assert(crossAccBErr, "Integrity violation: User B was able to reference User A account");
-
-    // B tries to insert transaction referencing A's category
-    const { data: crossCatB, error: crossCatBErr } = await clientB.from('transactions').insert({
-      user_id: uidB,
-      account_id: accB.id,
-      category_id: catA_Exp.id,
-      type: 'EXPENSE',
-      amount: '50000.0000',
-      currency_code: 'VND',
-      merchant: 'Cross_Cat_B',
-    }).select();
-    assert(crossCatBErr, "Integrity violation: User B was able to reference User A category");
-
-    // 8. Type & Currency Composite Foreign Key Protection
-    console.log("8. Testing type & currency composite FK invariants...");
-
-    // EXPENSE transaction referencing INCOME category (should fail composite FK)
-    const { error: typeMismatchErr } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accA.id,
-      category_id: catA_Inc.id,
-      type: 'EXPENSE',
-      amount: '50000.0000',
-      currency_code: 'VND',
-      merchant: 'Type_Mismatch',
+    const { data: authA, error: authAError } = await clientA.auth.signInWithPassword({
+      email: USER_A_EMAIL,
+      password: USER_A_PASSWORD,
     });
-    assert(typeMismatchErr, "Integrity violation: EXPENSE transaction referenced INCOME category");
+    assert(!authAError && authA?.user, `User A auth failed: ${authAError?.message}`);
+    const uidA = authA.user.id;
+    pass('USER_A_AUTH');
 
-    // Transaction with currency USD referencing VND account (should fail composite FK)
-    const { error: currMismatchErr } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accA.id,
-      category_id: catA_Exp.id,
-      type: 'EXPENSE',
-      amount: '50.0000',
-      currency_code: 'USD',
-      merchant: 'Currency_Mismatch',
+    const { data: authB, error: authBError } = await clientB.auth.signInWithPassword({
+      email: USER_B_EMAIL,
+      password: USER_B_PASSWORD,
     });
-    assert(currMismatchErr, "Integrity violation: USD transaction referenced VND account");
+    assert(!authBError && authB?.user, `User B auth failed: ${authBError?.message}`);
+    const uidB = authB.user.id;
+    assert(uidA !== uidB, 'User A and User B must be distinct');
+    pass('USER_B_AUTH');
 
-    // 9. CHECK Constraints & Column-Level Privilege Protections
-    console.log("9. Testing check constraints and immutable column restrictions...");
+    const { data: catAExpense, error: catAExpenseError } = await clientA
+      .from('categories')
+      .insert({
+        user_id: uidA,
+        name: `P4_${suffix}_A_EXP`,
+        type: 'EXPENSE',
+        icon: 'Car',
+        color: '#e11d48',
+      })
+      .select('*')
+      .single();
+    assert(!catAExpenseError && catAExpense, `A expense category setup failed: ${catAExpenseError?.message}`);
+    archiveFixtures.push({ client: clientA, table: 'categories', id: catAExpense.id });
 
-    // Amount <= 0 rejected
-    const { error: zeroAmtErr } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accA.id,
-      category_id: catA_Exp.id,
-      type: 'EXPENSE',
-      amount: '0.0000',
-      currency_code: 'VND',
-      merchant: 'Zero_Amt',
-    });
-    assert(zeroAmtErr, "Constraint violation: Zero amount transaction was accepted");
+    const { data: catAIncome, error: catAIncomeError } = await clientA
+      .from('categories')
+      .insert({
+        user_id: uidA,
+        name: `P4_${suffix}_A_INC`,
+        type: 'INCOME',
+        icon: 'Briefcase',
+        color: '#10b981',
+      })
+      .select('*')
+      .single();
+    assert(!catAIncomeError && catAIncome, `A income category setup failed: ${catAIncomeError?.message}`);
+    archiveFixtures.push({ client: clientA, table: 'categories', id: catAIncome.id });
 
-    // Negative amount rejected
-    const { error: negAmtErr } = await clientA.from('transactions').insert({
-      user_id: uidA,
-      account_id: accA.id,
-      category_id: catA_Exp.id,
-      type: 'EXPENSE',
-      amount: '-10000.0000',
-      currency_code: 'VND',
-      merchant: 'Neg_Amt',
-    });
-    assert(negAmtErr, "Constraint violation: Negative amount transaction was accepted");
+    const { data: accountA, error: accountAError } = await clientA
+      .from('accounts')
+      .insert({
+        user_id: uidA,
+        name: `P4_${suffix}_A_VND`,
+        type: 'CASH',
+        currency_code: 'VND',
+        opening_balance: '1000000.0000',
+        color: '#2563eb',
+      })
+      .select('*')
+      .single();
+    assert(!accountAError && accountA, `A account setup failed: ${accountAError?.message}`);
+    archiveFixtures.push({ client: clientA, table: 'accounts', id: accountA.id });
 
-    // Attempt to mutate user_id (ownership takeover)
-    const { error: userMutErr } = await clientA.from('transactions').update({
+    const { data: catBExpense, error: catBExpenseError } = await clientB
+      .from('categories')
+      .insert({
+        user_id: uidB,
+        name: `P4_${suffix}_B_EXP`,
+        type: 'EXPENSE',
+        icon: 'Film',
+        color: '#7c3aed',
+      })
+      .select('*')
+      .single();
+    assert(!catBExpenseError && catBExpense, `B expense category setup failed: ${catBExpenseError?.message}`);
+    archiveFixtures.push({ client: clientB, table: 'categories', id: catBExpense.id });
+
+    const { data: catBIncome, error: catBIncomeError } = await clientB
+      .from('categories')
+      .insert({
+        user_id: uidB,
+        name: `P4_${suffix}_B_INC`,
+        type: 'INCOME',
+        icon: 'TrendingUp',
+        color: '#059669',
+      })
+      .select('*')
+      .single();
+    assert(!catBIncomeError && catBIncome, `B income category setup failed: ${catBIncomeError?.message}`);
+    archiveFixtures.push({ client: clientB, table: 'categories', id: catBIncome.id });
+
+    const { data: accountB, error: accountBError } = await clientB
+      .from('accounts')
+      .insert({
+        user_id: uidB,
+        name: `P4_${suffix}_B_VND`,
+        type: 'BANK',
+        currency_code: 'VND',
+        opening_balance: '2000000.0000',
+        color: '#d97706',
+      })
+      .select('*')
+      .single();
+    assert(!accountBError && accountB, `B account setup failed: ${accountBError?.message}`);
+    archiveFixtures.push({ client: clientB, table: 'accounts', id: accountB.id });
+
+    const { data: txAExpense, error: txAExpenseError } = await clientA
+      .from('transactions')
+      .insert({
+        user_id: uidA,
+        account_id: accountA.id,
+        category_id: catAExpense.id,
+        type: 'EXPENSE',
+        amount: '200000.0000',
+        currency_code: 'VND',
+        merchant: `P4_${suffix}_A_EXPENSE`,
+        note: 'A expense lifecycle',
+        occurred_on: today,
+      })
+      .select('id')
+      .single();
+    assert(!txAExpenseError && txAExpense, `A expense insert failed: ${txAExpenseError?.message}`);
+    transactionFixtures.push({ client: clientA, id: txAExpense.id });
+
+    const detailAExpense = await readDetail(clientA, txAExpense.id);
+    assert(detailAExpense.amount === '200000.0000', 'A exact amount read-back mismatch');
+    assert((await readBalance(clientA, accountA.id)).current_balance === '800000.0000', 'A first balance mismatch');
+
+    const { data: txAIncome, error: txAIncomeError } = await clientA
+      .from('transactions')
+      .insert({
+        user_id: uidA,
+        account_id: accountA.id,
+        category_id: catAIncome.id,
+        type: 'INCOME',
+        amount: '500000.0000',
+        currency_code: 'VND',
+        merchant: `P4_${suffix}_A_INCOME`,
+        occurred_on: today,
+      })
+      .select('id')
+      .single();
+    assert(!txAIncomeError && txAIncome, `A income insert failed: ${txAIncomeError?.message}`);
+    transactionFixtures.push({ client: clientA, id: txAIncome.id });
+    assert((await readBalance(clientA, accountA.id)).current_balance === '1300000.0000', 'A income balance mismatch');
+
+    const { error: updateAError } = await clientA
+      .from('transactions')
+      .update({ amount: '300000.0000', merchant: `P4_${suffix}_A_UPDATED`, occurred_on: today })
+      .eq('id', txAExpense.id)
+      .select('id')
+      .single();
+    assert(!updateAError, `A own update failed: ${updateAError?.message}`);
+    const updatedA = await readDetail(clientA, txAExpense.id);
+    assert(updatedA.amount === '300000.0000' && updatedA.merchant.endsWith('_A_UPDATED'), 'A update read-back failed');
+    assert((await readBalance(clientA, accountA.id)).current_balance === '1200000.0000', 'A updated balance mismatch');
+
+    const { error: voidAError } = await clientA
+      .from('transactions')
+      .update({ is_voided: true })
+      .eq('id', txAExpense.id)
+      .select('id')
+      .single();
+    assert(!voidAError, `A void failed: ${voidAError?.message}`);
+    assert((await readDetail(clientA, txAExpense.id)).is_voided === true, 'A void read-back failed');
+    assert((await readBalance(clientA, accountA.id)).current_balance === '1500000.0000', 'A void balance mismatch');
+
+    const { error: restoreAError } = await clientA
+      .from('transactions')
+      .update({ is_voided: false })
+      .eq('id', txAExpense.id)
+      .select('id')
+      .single();
+    assert(!restoreAError, `A restore failed: ${restoreAError?.message}`);
+    assert((await readDetail(clientA, txAExpense.id)).is_voided === false, 'A restore read-back failed');
+    assert((await readBalance(clientA, accountA.id)).current_balance === '1200000.0000', 'A restore balance mismatch');
+    pass('USER_A_OWN_TRANSACTION_LIFECYCLE');
+
+    const { data: txBExpense, error: txBExpenseError } = await clientB
+      .from('transactions')
+      .insert({
+        user_id: uidB,
+        account_id: accountB.id,
+        category_id: catBExpense.id,
+        type: 'EXPENSE',
+        amount: '400000.0000',
+        currency_code: 'VND',
+        merchant: `P4_${suffix}_B_EXPENSE`,
+        occurred_on: today,
+      })
+      .select('id')
+      .single();
+    assert(!txBExpenseError && txBExpense, `B expense insert failed: ${txBExpenseError?.message}`);
+    transactionFixtures.push({ client: clientB, id: txBExpense.id });
+    assert((await readDetail(clientB, txBExpense.id)).amount === '400000.0000', 'B exact amount read-back mismatch');
+    assert((await readBalance(clientB, accountB.id)).current_balance === '1600000.0000', 'B first balance mismatch');
+
+    const { error: updateBError } = await clientB
+      .from('transactions')
+      .update({ amount: '450000.0000', merchant: `P4_${suffix}_B_UPDATED`, occurred_on: today })
+      .eq('id', txBExpense.id)
+      .select('id')
+      .single();
+    assert(!updateBError, `B own update failed: ${updateBError?.message}`);
+    const updatedB = await readDetail(clientB, txBExpense.id);
+    assert(updatedB.amount === '450000.0000' && updatedB.merchant.endsWith('_B_UPDATED'), 'B update read-back failed');
+    assert((await readBalance(clientB, accountB.id)).current_balance === '1550000.0000', 'B updated balance mismatch');
+
+    const { error: voidBError } = await clientB
+      .from('transactions')
+      .update({ is_voided: true })
+      .eq('id', txBExpense.id)
+      .select('id')
+      .single();
+    assert(!voidBError, `B void failed: ${voidBError?.message}`);
+    assert((await readDetail(clientB, txBExpense.id)).is_voided === true, 'B void read-back failed');
+    assert((await readBalance(clientB, accountB.id)).current_balance === '2000000.0000', 'B void balance mismatch');
+
+    const { error: restoreBError } = await clientB
+      .from('transactions')
+      .update({ is_voided: false })
+      .eq('id', txBExpense.id)
+      .select('id')
+      .single();
+    assert(!restoreBError, `B restore failed: ${restoreBError?.message}`);
+    assert((await readDetail(clientB, txBExpense.id)).is_voided === false, 'B restore read-back failed');
+    assert((await readBalance(clientB, accountB.id)).current_balance === '1550000.0000', 'B restore balance mismatch');
+    pass('USER_B_OWN_TRANSACTION_LIFECYCLE');
+
+    const { error: aOwnsBInsertError } = await clientA.from('transactions').insert({
       user_id: uidB,
-    }).eq('id', txA1.id);
-    assert(userMutErr, "Security violation: User was able to mutate transaction user_id");
+      account_id: accountB.id,
+      category_id: catBExpense.id,
+      type: 'EXPENSE',
+      amount: '10000.0000',
+      currency_code: 'VND',
+      merchant: 'A_CANNOT_OWN_B',
+      occurred_on: today,
+    });
+    assert(aOwnsBInsertError, 'A inserted a transaction owned by B');
 
-    // 10. View Isolation & Security Invoker Validation
-    console.log("10. Testing view isolation and security_invoker enforcement...");
-    
-    // User A reads transaction_details
-    const { data: viewA, error: viewAErr } = await clientA.from('transaction_details').select().eq('id', txA1.id);
-    assert(!viewAErr && viewA && viewA.length === 1, `User A failed to read own transaction_details: ${viewAErr?.message}`);
-    assert(typeof viewA[0].amount === 'string', "Exact read error: transaction_details.amount must be text");
+    const { error: bOwnsAInsertError } = await clientB.from('transactions').insert({
+      user_id: uidA,
+      account_id: accountA.id,
+      category_id: catAExpense.id,
+      type: 'EXPENSE',
+      amount: '10000.0000',
+      currency_code: 'VND',
+      merchant: 'B_CANNOT_OWN_A',
+      occurred_on: today,
+    });
+    assert(bOwnsAInsertError, 'B inserted a transaction owned by A');
+    pass('CROSS_USER_OWNED_INSERT_BLOCKED');
 
-    // User B reads transaction_details for A's transaction (must return 0 rows)
-    const { data: viewB, error: viewBErr } = await clientB.from('transaction_details').select().eq('id', txA1.id);
-    assert(!viewBErr && (!viewB || viewB.length === 0), "Security violation: User B read User A row via transaction_details view");
+    const crossReferenceCases = [
+      [clientA, uidA, accountB.id, catAExpense.id, 'A->B account'],
+      [clientA, uidA, accountA.id, catBExpense.id, 'A->B category'],
+      [clientB, uidB, accountA.id, catBExpense.id, 'B->A account'],
+      [clientB, uidB, accountB.id, catAExpense.id, 'B->A category'],
+    ];
+    for (const [client, userId, accountId, categoryId, label] of crossReferenceCases) {
+      const { error } = await client.from('transactions').insert({
+        user_id: userId,
+        account_id: accountId,
+        category_id: categoryId,
+        type: 'EXPENSE',
+        amount: '10000.0000',
+        currency_code: 'VND',
+        merchant: `BLOCK_${suffix}`,
+        occurred_on: today,
+      });
+      assert(error, `${label}: composite ownership FK did not block insert`);
+    }
+    pass('CROSS_USER_ACCOUNT_CATEGORY_REFERENCES_BLOCKED');
 
-    // User B reads account_balances for A's account (must return 0 rows or error)
-    const { data: accBalB } = await clientB.from('account_balances').select().eq('account_id', accA.id);
-    assert(!accBalB || accBalB.length === 0, "Security violation: User B read User A account balance via view");
+    await assertCrossSelectEmpty(clientB, txAExpense.id, 'B->A');
+    await assertCrossSelectEmpty(clientA, txBExpense.id, 'A->B');
+    pass('CROSS_USER_SELECT_BLOCKED');
 
-    console.log("All matrix assertions passed successfully!");
+    await clientB.from('transactions').update({ merchant: 'HACKED_BY_B' }).eq('id', txAExpense.id);
+    await clientA.from('transactions').update({ merchant: 'HACKED_BY_A' }).eq('id', txBExpense.id);
+    assert((await readDetail(clientA, txAExpense.id)).merchant !== 'HACKED_BY_B', 'B updated A transaction');
+    assert((await readDetail(clientB, txBExpense.id)).merchant !== 'HACKED_BY_A', 'A updated B transaction');
+    pass('CROSS_USER_UPDATE_BLOCKED');
+
+    const { error: ownershipMutationA } = await clientA
+      .from('transactions')
+      .update({ user_id: uidB })
+      .eq('id', txAExpense.id);
+    const { error: ownershipMutationB } = await clientB
+      .from('transactions')
+      .update({ user_id: uidA })
+      .eq('id', txBExpense.id);
+    assert(ownershipMutationA && ownershipMutationB, 'transaction user_id mutation was not blocked for both users');
+    pass('OWNERSHIP_CHANGE_BLOCKED');
+
+    const invalidCases = [
+      {
+        label: 'EXPENSE->INCOME category',
+        client: clientA,
+        row: { user_id: uidA, account_id: accountA.id, category_id: catAIncome.id, type: 'EXPENSE', amount: '10000.0000', currency_code: 'VND', merchant: 'BAD_TYPE_1', occurred_on: today },
+      },
+      {
+        label: 'INCOME->EXPENSE category',
+        client: clientA,
+        row: { user_id: uidA, account_id: accountA.id, category_id: catAExpense.id, type: 'INCOME', amount: '10000.0000', currency_code: 'VND', merchant: 'BAD_TYPE_2', occurred_on: today },
+      },
+      {
+        label: 'currency mismatch',
+        client: clientA,
+        row: { user_id: uidA, account_id: accountA.id, category_id: catAExpense.id, type: 'EXPENSE', amount: '10.0000', currency_code: 'USD', merchant: 'BAD_CURRENCY', occurred_on: today },
+      },
+      {
+        label: 'zero amount',
+        client: clientA,
+        row: { user_id: uidA, account_id: accountA.id, category_id: catAExpense.id, type: 'EXPENSE', amount: '0.0000', currency_code: 'VND', merchant: 'BAD_ZERO', occurred_on: today },
+      },
+      {
+        label: 'negative amount',
+        client: clientA,
+        row: { user_id: uidA, account_id: accountA.id, category_id: catAExpense.id, type: 'EXPENSE', amount: '-1.0000', currency_code: 'VND', merchant: 'BAD_NEGATIVE', occurred_on: today },
+      },
+      {
+        label: 'TRANSFER type',
+        client: clientA,
+        row: { user_id: uidA, account_id: accountA.id, category_id: catAExpense.id, type: 'TRANSFER', amount: '10000.0000', currency_code: 'VND', merchant: 'BAD_TRANSFER', occurred_on: today },
+      },
+    ];
+    for (const testCase of invalidCases) {
+      const { error } = await testCase.client.from('transactions').insert(testCase.row);
+      assert(error, `${testCase.label}: invalid transaction was accepted`);
+    }
+    pass('DOMAIN_INTEGRITY_CONSTRAINTS');
+
+    const { error: deleteOwnA } = await clientA.from('transactions').delete().eq('id', txAExpense.id);
+    const { error: deleteOwnB } = await clientB.from('transactions').delete().eq('id', txBExpense.id);
+    assert(deleteOwnA && deleteOwnB, 'normal clients received DELETE capability');
+    assert((await readDetail(clientA, txAExpense.id)).id === txAExpense.id, 'A transaction disappeared after blocked DELETE');
+    assert((await readDetail(clientB, txBExpense.id)).id === txBExpense.id, 'B transaction disappeared after blocked DELETE');
+    pass('DELETE_BLOCKED');
+
+    const { data: allViewA, error: allViewAError } = await clientA.from('transaction_details').select('id,user_id');
+    const { data: allViewB, error: allViewBError } = await clientB.from('transaction_details').select('id,user_id');
+    assert(!allViewAError && allViewA?.every((row) => row.user_id === uidA), 'transaction_details leaked rows to A');
+    assert(!allViewBError && allViewB?.every((row) => row.user_id === uidB), 'transaction_details leaked rows to B');
+
+    const { data: crossDetailBA, error: crossDetailBAError } = await clientB.from('transaction_details').select('id').eq('id', txAExpense.id);
+    const { data: crossDetailAB, error: crossDetailABError } = await clientA.from('transaction_details').select('id').eq('id', txBExpense.id);
+    assert(!crossDetailBAError && crossDetailBA?.length === 0, 'transaction_details leaked A row to B');
+    assert(!crossDetailABError && crossDetailAB?.length === 0, 'transaction_details leaked B row to A');
+
+    const { data: crossBalanceBA, error: crossBalanceBAError } = await clientB.from('account_balances').select('account_id').eq('account_id', accountA.id);
+    const { data: crossBalanceAB, error: crossBalanceABError } = await clientA.from('account_balances').select('account_id').eq('account_id', accountB.id);
+    assert(!crossBalanceBAError && crossBalanceBA?.length === 0, 'account_balances leaked A row to B');
+    assert(!crossBalanceABError && crossBalanceAB?.length === 0, 'account_balances leaked B row to A');
+    pass('SECURITY_INVOKER_VIEW_ISOLATION');
+
+    const { error: deliberateDatabaseError } = await clientA
+      .from('transactions')
+      .select('id')
+      .eq('id', 'not-a-valid-uuid');
+    assert(deliberateDatabaseError, 'deliberate normal database error was not distinguishable from an RLS-empty result');
+    pass('DELIBERATE_DATABASE_ERROR');
   } finally {
-    // 11. Fixture Cleanup & Archiving
-    console.log("11. Cleaning up test fixtures...");
-    for (const txId of createdTxsA) {
-      await clientA.from('transactions').update({ is_voided: true }).eq('id', txId);
-    }
-    for (const txId of createdTxsB) {
-      await clientB.from('transactions').update({ is_voided: true }).eq('id', txId);
-    }
-    await clientA.from('accounts').update({ is_archived: true }).eq('id', accA.id);
-    await clientA.from('categories').update({ is_archived: true }).eq('id', catA_Exp.id);
-    await clientA.from('categories').update({ is_archived: true }).eq('id', catA_Inc.id);
+    cleanupStarted = true;
 
-    await clientB.from('accounts').update({ is_archived: true }).eq('id', accB.id);
-    await clientB.from('categories').update({ is_archived: true }).eq('id', catB_Exp.id);
-    await clientB.from('categories').update({ is_archived: true }).eq('id', catB_Inc.id);
+    for (const fixture of transactionFixtures) {
+      await voidFixture(fixture.client, fixture.id);
+    }
+    for (const fixture of archiveFixtures) {
+      await archiveFixture(fixture.client, fixture.table, fixture.id);
+    }
+
+    if (cleanupStarted) pass('TEST_RECORD_CLEANUP');
   }
 
-  console.log("\n========================================");
-  console.log("PHASE 4 RUNTIME RLS & INTEGRITY: PASS");
-  console.log("========================================\n");
-  process.exit(0);
+  pass('PHASE_4_TWO_USER_RLS');
+  console.log('PROCESS_EXIT_CODE=0');
 }
 
-run().catch((err) => {
-  console.error("FATAL UNEXPECTED ERROR IN VERIFIER:", err);
-  process.exit(1);
-});
+run()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(`PHASE_4_TWO_USER_RLS=FAIL\n${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
