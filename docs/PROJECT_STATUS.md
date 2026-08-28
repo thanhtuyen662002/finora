@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 2 — Authentication + RLS
-- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / RUNTIME_RLS_E2E_PENDING
+- **Phase status:** REMOTE_DB_STRUCTURAL_PASS / ANON_RLS_PASS / TWO_USER_RLS_BLOCKED_USER_B_CREDENTIAL
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Source-controlled migration:** `supabase/migrations/20260828000000_phase_2_auth_rls.sql`
 - **Strict structural verifier:** `scripts/verify-phase2-db.sql`
@@ -17,7 +17,7 @@
 
 ## Phase 2 Code Gate
 
-Phase 2 implementation and corrective/final-gate code are complete and published. The following code-level gates are confirmed:
+Phase 2 implementation and corrective/final-gate code are complete and published. Confirmed code-level gates include:
 
 - Supabase SSR request-boundary identity validation uses `supabase.auth.getClaims()`.
 - Redirect paths are sanitized centrally.
@@ -42,7 +42,7 @@ The Phase 2 migration has been manually applied to Supabase project `qibfitbnlfg
 | `07_anon_public_no_privileges` | PASS | No anon/public table privileges |
 | `08_authenticated_table_privileges_exact` | PASS | `profiles:SELECT | user_settings:SELECT` |
 | `09_authenticated_update_columns_exact` | PASS | Only 7 approved mutable columns have authenticated UPDATE privileges |
-| `10_auth_backfill_complete` | PASS | `auth_users=0, profiles=0, user_settings=0` at verification time |
+| `10_auth_backfill_complete` | PASS | Structural verifier completed successfully |
 | `99_OVERALL` | PASS | `Phase 2 database structural gate passed with least-privilege grants` |
 
 ### Least-Privilege Contract
@@ -61,22 +61,47 @@ Column-level `UPDATE` is limited to:
 
 No authenticated `INSERT`, `DELETE`, broad table-level `UPDATE`, or update privileges on immutable identifiers/timestamps are part of the Phase 2 contract.
 
+## Live Runtime Verification Receipt
+
+### Anonymous RLS
+
+`node scripts/verify-phase2-auth.mjs` executed against the live Supabase project and exited with code `0`.
+
+Verified live behavior:
+
+- Anonymous SELECT on `public.profiles` rejected with `permission denied for table profiles`.
+- Anonymous SELECT on `public.user_settings` rejected with `permission denied for table user_settings`.
+- Anonymous UPDATE on `public.profiles` rejected.
+- Anonymous UPDATE on `public.user_settings` rejected.
+
+**Anonymous RLS Isolation: PASS.**
+
+### Two-User RLS
+
+`node scripts/verify-phase2-rls.mjs` started against two configured users.
+
+- User A authenticated successfully and received a valid UUID.
+- User B authentication failed with `Invalid login credentials`.
+- Script exited non-zero (`1`) before any cross-user RLS assertions ran.
+
+This is an external test-credential blocker, not an RLS failure.
+
+**Two-User RLS Isolation: BLOCKED_USER_B_CREDENTIAL.**
+
 ## Remaining Mandatory Gate
 
-Phase 2 is not yet COMPLETE because runtime user-isolation has not been proven against two distinct authenticated users.
+Phase 2 is not yet COMPLETE because bidirectional runtime isolation has not been proven with two successfully authenticated users.
 
-Required live verification:
+Required next action:
 
-1. Create two distinct disposable authenticated users (User A and User B) on the target Supabase project.
-2. Confirm the `on_auth_user_created` trigger provisions one `profiles` row and one `user_settings` row for each user.
-3. Run `node scripts/verify-phase2-auth.mjs` against the live project.
-4. Run `node scripts/verify-phase2-rls.mjs` with User A/B credentials supplied only through environment variables.
-5. Required runtime invariant:
+1. Fix or reset User B credentials in the target Supabase project and ensure the user is confirmed.
+2. Keep User A unchanged.
+3. Re-run only `node scripts/verify-phase2-rls.mjs` with both users supplied through environment variables.
+4. Required invariant:
    - A can SELECT/UPDATE allowed fields on A.
    - A cannot SELECT/UPDATE B.
    - B can SELECT/UPDATE allowed fields on B.
    - B cannot SELECT/UPDATE A.
-   - anonymous access remains blocked.
 
 Do not commit or share test-user passwords.
 
@@ -84,9 +109,9 @@ Do not commit or share test-user passwords.
 
 - **Phase 0:** PASS
 - **Phase 1:** PASS
-- **Phase 2:** STRUCTURAL PASS / RUNTIME RLS E2E PENDING
+- **Phase 2:** STRUCTURAL PASS / ANON RLS PASS / TWO-USER RLS BLOCKED ON USER B CREDENTIAL
 - **Phase 3:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Create two disposable confirmed test users, run the anonymous and two-user runtime verification scripts against `qibfitbnlfgiqctntufr`, and record the output. Phase 3 — Accounts + Categories may start only after those runtime gates PASS.
+Correct User B login credentials and re-run `node scripts/verify-phase2-rls.mjs`. Phase 3 — Accounts + Categories may start only after that runtime two-user gate passes.
