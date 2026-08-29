@@ -15,16 +15,51 @@ import type {
   BudgetSummary,
 } from './types';
 
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+function daysInMonth(year: number, month: number): number {
+  switch (month) {
+    case 2:
+      return isLeapYear(year) ? 29 : 28;
+    case 4:
+    case 6:
+    case 9:
+    case 11:
+      return 30;
+    default:
+      return 31;
+  }
+}
+
 export function normalizePeriodMonth(monthStr: string): string {
+  if (typeof monthStr !== 'string') {
+    throw new Error('Invalid period_month: must be a string');
+  }
   const trimmed = monthStr.trim();
   // Expect YYYY-MM or YYYY-MM-DD
-  const match = /^(\d{4})-(\d{2})(?:-\d{2})?$/.exec(trimmed);
+  const match = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(trimmed);
   if (!match) {
     throw new Error(`Invalid period_month format: expected YYYY-MM or YYYY-MM-DD, got "${monthStr}"`);
   }
-  const year = match[1];
-  const month = match[2];
-  return `${year}-${month}-01`;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  if (year < 1900 || year > 2100) {
+    throw new Error(`Invalid period_month year "${year}": out of valid range (1900-2100)`);
+  }
+  if (month < 1 || month > 12) {
+    throw new Error(`Invalid period_month month "${month}": must be between 01 and 12`);
+  }
+  if (match[3]) {
+    const day = parseInt(match[3], 10);
+    const maxDays = daysInMonth(year, month);
+    if (day < 1 || day > maxDays) {
+      throw new Error(`Invalid period_month day "${day}": month ${month}/${year} has ${maxDays} days`);
+    }
+  }
+  const formattedMonth = String(month).padStart(2, '0');
+  return `${year}-${formattedMonth}-01`;
 }
 
 export function mapBudgetProgressRow(row: BudgetProgressRow): ExtendedBudget {
@@ -76,7 +111,9 @@ export function computeBudgetSummary(
     }
   }
 
+  const isOverBudget = compareExactDecimals(totalSpent, totalLimit) > 0;
   const remaining = subExactDecimals(totalLimit, totalSpent);
+  const overage = isOverBudget ? subExactDecimals(totalSpent, totalLimit) : '0.0000';
   const basisPoints = computeBasisPoints(totalSpent, totalLimit);
   const integerPart = Math.floor(basisPoints / 100);
   const fractionalPart = basisPoints % 100;
@@ -87,6 +124,8 @@ export function computeBudgetSummary(
     totalLimit,
     totalSpent,
     remaining,
+    overage,
+    isOverBudget,
     basisPoints,
     percentStr,
     overBudgetCount,

@@ -8,55 +8,50 @@ import {
   HeartPulse,
   MoreHorizontal,
   AlertTriangle,
+  Edit2,
+  Archive,
+  RotateCcw,
 } from 'lucide-react';
 import type { ExtendedBudget } from '@/features/budgets';
-import type { MockBudget } from '@/types/finance';
 import { Progress } from '@/components/ui/progress';
-import { formatExactMoney, formatMoney } from '@/lib/money/format';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { formatExactMoney } from '@/lib/money/format';
+import { subExactDecimals } from '@/lib/money';
 import { cn } from '@/lib/utils';
 
 interface BudgetProgressProps {
-  budget: ExtendedBudget | MockBudget;
+  budget: ExtendedBudget;
   onClick?: () => void;
+  onEdit?: (budget: ExtendedBudget) => void;
+  onArchive?: (budget: ExtendedBudget) => void;
+  onUnarchive?: (budget: ExtendedBudget) => void;
 }
 
 export const BudgetProgress: React.FC<BudgetProgressProps> = ({
   budget,
   onClick,
+  onEdit,
+  onArchive,
+  onUnarchive,
 }) => {
-  const isExtended = 'limit_amount' in budget;
+  const categoryName = budget.categoryName || 'Không có danh mục';
+  const categoryIcon = budget.categoryIcon || 'MoreHorizontal';
+  const categoryColor = budget.categoryColor || '#64748b';
+  const currency = budget.currency_code;
 
-  const categoryName = isExtended ? budget.categoryName : budget.categoryName;
-  const categoryIcon = isExtended ? budget.categoryIcon : budget.categoryIcon;
-  const categoryColor = isExtended ? budget.categoryColor : budget.categoryColor;
-  const currency = isExtended ? budget.currency_code : budget.currency;
+  const percent = Math.floor(budget.basisPoints / 100);
+  const isOver = budget.isOverBudget;
+  const isNear = percent >= 85 && !isOver;
+  const displaySpent = formatExactMoney(budget.spent_amount, currency);
+  const displayLimit = formatExactMoney(budget.limit_amount, currency);
 
-  let percent = 0;
-  let isOver = false;
-  let isNear = false;
-  let displaySpent = '';
-  let displayLimit = '';
   let displayRemaining = '';
-
-  if (isExtended) {
-    percent = Math.floor(budget.basisPoints / 100);
-    isOver = budget.isOverBudget;
-    isNear = percent >= 85 && percent <= 100;
-    displaySpent = formatExactMoney(budget.spent_amount, currency);
-    displayLimit = formatExactMoney(budget.limit_amount, currency);
-    displayRemaining = isOver
-      ? `Vượt ngân sách`
-      : `Còn lại ${formatExactMoney(budget.remaining_amount, currency)}`;
+  if (isOver) {
+    const overage = subExactDecimals(budget.spent_amount, budget.limit_amount);
+    displayRemaining = `Vượt ${formatExactMoney(overage, currency)}`;
   } else {
-    percent = Math.round((budget.spent / budget.limit) * 100);
-    isOver = percent > 100;
-    isNear = percent >= 85 && percent <= 100;
-    const remaining = budget.limit - budget.spent;
-    displaySpent = formatMoney(budget.spent, currency);
-    displayLimit = formatMoney(budget.limit, currency);
-    displayRemaining = isOver
-      ? 'Vượt ngân sách'
-      : `Còn lại ${formatMoney(remaining, currency)}`;
+    displayRemaining = `Còn lại ${formatExactMoney(budget.remaining_amount, currency)}`;
   }
 
   const getIcon = () => {
@@ -82,10 +77,11 @@ export const BudgetProgress: React.FC<BudgetProgressProps> = ({
     <div
       onClick={onClick}
       className={cn(
-        'p-4 rounded-xl border bg-card transition-all duration-200 hover:shadow-xs space-y-3 cursor-pointer',
-        isOver
+        'p-4 rounded-xl border bg-card transition-all duration-200 hover:shadow-xs space-y-3',
+        budget.is_archived ? 'opacity-60 bg-muted/20 border-dashed' : '',
+        isOver && !budget.is_archived
           ? 'border-red-200 dark:border-red-900/60 bg-red-50/20 dark:bg-red-950/10'
-          : isNear
+          : isNear && !budget.is_archived
           ? 'border-amber-200 dark:border-amber-900/60'
           : 'border-border'
       )}
@@ -99,34 +95,84 @@ export const BudgetProgress: React.FC<BudgetProgressProps> = ({
             {getIcon()}
           </div>
           <div>
-            <h4 className="font-semibold text-sm text-foreground">
-              {categoryName}
-            </h4>
+            <div className="flex items-center space-x-1.5">
+              <h4 className="font-semibold text-sm text-foreground">
+                {categoryName}
+              </h4>
+              {budget.is_archived && (
+                <Badge variant="secondary" className="text-[10px] uppercase font-mono px-1 py-0">
+                  Lưu trữ
+                </Badge>
+              )}
+            </div>
             <span className="text-xs text-muted-foreground">
               Định mức: {displayLimit}
             </span>
           </div>
         </div>
 
-        <div className="text-right">
-          <div className="flex items-center justify-end space-x-1">
-            {isOver && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-            <span
-              className={cn(
-                'text-sm font-bold',
-                isOver
-                  ? 'text-red-600 dark:text-red-400'
-                  : isNear
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-foreground'
-              )}
-            >
-              {percent}%
+        <div className="text-right flex items-center space-x-2">
+          <div className="text-right">
+            <div className="flex items-center justify-end space-x-1">
+              {isOver && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+              <span
+                className={cn(
+                  'text-sm font-bold',
+                  isOver
+                    ? 'text-red-600 dark:text-red-400'
+                    : isNear
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-foreground'
+                )}
+              >
+                {percent}%
+              </span>
+            </div>
+            <span className={cn(
+              "text-[11px]",
+              isOver ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"
+            )}>
+              {displayRemaining}
             </span>
           </div>
-          <span className="text-[11px] text-muted-foreground">
-            {displayRemaining}
-          </span>
+
+          {(onEdit || onArchive || onUnarchive) && (
+            <div className="flex items-center space-x-1 ml-1" onClick={(e) => e.stopPropagation()}>
+              {onEdit && !budget.is_archived && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => onEdit(budget)}
+                  title="Chỉnh sửa ngân sách"
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {onArchive && !budget.is_archived && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-600"
+                  onClick={() => onArchive(budget)}
+                  title="Lưu trữ ngân sách"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {onUnarchive && budget.is_archived && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-600"
+                  onClick={() => onUnarchive(budget)}
+                  title="Khôi phục ngân sách"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

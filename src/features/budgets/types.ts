@@ -31,6 +31,8 @@ export type BudgetSummary = {
   totalLimit: string;
   totalSpent: string;
   remaining: string;
+  overage: string;
+  isOverBudget: boolean;
   basisPoints: number;
   percentStr: string;
   overBudgetCount: number;

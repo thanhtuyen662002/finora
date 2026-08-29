@@ -7,47 +7,48 @@ import {
   Target,
   Calendar,
   Sparkles,
+  Edit2,
+  PlusCircle,
+  Archive,
+  RotateCcw,
+  CheckCircle2,
 } from 'lucide-react';
 import type { ExtendedGoal } from '@/features/goals';
-import type { MockGoal } from '@/types/finance';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatExactMoney, formatMoney, formatDateVN } from '@/lib/money/format';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { formatExactMoney, formatDateVN } from '@/lib/money/format';
+import { cn } from '@/lib/utils';
 
 interface GoalCardProps {
-  goal: ExtendedGoal | MockGoal;
+  goal: ExtendedGoal;
   onClick?: () => void;
+  onEdit?: (goal: ExtendedGoal) => void;
+  onContribute?: (goal: ExtendedGoal) => void;
+  onArchive?: (goal: ExtendedGoal) => void;
+  onUnarchive?: (goal: ExtendedGoal) => void;
 }
 
-export const GoalCard: React.FC<GoalCardProps> = ({ goal, onClick }) => {
-  const isExtended = 'target_amount' in goal;
-
+export const GoalCard: React.FC<GoalCardProps> = ({
+  goal,
+  onClick,
+  onEdit,
+  onContribute,
+  onArchive,
+  onUnarchive,
+}) => {
   const name = goal.name;
-  const category = goal.category;
+  const category = goal.category || 'Mục tiêu';
   const color = goal.color || '#10b981';
   const icon = goal.icon || 'Target';
-  const targetDate = isExtended ? goal.target_date : goal.targetDate;
-  const currency = isExtended ? goal.currency_code : goal.currency;
+  const targetDate = goal.target_date;
+  const currency = goal.currency_code;
 
-  let percent = 0;
-  let displayCurrent = '';
-  let displayTarget = '';
-  let displayMonthly = '';
-
-  if (isExtended) {
-    percent = Math.min(Math.floor(goal.basisPoints / 100), 100);
-    displayCurrent = formatExactMoney(goal.current_amount, currency);
-    displayTarget = formatExactMoney(goal.target_amount, currency);
-    displayMonthly = formatExactMoney(goal.monthly_contribution, currency);
-  } else {
-    percent = Math.min(
-      Math.round((goal.currentAmount / goal.targetAmount) * 100),
-      100
-    );
-    displayCurrent = formatMoney(goal.currentAmount, currency);
-    displayTarget = formatMoney(goal.targetAmount, currency);
-    displayMonthly = formatMoney(goal.monthlyContribution, currency);
-  }
+  const percent = Math.min(Math.floor(goal.basisPoints / 100), 100);
+  const displayCurrent = formatExactMoney(goal.current_amount, currency);
+  const displayTarget = formatExactMoney(goal.target_amount, currency);
+  const displayMonthly = formatExactMoney(goal.monthly_contribution, currency);
 
   const getIcon = () => {
     switch (icon) {
@@ -67,7 +68,10 @@ export const GoalCard: React.FC<GoalCardProps> = ({ goal, onClick }) => {
   return (
     <Card
       onClick={onClick}
-      className="cursor-pointer transition-all duration-200 hover:shadow-md hover:border-slate-400/40 relative overflow-hidden group"
+      className={cn(
+        'transition-all duration-200 border relative overflow-hidden group',
+        goal.is_archived ? 'opacity-60 bg-muted/20 border-dashed' : 'bg-card hover:shadow-md'
+      )}
     >
       <div
         className="absolute top-0 left-0 right-0 h-1"
@@ -83,18 +87,82 @@ export const GoalCard: React.FC<GoalCardProps> = ({ goal, onClick }) => {
               {getIcon()}
             </div>
             <div>
-              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                {category}
-              </span>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  {category}
+                </span>
+                {goal.is_archived && (
+                  <Badge variant="secondary" className="text-[10px] uppercase font-mono px-1 py-0">
+                    Lưu trữ
+                  </Badge>
+                )}
+                {goal.isCompleted && (
+                  <Badge className="bg-emerald-500 text-white text-[10px] px-1 py-0 flex items-center space-x-0.5">
+                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                    Đạt mục tiêu
+                  </Badge>
+                )}
+              </div>
               <h4 className="font-bold text-foreground text-sm sm:text-base group-hover:text-primary transition-colors">
                 {name}
               </h4>
             </div>
           </div>
 
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-muted text-foreground">
-            {percent}%
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-muted text-foreground">
+              {percent}%
+            </span>
+
+            {(onEdit || onContribute || onArchive || onUnarchive) && (
+              <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                {onContribute && !goal.is_archived && !goal.isCompleted && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                    onClick={() => onContribute(goal)}
+                    title="Nạp thêm tiến độ"
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                  </Button>
+                )}
+                {onEdit && !goal.is_archived && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => onEdit(goal)}
+                    title="Chỉnh sửa mục tiêu"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {onArchive && !goal.is_archived && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-600"
+                    onClick={() => onArchive(goal)}
+                    title="Lưu trữ mục tiêu"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {onUnarchive && goal.is_archived && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-600"
+                    onClick={() => onUnarchive(goal)}
+                    title="Khôi phục mục tiêu"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -109,7 +177,13 @@ export const GoalCard: React.FC<GoalCardProps> = ({ goal, onClick }) => {
           <Progress
             value={percent}
             className="h-2.5"
-            indicatorClassName="bg-slate-900 dark:bg-slate-100"
+            indicatorClassName={
+              goal.isCompleted
+                ? 'bg-emerald-500'
+                : percent >= 75
+                ? 'bg-primary'
+                : 'bg-slate-900 dark:bg-slate-100'
+            }
           />
         </div>
 

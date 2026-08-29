@@ -61,9 +61,13 @@ const phase7Files = [
   'src/app/recurring/page.tsx',
   'src/components/finance/BudgetProgress.tsx',
   'src/components/finance/AddBudgetModal.tsx',
+  'src/components/finance/EditBudgetModal.tsx',
   'src/components/finance/GoalCard.tsx',
   'src/components/finance/AddGoalModal.tsx',
+  'src/components/finance/EditGoalModal.tsx',
+  'src/components/finance/ContributeGoalModal.tsx',
   'src/components/finance/AddRecurringModal.tsx',
+  'src/components/finance/EditRecurringModal.tsx',
 ];
 
 for (const relPath of phase7Files) {
@@ -76,7 +80,13 @@ for (const relPath of phase7Files) {
 
   if (relPath.startsWith('src/features/') || relPath.startsWith('src/app/')) {
     const content = fs.readFileSync(fullPath, 'utf8');
-    if (content.includes('@/lib/mock/') || content.includes('../mock/') || content.includes('MOCK_BUDGETS') || content.includes('MOCK_GOALS') || content.includes('MOCK_RECURRING')) {
+    if (
+      content.includes('@/lib/mock/') ||
+      content.includes('../mock/') ||
+      content.includes('MOCK_BUDGETS') ||
+      content.includes('MOCK_GOALS') ||
+      content.includes('MOCK_RECURRING')
+    ) {
       fail(`No mock in: ${relPath}`, 'Found mock references');
     } else {
       pass(`No mock in: ${relPath}`);
@@ -86,18 +96,21 @@ for (const relPath of phase7Files) {
 
 // 2. Check Migration file content & RLS policies
 console.log('\n[2/7] Checking Phase 7 migration structure...');
-const migrationPath = path.join(rootDir, 'supabase/migrations/20260829000000_phase_7_budgets_goals_recurring.sql');
+const migrationPath = path.join(
+  rootDir,
+  'supabase/migrations/20260829000000_phase_7_budgets_goals_recurring.sql'
+);
 const migrationContent = fs.readFileSync(migrationPath, 'utf8');
 
 const requiredMigrationSnippets = [
   'CREATE TABLE IF NOT EXISTS public.budgets',
   'CREATE TABLE IF NOT EXISTS public.goals',
   'CREATE TABLE IF NOT EXISTS public.recurring_items',
-  'CONSTRAINT check_budget_limit_positive CHECK (limit_amount > 0)',
-  'CONSTRAINT check_budget_category_type CHECK (category_type = \'EXPENSE\')',
-  'CONSTRAINT check_budget_currency_code CHECK (currency_code ~ \'^[A-Z]{3,5}$\')',
-  'CONSTRAINT check_goal_target_amount_positive CHECK (target_amount > 0)',
-  'CONSTRAINT check_recurring_amount_positive CHECK (amount > 0)',
+  "CONSTRAINT check_budget_limit_positive CHECK (limit_amount > 0)",
+  "CONSTRAINT check_budget_category_type CHECK (category_type = 'EXPENSE')",
+  "CONSTRAINT check_budget_currency_code CHECK (currency_code ~ '^[A-Z]{3,5}$')",
+  "CONSTRAINT check_goal_target_amount_positive CHECK (target_amount > 0)",
+  "CONSTRAINT check_recurring_amount_positive CHECK (amount > 0)",
   'CREATE OR REPLACE VIEW public.budget_progress',
   'WITH (security_invoker = true)',
   'CREATE OR REPLACE VIEW public.goal_details',
@@ -169,19 +182,30 @@ const goalsSource = fs.readFileSync(goalsSourcePath, 'utf8');
 const recurringSourcePath = path.join(rootDir, 'src/features/recurring/recurring.ts');
 const recurringSource = fs.readFileSync(recurringSourcePath, 'utf8');
 
-if (budgetsSource.includes('addExactDecimals') && budgetsSource.includes('subExactDecimals') && budgetsSource.includes('computeBasisPoints')) {
+if (
+  budgetsSource.includes('addExactDecimals') &&
+  budgetsSource.includes('subExactDecimals') &&
+  budgetsSource.includes('computeBasisPoints')
+) {
   pass('Budgets service uses exact decimal arithmetic');
 } else {
   fail('Budgets service arithmetic', 'Missing exact decimal functions in budgets.ts');
 }
 
-if (goalsSource.includes('addExactDecimals') && goalsSource.includes('subExactDecimals') && goalsSource.includes('computeBasisPoints')) {
+if (
+  goalsSource.includes('addExactDecimals') &&
+  goalsSource.includes('subExactDecimals') &&
+  goalsSource.includes('computeBasisPoints')
+) {
   pass('Goals service uses exact decimal arithmetic');
 } else {
   fail('Goals service arithmetic', 'Missing exact decimal functions in goals.ts');
 }
 
-if (recurringSource.includes('addExactDecimals') && recurringSource.includes('calculateNextDueDate')) {
+if (
+  recurringSource.includes('addExactDecimals') &&
+  recurringSource.includes('calculateNextDueDate')
+) {
   pass('Recurring service uses exact decimal arithmetic & engine');
 } else {
   fail('Recurring service arithmetic', 'Missing exact decimal or engine functions in recurring.ts');
@@ -189,25 +213,34 @@ if (recurringSource.includes('addExactDecimals') && recurringSource.includes('ca
 
 // Check for forbidden floating-point calls on amounts
 const allSource = budgetsSource + goalsSource + recurringSource;
-if (/Number\(\s*row\.limit_amount\s*\)/.test(allSource) || /parseFloat\(\s*row\.limit_amount\s*\)/.test(allSource)) {
+if (
+  /Number\(\s*row\.limit_amount\s*\)/.test(allSource) ||
+  /parseFloat\(\s*row\.limit_amount\s*\)/.test(allSource)
+) {
   fail('No float conversion on limit_amount', 'Found forbidden Number()/parseFloat() on limit_amount');
 } else {
   pass('No float conversions on limit_amount');
 }
 
-if (/Number\(\s*row\.target_amount\s*\)/.test(allSource) || /parseFloat\(\s*row\.target_amount\s*\)/.test(allSource)) {
+if (
+  /Number\(\s*row\.target_amount\s*\)/.test(allSource) ||
+  /parseFloat\(\s*row\.target_amount\s*\)/.test(allSource)
+) {
   fail('No float conversion on target_amount', 'Found forbidden Number()/parseFloat() on target_amount');
 } else {
   pass('No float conversions on target_amount');
 }
 
-if (/Number\(\s*row\.amount\s*\)/.test(allSource) || /parseFloat\(\s*row\.amount\s*\)/.test(allSource)) {
+if (
+  /Number\(\s*row\.amount\s*\)/.test(allSource) ||
+  /parseFloat\(\s*row\.amount\s*\)/.test(allSource)
+) {
   fail('No float conversion on recurring amount', 'Found forbidden Number()/parseFloat() on amount');
 } else {
   pass('No float conversions on recurring amount');
 }
 
-// 5. Test Recurring Schedule Engine
+// 5. Test Recurring Schedule Engine & Date Parsing
 console.log('\n[5/7] Testing Recurring schedule engine...');
 import {
   calculateNextDueDate,
@@ -216,6 +249,8 @@ import {
   addMonthsClamped,
   isLeapYear,
   daysInMonth,
+  isValidISODateString,
+  parseISODate,
 } from '../src/features/recurring/engine.ts';
 
 // Test leap year & daysInMonth
@@ -225,10 +260,30 @@ if (isLeapYear(2024) && !isLeapYear(2025) && !isLeapYear(2100) && isLeapYear(200
   fail('Leap year detection', 'Failed leap year calculation');
 }
 
-if (daysInMonth(2024, 2) === 29 && daysInMonth(2025, 2) === 28 && daysInMonth(2026, 4) === 30 && daysInMonth(2026, 8) === 31) {
+if (
+  daysInMonth(2024, 2) === 29 &&
+  daysInMonth(2025, 2) === 28 &&
+  daysInMonth(2026, 4) === 30 &&
+  daysInMonth(2026, 8) === 31
+) {
   pass('Days in month calculation');
 } else {
   fail('Days in month calculation', 'Incorrect days count');
+}
+
+// Test isValidISODateString and calendar boundary validation
+if (
+  isValidISODateString('2026-08-29') &&
+  isValidISODateString('2024-02-29') &&
+  !isValidISODateString('2025-02-29') && // 2025 is not leap
+  !isValidISODateString('2026-13-01') && // month 13
+  !isValidISODateString('2026-00-01') && // month 0
+  !isValidISODateString('1899-12-31') && // year < 1900
+  !isValidISODateString('invalid')
+) {
+  pass('Strict calendar date validation');
+} else {
+  fail('Strict calendar date validation', 'Failed calendar validation checks');
 }
 
 // Test month end clamping: Jan 31 + 1 month -> Feb 28 (non-leap) or Feb 29 (leap)
@@ -248,7 +303,8 @@ const weeklyItem = {
   is_archived: false,
 };
 const nextWeekly = calculateNextDueDate(weeklyItem, '2026-08-10');
-if (nextWeekly === '2026-08-15') { // 2026-08-01 + 7 = 08-08, + 7 = 08-15 >= 08-10
+if (nextWeekly === '2026-08-15') {
+  // 2026-08-01 + 7 = 08-08, + 7 = 08-15 >= 08-10
   pass('Weekly next due date calculation');
 } else {
   fail('Weekly next due date', `Expected 2026-08-15, got ${nextWeekly}`);
@@ -284,10 +340,12 @@ if (nextExpired === null) {
 // 6. Test Upcoming occurrences generator
 console.log('\n[6/7] Testing upcoming occurrences generator...');
 const occurrences = generateUpcomingOccurrences(monthlyItem, 3, '2026-08-20');
-if (occurrences.length === 3 &&
-    occurrences[0] === '2026-09-15' &&
-    occurrences[1] === '2026-10-15' &&
-    occurrences[2] === '2026-11-15') {
+if (
+  occurrences.length === 3 &&
+  occurrences[0] === '2026-09-15' &&
+  occurrences[1] === '2026-10-15' &&
+  occurrences[2] === '2026-11-15'
+) {
   pass('Upcoming occurrences generator');
 } else {
   fail('Upcoming occurrences generator', `Got ${JSON.stringify(occurrences)}`);
@@ -295,7 +353,9 @@ if (occurrences.length === 3 &&
 
 // 7. Overall Summary
 console.log('\n' + '='.repeat(75));
-console.log(`PHASE 7 VERIFICATION RESULTS: ${passedChecks}/${totalChecks} checks passed (${failedChecks} failed).`);
+console.log(
+  `PHASE 7 VERIFICATION RESULTS: ${passedChecks}/${totalChecks} checks passed (${failedChecks} failed).`
+);
 console.log('='.repeat(75));
 
 if (failedChecks > 0) {

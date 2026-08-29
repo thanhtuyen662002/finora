@@ -10,6 +10,7 @@ import {
   calculateNextDueDate,
   diffCalendarDays,
   getTodayISODate,
+  isValidISODateString,
 } from './engine';
 import type {
   ExtendedRecurringItem,
@@ -80,14 +81,9 @@ export function computeMonthlyProjectedAmount(
   if (frequency === 'MONTHLY') {
     return exact;
   }
-  // For weekly, multiply by 4 or convert
-  // To stay deterministic without float:
-  // For weekly: (amount * 52) / 12 = amount * 13 / 3
-  // For yearly: amount / 12
-  // We can compute via exact addition or simple division
   const [intPart, fracPart] = exact.split('.');
   const scaled = BigInt(intPart) * 10000n + BigInt(fracPart);
-  
+
   let monthlyScaled = 0n;
   if (frequency === 'WEEKLY') {
     monthlyScaled = (scaled * 52n) / 12n;
@@ -139,7 +135,10 @@ export function computeRecurringSummary(
   };
 }
 
-async function getRecurringItemExact(id: string): Promise<ExtendedRecurringItem> {
+async function getRecurringItemExact(
+  id: string,
+  asOfDateStr: string = getTodayISODate()
+): Promise<ExtendedRecurringItem> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('recurring_details')
@@ -149,11 +148,12 @@ async function getRecurringItemExact(id: string): Promise<ExtendedRecurringItem>
 
   if (error) throw error;
   if (!data) throw new Error(`Recurring item with id ${id} not found in recurring_details view`);
-  return mapRecurringDetailRow(data as RecurringDetailRow);
+  return mapRecurringDetailRow(data as RecurringDetailRow, asOfDateStr);
 }
 
 export async function getRecurringItems(options?: {
   currencyCode?: string;
+  asOfDate?: string;
   includeArchived?: boolean;
   includePaused?: boolean;
 }): Promise<ExtendedRecurringItem[]> {
@@ -177,7 +177,8 @@ export async function getRecurringItems(options?: {
   const { data, error } = await query;
   if (error) throw error;
 
-  return (data || []).map((row) => mapRecurringDetailRow(row as RecurringDetailRow));
+  const asOfDateStr = options?.asOfDate || getTodayISODate();
+  return (data || []).map((row) => mapRecurringDetailRow(row as RecurringDetailRow, asOfDateStr));
 }
 
 export async function createRecurringItem(
@@ -210,8 +211,17 @@ export async function createRecurringItem(
     throw new Error('frequency must be WEEKLY, MONTHLY, or YEARLY');
   }
 
-  if (input.end_date && input.end_date < input.anchor_date) {
-    throw new Error('end_date cannot be earlier than anchor_date');
+  if (!isValidISODateString(input.anchor_date)) {
+    throw new Error('anchor_date must be a valid calendar date YYYY-MM-DD');
+  }
+
+  if (input.end_date) {
+    if (!isValidISODateString(input.end_date)) {
+      throw new Error('end_date must be a valid calendar date YYYY-MM-DD');
+    }
+    if (input.end_date < input.anchor_date) {
+      throw new Error('end_date cannot be earlier than anchor_date');
+    }
   }
 
   const { data, error } = await supabase
@@ -289,10 +299,16 @@ export async function updateRecurringItem(
   }
 
   if (input.anchor_date !== undefined) {
+    if (!isValidISODateString(input.anchor_date)) {
+      throw new Error('anchor_date must be a valid calendar date YYYY-MM-DD');
+    }
     updatePayload.anchor_date = input.anchor_date;
   }
 
   if (input.end_date !== undefined) {
+    if (input.end_date !== null && !isValidISODateString(input.end_date)) {
+      throw new Error('end_date must be a valid calendar date YYYY-MM-DD');
+    }
     updatePayload.end_date = input.end_date;
   }
 

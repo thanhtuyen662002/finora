@@ -1,24 +1,5 @@
 import type { RecurringFrequency } from './types';
 
-export function parseISODate(dateStr: string): { year: number; month: number; day: number } {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
-  if (!match) {
-    throw new Error(`Invalid ISO date format: expected YYYY-MM-DD, got "${dateStr}"`);
-  }
-  return {
-    year: parseInt(match[1], 10),
-    month: parseInt(match[2], 10), // 1-12
-    day: parseInt(match[3], 10),
-  };
-}
-
-export function formatISODate(year: number, month: number, day: number): string {
-  const y = String(year).padStart(4, '0');
-  const m = String(month).padStart(2, '0');
-  const d = String(day).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
@@ -31,6 +12,53 @@ export function daysInMonth(year: number, month: number): number {
     return 30;
   }
   return 31;
+}
+
+export function isValidISODateString(dateStr: unknown): boolean {
+  if (typeof dateStr !== 'string') return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!match) return false;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  if (year < 1900 || year > 2100) return false;
+  if (month < 1 || month > 12) return false;
+  const maxDay = daysInMonth(year, month);
+  if (day < 1 || day > maxDay) return false;
+  return true;
+}
+
+export function parseISODate(dateStr: string): { year: number; month: number; day: number } {
+  if (typeof dateStr !== 'string') {
+    throw new Error(`Invalid ISO date: expected string, got ${typeof dateStr}`);
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!match) {
+    throw new Error(`Invalid ISO date format: expected YYYY-MM-DD, got "${dateStr}"`);
+  }
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10); // 1-12
+  const day = parseInt(match[3], 10);
+
+  if (year < 1900 || year > 2100) {
+    throw new Error(`Invalid ISO date year "${year}": out of valid range (1900-2100)`);
+  }
+  if (month < 1 || month > 12) {
+    throw new Error(`Invalid ISO date month "${month}": must be between 1 and 12`);
+  }
+  const maxDay = daysInMonth(year, month);
+  if (day < 1 || day > maxDay) {
+    throw new Error(`Invalid ISO date day "${day}": month ${month}/${year} has ${maxDay} days`);
+  }
+
+  return { year, month, day };
+}
+
+export function formatISODate(year: number, month: number, day: number): string {
+  const y = String(year).padStart(4, '0');
+  const m = String(month).padStart(2, '0');
+  const d = String(day).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export function getTodayISODate(): string {
@@ -65,7 +93,7 @@ export function addMonthsClamped(
 ): string {
   const totalMonths = anchorMonth - 1 + monthsToAdd;
   const targetYear = anchorYear + Math.floor(totalMonths / 12);
-  const targetMonth = (totalMonths % 12 + 12) % 12 + 1; // 1-12
+  const targetMonth = ((totalMonths % 12) + 12) % 12 + 1; // 1-12
   const maxDay = daysInMonth(targetYear, targetMonth);
   const targetDay = Math.min(anchorDay, maxDay);
   return formatISODate(targetYear, targetMonth, targetDay);

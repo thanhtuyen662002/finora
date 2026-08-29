@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,44 +12,40 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import { Target, AlertCircle } from 'lucide-react';
-import type { CategoryRow } from '@/types/database';
+import type { ExtendedBudget } from '@/features/budgets';
 import { toExactDecimal, isPositiveExactDecimal } from '@/lib/money';
 
-interface AddBudgetModalProps {
+interface EditBudgetModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  categories: CategoryRow[];
-  currencyCode?: string;
-  periodMonth?: string;
-  onSuccess?: (data: { categoryId: string; limitAmount: string }) => Promise<void> | void;
+  budget: ExtendedBudget | null;
+  onSuccess?: (id: string, updates: { limitAmount: string }) => Promise<void> | void;
 }
 
-export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
+export const EditBudgetModal: React.FC<EditBudgetModalProps> = ({
   open,
   onOpenChange,
-  categories,
-  currencyCode = 'VND',
-  periodMonth: _periodMonth,
+  budget,
   onSuccess,
 }) => {
-  const expenseCategories = categories.filter((c) => c.type === 'EXPENSE' && !c.is_archived);
-  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [limit, setLimit] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  const effectiveCategoryId = selectedCategoryId || expenseCategories[0]?.id || '';
+  useEffect(() => {
+    if (budget) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLimit(budget.limit_amount);
+      setError('');
+    }
+  }, [budget]);
+
+  if (!budget) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (!effectiveCategoryId) {
-      setError('Vui lòng chọn danh mục chi tiêu');
-      return;
-    }
 
     try {
       const exactLimit = toExactDecimal(limit);
@@ -59,18 +55,15 @@ export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
       }
 
       setSubmitted(true);
-      await onSuccess?.({
-        categoryId: effectiveCategoryId,
+      await onSuccess?.(budget.id, {
         limitAmount: exactLimit,
       });
 
       setSubmitted(false);
       onOpenChange(false);
-      setLimit('');
-      setSelectedCategoryId('');
     } catch (err: unknown) {
       setSubmitted(false);
-      setError(err instanceof Error ? err.message : 'Lỗi khi lưu ngân sách');
+      setError(err instanceof Error ? err.message : 'Lỗi khi cập nhật ngân sách');
     }
   };
 
@@ -80,10 +73,10 @@ export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Target className="h-5 w-5 text-primary" />
-            <span>Thiết lập hạn mức ngân sách</span>
+            <span>Chỉnh sửa ngân sách: {budget.categoryName}</span>
           </DialogTitle>
           <DialogDescription>
-            Đặt ngân sách chi tiêu hàng tháng cho từng danh mục ({currencyCode}).
+            Cập nhật hạn mức chi tiêu cho danh mục này ({budget.currency_code}).
           </DialogDescription>
         </DialogHeader>
 
@@ -96,22 +89,9 @@ export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="bgtCat">Danh mục chi tiêu</Label>
-            <Select
-              id="bgtCat"
-              value={effectiveCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
-              options={expenseCategories.map((c) => ({
-                value: c.id,
-                label: c.name,
-              }))}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="bgtLimit">Hạn mức chi tiêu tháng ({currencyCode})</Label>
+            <Label htmlFor="editBgtLimit">Hạn mức chi tiêu mới ({budget.currency_code})</Label>
             <Input
-              id="bgtLimit"
+              id="editBgtLimit"
               type="text"
               inputMode="decimal"
               placeholder="5000000"
@@ -131,7 +111,7 @@ export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
               Hủy
             </Button>
             <Button type="submit" disabled={submitted || !limit}>
-              {submitted ? 'Đang lưu...' : 'Lưu ngân sách'}
+              {submitted ? 'Đang lưu...' : 'Lưu thay đổi'}
             </Button>
           </DialogFooter>
         </form>

@@ -144,8 +144,11 @@ SELECT
     b.created_at,
     b.updated_at
 FROM public.budgets b
-JOIN public.categories c ON b.category_id = c.id
-LEFT JOIN public.transactions t ON 
+JOIN public.categories c ON
+    b.category_id = c.id AND
+    b.user_id = c.user_id AND
+    b.category_type = c.type
+LEFT JOIN public.transactions t ON
     t.user_id = b.user_id AND
     t.category_id = b.category_id AND
     t.currency_code = b.currency_code AND
@@ -199,8 +202,14 @@ SELECT
     r.created_at,
     r.updated_at
 FROM public.recurring_items r
-JOIN public.accounts a ON r.account_id = a.id
-JOIN public.categories c ON r.category_id = c.id;
+JOIN public.accounts a ON
+    r.account_id = a.id AND
+    r.user_id = a.user_id AND
+    r.currency_code = a.currency_code
+JOIN public.categories c ON
+    r.category_id = c.id AND
+    r.user_id = c.user_id AND
+    r.transaction_type = c.type;
 
 -- 6. Enable Row Level Security (RLS)
 ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
