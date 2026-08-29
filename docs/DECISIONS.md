@@ -179,3 +179,27 @@ This file records decisions with architectural consequences. New decisions shoul
 - User net worth remains perfectly conserved across all same-currency transfers.
 - Income and expense reports remain unaffected by transfers.
 - Database authorization enforces that cross-user transfers cannot be created, modified, or viewed.
+
+---
+
+## ADR-011 — Pure Deterministic Financial Report Engine with Pre-FX Multi-Currency Isolation
+
+**Status:** Accepted
+
+**Decision:**
+1. Eradicate all mock financial data from `src/app/dashboard/page.tsx`, `src/app/reports/page.tsx`, and chart components, reading authoritative real data strictly from Supabase `transaction_details` (income/expense) and `account_balances` (derived account balances).
+2. Implement a pure, deterministic reports engine (`src/features/reports/engine.ts`) that executes all monetary aggregations using normalized decimal strings and BigInt arithmetic (`addExactDecimals`, `subExactDecimals`, `computeSavingRatePercent`, `computeBasisPoints`).
+3. Enforce strict pre-FX multi-currency isolation: financial totals, income, expense, and savings are grouped exclusively by currency code. Cross-currency scalar addition is strictly forbidden until Phase 8 (FX Engine).
+4. Implement dynamic calendar period slicing (`1M`, `3M`, `6M`, `1Y`, `ALL`) generating chronological month buckets (`YYYY-MM`) and truthful RFC 4180 CSV export with UTF-8 BOM (`\uFEFF`).
+5. Require fail-closed UI behavior: if database queries fail, render clear error recovery states instead of falling back to mock fixtures.
+
+**Reason:**
+- Core finance calculations must be mathematically exact, deterministic, and verifiable.
+- Pre-FX multi-currency correctness prevents corrupting financial records by falsely summing different currencies (e.g. VND and USD) as equal scalars.
+- Real user data gives immediate, truthful feedback on financial health and transaction history.
+
+**Consequences:**
+- Dashboard and Reports pages display real Supabase data exclusively.
+- Foreign currency accounts and transactions are displayed with full currency integrity.
+- Voided transactions are cleanly excluded from financial aggregations.
+- CSV export enables user-directed financial data extraction with Excel compatibility.

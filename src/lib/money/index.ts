@@ -159,3 +159,53 @@ export function formatExactMoney(
   if (options?.showSign && compareExactDecimals(normalized, '0.0000') > 0) return `+${result}`;
   return result;
 }
+
+/**
+ * Computes the ratio of a part to a total in integer basis points [0..10000].
+ * 10000 bps = 100.00%.
+ * Non-monetary integer ratio derived purely via BigInt division without floating-point arithmetic.
+ */
+export function computeBasisPoints(partExact: string, totalExact: string): number {
+  try {
+    const scaledTotal = toScaledBigInt(totalExact);
+    const scaledPart = toScaledBigInt(partExact);
+    if (scaledTotal <= 0n || scaledPart <= 0n) return 0;
+    const bps = (scaledPart * 10000n) / scaledTotal;
+    return bps > 10000n ? 10000 : Number(bps);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Computes saving rate percentage within the same currency.
+ * savings = income - expense.
+ * savingRate = (savings / income) * 100%.
+ * If income <= 0, returns null (saving rate is undefined / unavailable).
+ */
+export function computeSavingRatePercent(
+  incomeExact: string,
+  expenseExact: string
+): { basisPoints: number; percentStr: string } | null {
+  try {
+    const scaledIncome = toScaledBigInt(incomeExact);
+    if (scaledIncome <= 0n) return null;
+    const scaledExpense = toScaledBigInt(expenseExact);
+    const scaledSavings = scaledIncome - scaledExpense;
+
+    // Basis points: (savings * 10000) / income
+    const bpsBigInt = (scaledSavings * 10000n) / scaledIncome;
+    const bps = Number(bpsBigInt);
+    const integerPart = Math.floor(Math.abs(bps) / 100);
+    const fractionalPart = Math.abs(bps) % 100;
+    const sign = bps < 0 ? '-' : '';
+    const percentStr = `${sign}${integerPart}.${Math.floor(fractionalPart / 10)}`;
+
+    return {
+      basisPoints: bps,
+      percentStr,
+    };
+  } catch {
+    return null;
+  }
+}

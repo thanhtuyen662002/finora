@@ -1,84 +1,253 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/finance/PageHeader';
-import { PeriodSelector, PeriodType } from '@/components/finance/PeriodSelector';
+import { PeriodSelector } from '@/components/finance/PeriodSelector';
 import { CashFlowChart } from '@/components/charts/CashFlowChart';
 import { CategoryDonutChart } from '@/components/charts/CategoryDonutChart';
-import { IncomeSourcesBreakdown } from '@/components/charts/IncomeSourcesBreakdown';
+import { TransactionList } from '@/components/finance/TransactionList';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import {
-  MOCK_CASH_FLOW_6M,
-  MOCK_CATEGORY_EXPENSES,
-  MOCK_INCOME_SOURCES,
-  MOCK_DASHBOARD_METRICS,
-} from '@/lib/mock/reports';
-import { formatMoney } from '@/lib/money/format';
-import { Download, PieChart, TrendingUp, DollarSign, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatExactMoney } from '@/lib/money';
+import {
+  getDetailedReportData,
+  exportTransactionsToCSV,
+  type DetailedReportData,
+  type ReportPeriod,
+} from '@/features/reports';
+import {
+  Download,
+  Wallet,
+  ArrowDownLeft,
+  ArrowUpRight,
+  PiggyBank,
+  Layers,
+  AlertCircle,
+  RefreshCw,
+  FileSpreadsheet,
+} from 'lucide-react';
 
 export default function ReportsPage() {
-  const [period, setPeriod] = useState<PeriodType>('6M');
+  const [period, setPeriod] = useState<ReportPeriod>('6M');
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('VND');
+  const [data, setData] = useState<DetailedReportData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadReport = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await getDetailedReportData(period, selectedCurrency);
+      setData(res);
+      setSelectedCurrency(res.selectedCurrency);
+    } catch (err: any) {
+      setError(err?.message || 'Không thể tải báo cáo tài chính');
+    } finally {
+      setLoading(false);
+    }
+  }, [period, selectedCurrency]);
+
+  useEffect(() => {
+    let ignore = false;
+    async function init() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await getDetailedReportData(period, selectedCurrency);
+        if (!ignore) {
+          setData(res);
+          setSelectedCurrency(res.selectedCurrency);
+        }
+      } catch (err: any) {
+        if (!ignore) {
+          setError(err?.message || 'Không thể tải báo cáo tài chính');
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
+  }, [period, selectedCurrency]);
+
+  const handleExportCSV = () => {
+    if (!data) return;
+    try {
+      const { filename, csvContent } = exportTransactionsToCSV(
+        data.transactions,
+        data.selectedCurrency,
+        data.dateRangeLabel
+      );
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('CSV Export Error:', err);
+    }
+  };
+
+  if (loading && !data) {
+    return (
+      <AppShell>
+        <div className="space-y-6 animate-pulse">
+          <div className="h-10 bg-muted/60 rounded-md w-1/3" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-28 bg-muted/50 rounded-xl" />
+            ))}
+          </div>
+          <div className="h-64 bg-muted/40 rounded-xl" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="h-72 bg-muted/40 rounded-xl" />
+            <div className="h-72 bg-muted/40 rounded-xl" />
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <AppShell>
+        <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-destructive/20 bg-destructive/5 text-center space-y-4 max-w-md mx-auto my-12">
+          <AlertCircle className="h-10 w-10 text-destructive" />
+          <div>
+            <h3 className="font-semibold text-foreground">Không thể tải báo cáo tài chính</h3>
+            <p className="text-xs text-muted-foreground mt-1">{error}</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={loadReport}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Thử lại
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const currency = data?.selectedCurrency || 'VND';
+  const summary = data?.summary || {
+    currency,
+    totalIncome: '0.0000',
+    totalExpense: '0.0000',
+    netSavings: '0.0000',
+    savingRateBasisPoints: null,
+    savingRatePercent: null,
+    transactionCount: 0,
+  };
 
   return (
     <AppShell>
       <PageHeader
-        title="Báo cáo thông minh"
-        subtitle="Phân tích chuyên sâu dòng tiền, cơ cấu chi tiêu và nguồn thu ngoại tệ."
+        title="Báo cáo tài chính"
+        subtitle={`Phân tích dòng tiền, cơ cấu chi tiêu và lịch sử tài chính (${data?.dateRangeLabel || ''}).`}
       >
-        <PeriodSelector selected={period} onChange={setPeriod} />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => alert('Xuất báo cáo tài chính PDF/Excel')}
-          className="hidden sm:inline-flex"
-        >
-          <Download className="h-4 w-4 mr-1.5" />
-          Xuất báo cáo
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodSelector selected={period} onChange={setPeriod} />
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={!data || data.transactions.length === 0}
+            className="whitespace-nowrap"
+            title="Xuất dữ liệu giao dịch ra file CSV UTF-8"
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            Xuất CSV
+          </Button>
+        </div>
       </PageHeader>
 
-      {/* Analytics High Level Cards */}
+      {/* Currency Selector if multiple currencies available */}
+      {data && data.availableCurrencies.length > 1 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border bg-muted/30">
+          <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+            <Layers className="h-4 w-4 text-primary" />
+            <span className="font-medium">Đơn vị tiền tệ báo cáo:</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {data.availableCurrencies.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setSelectedCurrency(c)}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
+                  currency === c
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'bg-card text-muted-foreground hover:bg-muted border'
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Analytics High Level Cards for selected currency */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
         <Card className="bg-card border">
-          <CardContent className="p-4 sm:p-5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Tổng thu nhập kỳ này
-            </span>
-            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-              {formatMoney(247500000)}
+          <CardContent className="p-4 sm:p-5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Tổng thu nhập kỳ này
+              </span>
+              <ArrowDownLeft className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              {formatExactMoney(summary.totalIncome, currency)}
             </p>
-            <span className="text-xs text-muted-foreground">
-              Trung bình 41.250.000 ₫/tháng
+            <span className="text-xs text-muted-foreground block">
+              {data?.dateRangeLabel} ({summary.transactionCount} giao dịch)
             </span>
           </CardContent>
         </Card>
 
         <Card className="bg-card border">
-          <CardContent className="p-4 sm:p-5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Tổng chi tiêu kỳ này
-            </span>
-            <p className="text-2xl font-bold text-foreground mt-1">
-              {formatMoney(111450000)}
+          <CardContent className="p-4 sm:p-5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Tổng chi tiêu kỳ này
+              </span>
+              <ArrowUpRight className="h-4 w-4 text-slate-500" />
+            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {formatExactMoney(summary.totalExpense, currency)}
             </p>
-            <span className="text-xs text-muted-foreground">
-              Trung bình 18.575.000 ₫/tháng
+            <span className="text-xs text-muted-foreground block">
+              {data?.dateRangeLabel}
             </span>
           </CardContent>
         </Card>
 
         <Card className="bg-card border">
-          <CardContent className="p-4 sm:p-5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Tổng tích lũy ròng
-            </span>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
-              +{formatMoney(136050000)}
+          <CardContent className="p-4 sm:p-5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Tổng tích lũy ròng
+              </span>
+              <PiggyBank className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              {formatExactMoney(summary.netSavings, currency, { showSign: true })}
             </p>
-            <span className="text-xs text-muted-foreground">
-              Tỷ lệ tiết kiệm trung bình 55%
+            <span className="text-xs text-muted-foreground block">
+              {summary.savingRatePercent
+                ? `Tỷ lệ tiết kiệm đạt ${summary.savingRatePercent}%`
+                : 'Không có thu nhập trong kỳ'}
             </span>
           </CardContent>
         </Card>
@@ -87,50 +256,131 @@ export default function ReportsPage() {
       {/* Full Width Cash Flow Chart */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-semibold">
-            Biểu đồ dòng tiền lịch sử (6 tháng gần nhất)
-          </CardTitle>
-          <CardDescription>
-            Định lượng độ lệch giữa thu nhập và chi tiêu qua từng chu kỳ tháng.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-semibold">
+                Biểu đồ dòng tiền thực tế ({currency})
+              </CardTitle>
+              <CardDescription>
+                So sánh thu nhập và chi tiêu qua các chu kỳ tháng trong khoảng thời gian đã chọn.
+              </CardDescription>
+            </div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-muted text-foreground">
+              {data?.dateRangeLabel}
+            </span>
+          </div>
         </CardHeader>
         <CardContent>
-          <CashFlowChart data={MOCK_CASH_FLOW_6M} />
+          <CashFlowChart data={data?.cashFlow || []} currency={currency} />
         </CardContent>
       </Card>
 
-      {/* 2-Column Section: Expense Donut + Multi-currency Income breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Category Expense Breakdown */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">
-              Cơ cấu chi tiêu theo danh mục
-            </CardTitle>
-            <CardDescription>
-              Tỷ trọng chi tiêu tháng 8/2026 (Tổng chi: {formatMoney(MOCK_DASHBOARD_METRICS.monthlyExpenseVND)})
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CategoryDonutChart data={MOCK_CATEGORY_EXPENSES} />
-          </CardContent>
-        </Card>
+      {/* 2-Column Section: Expense Donut + Accounts in currency */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Category Expense Breakdown (7 Cols) */}
+        <div className="lg:col-span-7">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">
+                Cơ cấu chi tiêu theo danh mục
+              </CardTitle>
+              <CardDescription>
+                Phân bổ chi tiêu thực tế trong kỳ ({formatExactMoney(summary.totalExpense, currency)}).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CategoryDonutChart
+                data={data?.categoryBreakdown || []}
+                currency={currency}
+                totalExpense={summary.totalExpense}
+              />
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Multi-Currency Income Sources Breakdown (YouTube Channels + Salary) */}
-        <Card>
-          <CardHeader>
+        {/* Currency & Account Position Summary (5 Cols) */}
+        <div className="lg:col-span-5">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold flex items-center space-x-2">
+                <Wallet className="h-4 w-4 text-primary" />
+                <span>Tài khoản ({currency})</span>
+              </CardTitle>
+              <CardDescription>
+                Tổng số dư các tài khoản nắm giữ {currency}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Tổng số dư {currency}:</span>
+                <span className="text-base font-bold text-foreground">
+                  {formatExactMoney(data?.totalAccountBalance || '0.0000', currency)}
+                </span>
+              </div>
+
+              {data?.accountsInCurrency && data.accountsInCurrency.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  {data.accountsInCurrency.map((acc) => (
+                    <div
+                      key={acc.accountId}
+                      className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs"
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                        <span
+                          className="h-3 w-3 rounded-full shrink-0"
+                          style={{ backgroundColor: acc.color }}
+                        />
+                        <div className="truncate">
+                          <p className="font-medium text-foreground truncate">{acc.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{acc.institution || acc.type}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 font-semibold text-foreground">
+                        {formatExactMoney(acc.currentBalance, acc.currency)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
+                  Không có tài khoản nào sử dụng {currency}.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Transaction Details in Selected Period & Currency */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div>
             <CardTitle className="text-base font-semibold">
-              Phân rã đa nguồn thu nhập (Multi-Currency)
+              Chi tiết giao dịch trong kỳ ({data?.transactions.length || 0})
             </CardTitle>
             <CardDescription>
-              Bao gồm Lương VND, YouTube Channels (USD) và dự án Freelance.
+              Các khoản thu/chi thực tế {currency} thuộc {data?.dateRangeLabel}.
             </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <IncomeSourcesBreakdown sources={MOCK_INCOME_SOURCES} />
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+          {data && data.transactions.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleExportCSV}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
+              Tải CSV
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <TransactionList
+            transactions={data?.transactions || []}
+            showFilters={true}
+          />
+        </CardContent>
+      </Card>
     </AppShell>
   );
 }

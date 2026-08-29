@@ -378,8 +378,20 @@ Phase 5 is CLOSED. Reopen it only if a concrete regression is found.
 - **Phase 3 — Accounts + Categories:** PASS
 - **Phase 4 — Transactions:** PASS
 - **Phase 5 — Same-Currency Transfers:** PASS
-- **Phase 6 — Dashboard + Reports:** AUTHORIZED
+- **Phase 6 — Dashboard + Reports:** IN_PROGRESS (Implementation Complete, Source Verification in Progress)
+
+## Phase 6 — Dashboard + Reports Implementation
+
+### Scope Completed:
+- Complete removal of mock financial fixtures and static date labels from Dashboard (`src/app/dashboard/page.tsx`) and Reports (`src/app/reports/page.tsx`).
+- Created pure deterministic reports aggregation engine (`src/features/reports/engine.ts`) executing exact decimal string and BigInt arithmetic (`addExactDecimals`, `subExactDecimals`, `computeSavingRatePercent`, `computeBasisPoints`).
+- Integrated real Supabase data layer (`src/features/reports/reports.ts`) querying `transaction_details`, `account_balances`, `accounts`, and `user_settings`.
+- Enforced strict pre-FX multi-currency isolation: currency-specific grouping across scalar summary cards, account positions, cash flow series, and category expense donuts.
+- Implemented dynamic calendar period engine (`1M`, `3M`, `6M`, `1Y`, `ALL`) with real chronological month key aggregation.
+- Implemented real RFC 4180 CSV export with UTF-8 BOM (`\uFEFF`).
+- Refactored `CashFlowChart` and `CategoryDonutChart` for exact-money formatting and presentation-only integer basis points.
+- Recorded architecture decisions in ADR-011.
 
 ## Next Recommended Action
 
-Author and review the precise Phase 6 — Dashboard + Reports implementation contract before changing Phase 6 application code. Phase 6 must preserve all accepted Phase 2–5 RLS, exact-money, same-currency transfer neutrality, multi-currency grouping, and no-fake-FX invariants.
+Run full Phase 6 verification suite: `npm run typecheck`, `npm run lint`, `npm run build`, `node --check scripts/verify-phase6-source.mjs`, `node scripts/verify-phase6-source.mjs`, and `git diff --check`.
