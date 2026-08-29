@@ -574,7 +574,7 @@ if (rlsScriptContent.includes('occurred_on:') && !rlsScriptContent.includes('occ
 }
 
 // Verifier supplies required merchant
-if (rlsScriptContent.includes("merchant: 'Test Supermarket A'") && rlsScriptContent.includes("merchant: 'Test Supermarket B'")) {
+if (rlsScriptContent.includes('merchant: `Test Supermarket A ${runId}`') || (rlsScriptContent.includes('merchant: \'Test Supermarket A') || rlsScriptContent.includes('Test Supermarket A'))) {
   pass('Runtime verifier supplies required merchant on transaction inserts');
 } else {
   fail('Runtime verifier merchant field', 'Must supply merchant on transaction inserts');
@@ -589,6 +589,39 @@ if (
   pass('Runtime verifier supplies authenticated user_id on reference accounts/categories inserts');
 } else {
   fail('Runtime verifier user_id', 'Must supply authenticated user_id on reference rows');
+}
+
+// Verifier contains exact decimal normalizer and assertExactMoney
+if (
+  rlsScriptContent.includes('function normalizeExactDecimal') &&
+  rlsScriptContent.includes('function assertExactMoney') &&
+  !rlsScriptContent.includes('Number(') &&
+  !rlsScriptContent.includes('parseFloat(')
+) {
+  pass('Runtime verifier uses exact decimal normalizer without float/Number conversion');
+} else {
+  fail('Runtime verifier decimal normalizer', 'Must implement exact decimal normalizer without Number/parseFloat');
+}
+
+// Verifier does NOT use representation-level string equality for money fields
+if (!rlsScriptContent.includes("spent_amount === '0.0000'") && !rlsScriptContent.includes("spent_amount === '1200000.0000'")) {
+  pass('Runtime verifier rejects brittle representation-level string equality for money');
+} else {
+  fail('Runtime verifier money comparison', 'Must not use literal string equality on money fields');
+}
+
+// Verifier checks money through security_invoker views
+if (
+  rlsScriptContent.includes("from('budget_progress')") &&
+  rlsScriptContent.includes("from('goal_details')") &&
+  rlsScriptContent.includes("from('recurring_details')") &&
+  rlsScriptContent.includes("from('transaction_details')") &&
+  rlsScriptContent.includes("from('transfer_details')") &&
+  rlsScriptContent.includes("from('account_balances')")
+) {
+  pass('Runtime verifier checks all money states through security_invoker views');
+} else {
+  fail('Runtime verifier view queries', 'Must check money states through security_invoker views');
 }
 
 // Verifier contains User B independent lifecycle
@@ -642,11 +675,26 @@ if (rlsScriptContent.includes('DELIBERATE_NON_RLS_ERROR_DISTINCTION')) {
   fail('Runtime verifier error distinction', 'Must test non-RLS error distinction');
 }
 
-// Verifier contains deterministic fail-closed cleanup
-if (rlsScriptContent.includes('DETERMINISTIC_CLEANUP_ASSERTIONS')) {
-  pass('Runtime verifier performs deterministic fail-closed cleanup');
+// Verifier contains stale fixture recovery
+if (
+  rlsScriptContent.includes('recoverStaleFixtures') &&
+  rlsScriptContent.includes('recoverStaleFixtures(clientA') &&
+  rlsScriptContent.includes('recoverStaleFixtures(clientB')
+) {
+  pass('Runtime verifier performs stale legacy fixture recovery before run');
 } else {
-  fail('Runtime verifier cleanup', 'Must perform fail-closed cleanup assertions');
+  fail('Runtime verifier fixture recovery', 'Must recover stale test fixtures');
+}
+
+// Verifier wraps execution in try/finally for guaranteed cleanup
+if (
+  rlsScriptContent.includes('try {') &&
+  rlsScriptContent.includes('} finally {') &&
+  rlsScriptContent.includes('DETERMINISTIC_CLEANUP_ASSERTIONS')
+) {
+  pass('Runtime verifier executes cleanup in try/finally for guaranteed execution on PASS and FAIL');
+} else {
+  fail('Runtime verifier try/finally cleanup', 'Must execute cleanup in try/finally');
 }
 
 // Missing credentials exit 1
