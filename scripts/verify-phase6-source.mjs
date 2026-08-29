@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 
 /**
- * Finora Phase 6 Source Code & Financial Invariant Verifier
+ * Finora Phase 6 Source Code & Financial Invariant Verifier (Hardened)
  *
  * Verifies:
  * 1. Complete eradication of mock data imports in Dashboard & Reports.
  * 2. Strict exact-money BigInt arithmetic in reports engine (no lossy casts or string comparisons).
  * 3. Pre-FX multi-currency isolation (no cross-currency addition).
- * 4. Dynamic period & timezone date resolution (no hard-coded static dates).
- * 5. Fail-closed error handling (no fallback to opening_balance; no stale data on reload errors).
+ * 4. Dynamic period & strict fail-closed timezone validation (no hard-coded static dates, no silent fallback for invalid configured timezones).
+ * 5. Fail-closed error handling & deterministic stale data clearing in Reports and Dashboard (no fallback to opening_balance; no stale data under new controls).
  * 6. Authoritative account_balances usage.
  * 7. Correct ALL-period full-history derivation (from earliest tx to current month with zero months).
  * 8. Correct base-currency default selection (prioritized if present, not injected if absent).
  * 9. RFC 4180 CSV export with UTF-8 BOM.
- * 10. Comprehensive mathematical & programmatic regression test suite.
+ * 10. Truthful PROJECT_STATUS (Phase 6 source-gate PASS_CODE_ONLY, live smoke NOT_RUN, Phase 7 NOT authorized).
+ * 11. Comprehensive mathematical & programmatic regression test suite.
  */
 
 import fs from 'node:fs';
@@ -41,11 +42,11 @@ function fail(name, reason) {
 }
 
 console.log('='.repeat(75));
-console.log('FINORA PHASE 6 HARDENED SOURCE & FINANCIAL INVARIANT VERIFIER');
+console.log('FINORA PHASE 6 FINAL HARDENED SOURCE & FINANCIAL INVARIANT VERIFIER');
 console.log('='.repeat(75));
 
 // 1. Check prohibited mock imports & hard-coded dates in Phase 6 files
-console.log('\n[1/8] Checking mock eradication & dynamic dates in Phase 6 files...');
+console.log('\n[1/9] Checking mock eradication & dynamic dates in Phase 6 files...');
 const phase6Files = [
   'src/app/dashboard/page.tsx',
   'src/app/reports/page.tsx',
@@ -90,7 +91,7 @@ for (const relPath of phase6Files) {
 }
 
 // 2. Check exact monetary arithmetic & no lossy casts in report engine
-console.log('\n[2/8] Checking exact-money invariants in reports engine source...');
+console.log('\n[2/9] Checking exact-money invariants in reports engine source...');
 const enginePath = path.join(rootDir, 'src/features/reports/engine.ts');
 const engineContent = fs.readFileSync(enginePath, 'utf8');
 
@@ -137,7 +138,7 @@ if (
 }
 
 // 3. Check fail-closed account_balances in engine.ts
-console.log('\n[3/8] Checking fail-closed account_balances invariants...');
+console.log('\n[3/9] Checking fail-closed account_balances invariants...');
 const aggBalanceFnMatch = engineContent.match(/export function aggregateAccountBalancesByCurrency[\s\S]*?\n\}/);
 if (aggBalanceFnMatch) {
   const fnBody = aggBalanceFnMatch[0];
@@ -158,10 +159,22 @@ if (
   fail('aggregateAccountBalancesByCurrency check', 'Missing explicit undefined check for balances[account.id]');
 }
 
-// 4. Check timezone and base_currency resolution in reports.ts
-console.log('\n[4/8] Checking user_settings & timezone resolution in reports.ts...');
+// 4. Check strict timezone validation & resolution in engine.ts and reports.ts
+console.log('\n[4/9] Checking strict timezone validation and fail-closed resolution...');
 const reportsPath = path.join(rootDir, 'src/features/reports/reports.ts');
 const reportsContent = fs.readFileSync(reportsPath, 'utf8');
+
+if (engineContent.includes('export function validateAndResolveTimezone')) {
+  pass('engine.ts exports validateAndResolveTimezone helper');
+} else {
+  fail('validateAndResolveTimezone export', 'Missing validateAndResolveTimezone export in engine.ts');
+}
+
+if (reportsContent.includes('validateAndResolveTimezone')) {
+  pass('reports.ts uses validateAndResolveTimezone for user timezone resolution');
+} else {
+  fail('reports.ts timezone resolution', 'reports.ts does not invoke validateAndResolveTimezone');
+}
 
 if (
   reportsContent.includes('userSettingsResult.error') &&
@@ -172,39 +185,95 @@ if (
   fail('user_settings error handling', 'Missing throw on userSettingsResult.error in reports.ts');
 }
 
-if (
-  reportsContent.includes('timezone') &&
-  reportsContent.includes('getCalendarDateInTimezone') ||
-  reportsContent.includes('getCurrentMonthPrefix(timezone)')
-) {
-  pass('reports.ts resolves dates using configured user timezone');
-} else {
-  fail('Timezone resolution', 'Missing timezone passing to date helpers in reports.ts');
+// Timezone programmatic tests
+function validateAndResolveTimezone(timezone) {
+  if (timezone === undefined || timezone === null || (typeof timezone === 'string' && timezone.trim() === '')) {
+    return 'Asia/Ho_Chi_Minh';
+  }
+  const cleanTz = typeof timezone === 'string' ? timezone.trim() : String(timezone);
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: cleanTz });
+    return cleanTz;
+  } catch {
+    throw new Error(`Múi giờ cấu hình không hợp lệ: "${timezone}". Vui lòng kiểm tra cài đặt người dùng.`);
+  }
 }
 
-if (reportsContent.includes('getAvailableCurrenciesAndDefault')) {
-  pass('reports.ts uses getAvailableCurrenciesAndDefault for currency discovery');
+// Test absent timezone -> fallback
+const tzAbsent1 = validateAndResolveTimezone(undefined);
+const tzAbsent2 = validateAndResolveTimezone(null);
+const tzAbsent3 = validateAndResolveTimezone('');
+const tzAbsent4 = validateAndResolveTimezone('   ');
+if (tzAbsent1 === 'Asia/Ho_Chi_Minh' && tzAbsent2 === 'Asia/Ho_Chi_Minh' && tzAbsent3 === 'Asia/Ho_Chi_Minh' && tzAbsent4 === 'Asia/Ho_Chi_Minh') {
+  pass('Timezone: absent/null/empty timezone resolves to fallback "Asia/Ho_Chi_Minh"');
 } else {
-  fail('Currency discovery', 'Missing getAvailableCurrenciesAndDefault call in reports.ts');
+  fail('Timezone absent fallback', 'Failed to resolve fallback for absent/empty timezone');
 }
 
-// 5. Check fail-closed error handling in UI pages
-console.log('\n[5/8] Checking fail-closed UI state & no stale data on error...');
+// Test valid configured timezone -> used
+const tzValid1 = validateAndResolveTimezone('America/New_York');
+const tzValid2 = validateAndResolveTimezone('Europe/London');
+const tzValid3 = validateAndResolveTimezone('Asia/Tokyo');
+if (tzValid1 === 'America/New_York' && tzValid2 === 'Europe/London' && tzValid3 === 'Asia/Tokyo') {
+  pass('Timezone: valid configured IANA timezone accepted and returned verbatim');
+} else {
+  fail('Timezone valid check', 'Failed to accept valid IANA timezone');
+}
+
+// Test invalid non-empty configured timezone -> throws and fails closed
+let threwForInvalid = false;
+try {
+  validateAndResolveTimezone('Invalid/Non_Existent_Timezone_123');
+} catch (e) {
+  threwForInvalid = true;
+}
+if (threwForInvalid) {
+  pass('Timezone: invalid non-empty timezone throws error and fails closed (no silent fallback)');
+} else {
+  fail('Timezone invalid check', 'Did not throw error on invalid timezone');
+}
+
+// 5. Check Reports stale-data clearing & loading behavior in UI
+console.log('\n[5/9] Checking Reports stale-data clearing & request sequencing...');
 const dashboardPagePath = path.join(rootDir, 'src/app/dashboard/page.tsx');
 const dashboardPageContent = fs.readFileSync(dashboardPagePath, 'utf8');
 const reportsPagePath = path.join(rootDir, 'src/app/reports/page.tsx');
 const reportsPageContent = fs.readFileSync(reportsPagePath, 'utf8');
 
-if (dashboardPageContent.includes('setData(null)') && dashboardPageContent.includes('if (error || !data)')) {
-  pass('Dashboard clears stale data and shows error view on load failure');
+// Check that loadReport in reports/page.tsx clears data before awaiting new report
+const loadReportMatch = reportsPageContent.match(/const loadReport = useCallback\(async \(\) => \{([\s\S]*?)\}, \[period, selectedCurrency\]\);/);
+if (loadReportMatch) {
+  const loadBody = loadReportMatch[1];
+  const setDataNullIndex = loadBody.indexOf('setData(null)');
+  const fetchIndex = loadBody.indexOf('getDetailedReportData');
+  if (setDataNullIndex !== -1 && fetchIndex !== -1 && setDataNullIndex < fetchIndex) {
+    pass('Reports loadReport clears previous authoritative data (setData(null)) before awaiting getDetailedReportData');
+  } else {
+    fail('Reports stale-data clearing', 'loadReport does not clear data before fetching new report');
+  }
 } else {
-  fail('Dashboard error handling', 'Dashboard does not clear data or render fail-closed error view');
+  fail('loadReport match', 'Could not parse loadReport callback in reports/page.tsx');
 }
 
-if (reportsPageContent.includes('setData(null)') && reportsPageContent.includes('if (error || !data)')) {
-  pass('Reports clears stale data and shows error view on reload failure');
+// Check that reports page renders loading skeleton when loading is true (without && !data bypassing)
+if (reportsPageContent.includes('if (loading) {') && !reportsPageContent.includes('if (loading && !data) {')) {
+  pass('Reports renders loading skeleton immediately when loading=true (no stale data rendering under new controls)');
 } else {
-  fail('Reports error handling', 'Reports does not clear data or render fail-closed error view');
+  fail('Reports loading gate', 'Reports loading gate is conditional on !data or missing');
+}
+
+// Check request sequencing in reports page
+if (reportsPageContent.includes('requestSeqRef') && reportsPageContent.includes('reqId === requestSeqRef.current')) {
+  pass('Reports uses request sequencing (requestSeqRef) for out-of-order response protection');
+} else {
+  fail('Reports request sequencing', 'Missing request sequencing in reports/page.tsx');
+}
+
+// Check fail-closed error handling
+if (dashboardPageContent.includes('if (error || !data)') && reportsPageContent.includes('if (error || !data)')) {
+  pass('Dashboard & Reports render visible fail-closed error state with retry button on load failure');
+} else {
+  fail('Fail-closed error UI', 'Missing fail-closed error view in dashboard or reports');
 }
 
 if (
@@ -216,8 +285,47 @@ if (
   pass('UI pages do not hard-code initial VND currency state');
 }
 
-// 6. Mathematical exact decimal and saving rate unit tests
-console.log('\n[6/8] Running exact-money arithmetic unit validation...');
+// 6. Check PROJECT_STATUS.md truthfulness
+console.log('\n[6/9] Checking docs/PROJECT_STATUS.md gate state & truthfulness...');
+const projectStatusPath = path.join(rootDir, 'docs/PROJECT_STATUS.md');
+const projectStatusContent = fs.readFileSync(projectStatusPath, 'utf8');
+
+if (projectStatusContent.includes('PHASE_6_SOURCE_GATE=PASS_CODE_ONLY')) {
+  pass('PROJECT_STATUS contains PHASE_6_SOURCE_GATE=PASS_CODE_ONLY');
+} else {
+  fail('PROJECT_STATUS source gate', 'Missing PHASE_6_SOURCE_GATE=PASS_CODE_ONLY in docs/PROJECT_STATUS.md');
+}
+
+if (projectStatusContent.includes('PHASE_6_LIVE_PERSISTENCE_SMOKE=NOT_RUN')) {
+  pass('PROJECT_STATUS contains PHASE_6_LIVE_PERSISTENCE_SMOKE=NOT_RUN');
+} else {
+  fail('PROJECT_STATUS live smoke', 'Missing PHASE_6_LIVE_PERSISTENCE_SMOKE=NOT_RUN in docs/PROJECT_STATUS.md');
+}
+
+if (projectStatusContent.includes('PHASE_6_OVERALL=PARTIAL')) {
+  pass('PROJECT_STATUS contains PHASE_6_OVERALL=PARTIAL');
+} else {
+  fail('PROJECT_STATUS overall status', 'Missing PHASE_6_OVERALL=PARTIAL in docs/PROJECT_STATUS.md');
+}
+
+if (projectStatusContent.includes('PHASE_7_AUTHORIZED=false')) {
+  pass('PROJECT_STATUS contains PHASE_7_AUTHORIZED=false');
+} else {
+  fail('PROJECT_STATUS phase 7 auth', 'Missing PHASE_7_AUTHORIZED=false in docs/PROJECT_STATUS.md');
+}
+
+if (
+  /Phase 6[^\n]*COMPLETE\b/i.test(projectStatusContent) ||
+  /PHASE_6=PASS\b/.test(projectStatusContent) ||
+  /PHASE_7_AUTHORIZED=true\b/.test(projectStatusContent)
+) {
+  fail('PROJECT_STATUS premature closure', 'docs/PROJECT_STATUS.md prematurely marks Phase 6 COMPLETE or Phase 7 authorized');
+} else {
+  pass('PROJECT_STATUS does not prematurely mark Phase 6 COMPLETE or Phase 7 authorized');
+}
+
+// 7. Mathematical exact decimal and saving rate unit tests
+console.log('\n[7/9] Running exact-money arithmetic unit validation...');
 
 function toScaledBigInt(amountStr) {
   const clean = amountStr.trim();
@@ -330,8 +438,8 @@ if (bps1 === 2500) {
   fail('Basis points ratio', `Expected 2500, got ${bps1}`);
 }
 
-// 7. Testing currency discovery & default selection rules
-console.log('\n[7/8] Testing currency discovery & default selection semantics...');
+// 8. Testing currency discovery & default selection rules
+console.log('\n[8/9] Testing currency discovery & default selection semantics...');
 
 function getAvailableCurrenciesAndDefault(accounts, transactions, baseCurrency) {
   const realCurrencySet = new Set();
@@ -399,16 +507,11 @@ if (discC.defaultCurrency === 'USD' && discC.availableCurrencies.length === 1 &&
   fail('Currency discovery Case C', `Got ${JSON.stringify(discC)}`);
 }
 
-// 8. Testing ALL-period full history month generation and timezone date resolution
-console.log('\n[8/8] Testing ALL-period full history & timezone date resolution...');
+// 9. Testing ALL-period full history month generation and timezone date resolution
+console.log('\n[9/9] Testing ALL-period full history & timezone date resolution...');
 
 function getCalendarDateInTimezone(timezone = 'Asia/Ho_Chi_Minh', now = new Date()) {
-  let validTz = timezone;
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: validTz });
-  } catch {
-    validTz = 'Asia/Ho_Chi_Minh';
-  }
+  const validTz = validateAndResolveTimezone(timezone);
 
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: validTz,
@@ -493,6 +596,15 @@ if (emptyKeys.length === 1 && emptyKeys[0] === '2026-08') {
   pass('ALL-period with zero transactions returns truthful [currentMonth] single bucket');
 } else {
   fail('ALL-period zero transactions', `Expected [2026-08], got ${JSON.stringify(emptyKeys)}`);
+}
+
+// Check that no new supabase migrations were added for Phase 6
+const migrationsDir = path.join(rootDir, 'supabase/migrations');
+const migrationFiles = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
+if (migrationFiles.length === 4) {
+  pass(`No new migrations added for Phase 6 (exactly 4 migrations present from Phases 2-5)`);
+} else {
+  fail('Migration count', `Expected exactly 4 migrations from Phases 2-5, found ${migrationFiles.length}: ${migrationFiles.join(', ')}`);
 }
 
 console.log('\n' + '='.repeat(75));

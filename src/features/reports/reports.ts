@@ -6,6 +6,7 @@ import {
   getCurrentMonthPrefix,
   formatFullMonthLabel,
   getAvailableCurrenciesAndDefault,
+  validateAndResolveTimezone,
   aggregateCurrencySummaries,
   aggregateAccountBalancesByCurrency,
   aggregateCashFlow,
@@ -37,7 +38,7 @@ export async function getDashboardReportData(): Promise<DashboardReportData> {
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-  const timezone = userSettingsResult.data?.timezone || 'Asia/Ho_Chi_Minh';
+  const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
 
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,
@@ -119,7 +120,7 @@ export async function getDetailedReportData(
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-  const timezone = userSettingsResult.data?.timezone || 'Asia/Ho_Chi_Minh';
+  const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
 
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,

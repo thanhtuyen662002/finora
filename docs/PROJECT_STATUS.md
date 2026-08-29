@@ -366,6 +366,10 @@ PHASE_5_TWO_USER_RLS=PASS
 PHASE_5_LIVE_PERSISTENCE_SMOKE=PASS
 FINORA_PHASE_5=PASS
 PHASE_6_AUTHORIZED=true
+PHASE_6_SOURCE_GATE=PASS_CODE_ONLY
+PHASE_6_LIVE_PERSISTENCE_SMOKE=NOT_RUN
+PHASE_6_OVERALL=PARTIAL
+PHASE_7_AUTHORIZED=false
 ```
 
 Phase 5 is CLOSED. Reopen it only if a concrete regression is found.
@@ -378,7 +382,7 @@ Phase 5 is CLOSED. Reopen it only if a concrete regression is found.
 - **Phase 3 — Accounts + Categories:** PASS
 - **Phase 4 — Transactions:** PASS
 - **Phase 5 — Same-Currency Transfers:** PASS
-- **Phase 6 — Dashboard + Reports:** COMPLETE (Corrective Verification Passed)
+- **Phase 6 — Dashboard + Reports:** SOURCE_COMPLETE_LIVE_SMOKE_PENDING
 
 ## Phase 6 — Dashboard + Reports Implementation & Corrective Hardening
 
@@ -387,16 +391,16 @@ Phase 5 is CLOSED. Reopen it only if a concrete regression is found.
 - Created pure deterministic reports aggregation engine (`src/features/reports/engine.ts`) executing exact decimal string and BigInt arithmetic (`addExactDecimals`, `subExactDecimals`, `compareExactDecimals`, `computeSavingRatePercent`, `computeBasisPoints`).
 - Integrated real Supabase data layer (`src/features/reports/reports.ts`) querying `transaction_details`, `account_balances`, `accounts`, and `user_settings`.
 - Fail-closed on `account_balances`: never fallback to `opening_balance`; missing balance rows throw an explicit error.
-- Timezone-aware date resolution: reads `user_settings.timezone` (with fail-closed error handling on settings query) and resolves calendar dates deterministically via `Intl.DateTimeFormat`.
+- Timezone validation & date resolution: reads `user_settings.timezone` (with fail-closed error handling on settings query and strict fail-closed validation on invalid configured timezones) and resolves calendar dates deterministically via `Intl.DateTimeFormat`.
 - `ALL` period history: derives month sequence from the earliest active transaction for the selected currency through the current month, including all intermediate zero-value months.
 - Exact monetary comparison: uses `compareExactDecimals` for series scaling instead of relational string comparisons (`>` / `<`).
 - Currency discovery & base currency selection: prioritizes `base_currency` only if present in real account/transaction data, otherwise deterministically selects the first available currency without injecting an absent base currency into non-empty sets.
-- Fail-closed reload & error state: clears stale data on reload errors and renders visible error states with retry buttons.
+- Fail-closed reload & error state: clears previous data immediately when a new period/currency request begins, handles request sequencing, and renders visible error states on failure.
 - Implemented real RFC 4180 CSV export with UTF-8 BOM (`\uFEFF`) and timezone-aware filenames.
 - Refactored `CashFlowChart` and `CategoryDonutChart` for exact-money formatting and presentation-only integer basis points.
-- Hardened source verifier `scripts/verify-phase6-source.mjs` verifying all 54 contract invariants and unit test cases.
+- Hardened source verifier `scripts/verify-phase6-source.mjs` verifying all contract invariants and unit test cases.
 - Recorded architecture decisions in ADR-011.
 
 ## Next Recommended Action
 
-Phase 6 source implementation and corrective hardening are complete and verified. Ready for Phase 6 review / closure.
+Phase 6 source implementation and corrective hardening are PASS (CODE-ONLY). Proceed with owner live persistence/report smoke verification before Phase 6 closure and Phase 7 authorization.

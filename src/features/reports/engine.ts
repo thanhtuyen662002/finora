@@ -33,19 +33,34 @@ export interface CalendarDateInfo {
 }
 
 /**
+ * Validates and resolves an IANA timezone string.
+ * - If timezone is undefined, null, or empty/whitespace, returns the established fallback 'Asia/Ho_Chi_Minh'.
+ * - If timezone is provided and valid, returns the trimmed timezone string.
+ * - If timezone is provided but invalid according to ECMAScript Intl, throws an Error (fail-closed).
+ */
+export function validateAndResolveTimezone(timezone?: string | null): string {
+  if (timezone === undefined || timezone === null || timezone.trim() === '') {
+    return 'Asia/Ho_Chi_Minh';
+  }
+  const cleanTz = timezone.trim();
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: cleanTz });
+    return cleanTz;
+  } catch (err: any) {
+    throw new Error(`Múi giờ cấu hình không hợp lệ: "${timezone}". Vui lòng kiểm tra cài đặt người dùng.`);
+  }
+}
+
+/**
  * Resolves the calendar date and month in a specific IANA timezone (e.g. 'Asia/Ho_Chi_Minh').
  * Uses standard ECMAScript Intl.DateTimeFormat without heavy date libraries.
+ * Fails closed if a non-empty invalid timezone is provided.
  */
 export function getCalendarDateInTimezone(
   timezone: string = 'Asia/Ho_Chi_Minh',
   now: Date = new Date()
 ): CalendarDateInfo {
-  let validTz = timezone;
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: validTz });
-  } catch {
-    validTz = 'Asia/Ho_Chi_Minh';
-  }
+  const validTz = validateAndResolveTimezone(timezone);
 
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: validTz,

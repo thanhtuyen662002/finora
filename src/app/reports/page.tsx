@@ -41,6 +41,7 @@ export default function ReportsPage() {
     try {
       setLoading(true);
       setError(null);
+      setData(null);
       const res = await getDetailedReportData(period, selectedCurrency || undefined);
       if (reqId === requestSeqRef.current) {
         setData(res);
@@ -59,28 +60,33 @@ export default function ReportsPage() {
   }, [period, selectedCurrency]);
 
   useEffect(() => {
+    let ignore = false;
     const reqId = ++requestSeqRef.current;
-    async function init() {
+    async function fetchReport() {
       try {
         setLoading(true);
         setError(null);
+        setData(null);
         const res = await getDetailedReportData(period, selectedCurrency || undefined);
-        if (reqId === requestSeqRef.current) {
+        if (!ignore && reqId === requestSeqRef.current) {
           setData(res);
           setSelectedCurrency(res.selectedCurrency);
         }
       } catch (err: any) {
-        if (reqId === requestSeqRef.current) {
+        if (!ignore && reqId === requestSeqRef.current) {
           setError(err?.message || 'Không thể tải báo cáo tài chính');
           setData(null);
         }
       } finally {
-        if (reqId === requestSeqRef.current) {
+        if (!ignore && reqId === requestSeqRef.current) {
           setLoading(false);
         }
       }
     }
-    init();
+    fetchReport();
+    return () => {
+      ignore = true;
+    };
   }, [period, selectedCurrency]);
 
   const handleExportCSV = () => {
@@ -107,7 +113,7 @@ export default function ReportsPage() {
     }
   };
 
-  if (loading && !data) {
+  if (loading) {
     return (
       <AppShell>
         <div className="space-y-6 animate-pulse">
