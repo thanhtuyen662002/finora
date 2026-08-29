@@ -11,8 +11,7 @@ import {
 import type { AccountRow } from '@/types/database';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyBadge } from './CurrencyBadge';
-import { formatMoney } from '@/lib/money/format';
-import { formatExactDecimal } from '@/lib/money';
+import { formatExactMoney } from '@/lib/money';
 
 interface AccountCardProps {
   account: AccountRow;
@@ -56,6 +55,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
   };
 
+  const displayBalance = formatExactMoney(
+    String(currentBalance !== undefined ? currentBalance : account.opening_balance),
+    account.currency_code
+  );
+
   if (variant === 'compact') {
     return (
       <div
@@ -75,7 +79,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </div>
         <div className="text-right shrink-0 pl-2">
-          <p className="text-sm font-semibold text-foreground">{formatExactDecimal(String(currentBalance !== undefined ? currentBalance : account.opening_balance))} {account.currency_code}</p>
+          <p className="text-sm font-semibold text-foreground">{displayBalance}</p>
         </div>
       </div>
     );
@@ -115,7 +119,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           <div>
             <span className="text-xs text-muted-foreground">{currentBalance !== undefined ? 'Số dư hiện tại' : 'Số dư khởi tạo'}</span>
             <p className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
-              {formatExactDecimal(String(currentBalance !== undefined ? currentBalance : account.opening_balance))} {account.currency_code}
+              {displayBalance}
             </p>
           </div>
         </div>
