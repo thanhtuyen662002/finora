@@ -716,13 +716,16 @@ checks AS (
             SELECT 1
             FROM pg_catalog.pg_views
             WHERE schemaname = 'public' AND viewname = 'account_balances'
-              AND definition ILIKE '%transactions%'
-              AND definition ILIKE '%transfers%'
-              AND definition ILIKE '%from_account_id%'
-              AND definition ILIKE '%to_account_id%'
-              AND definition ILIKE '%GROUP BY%'
-              AND definition ILIKE '%opening_balance%'
-              AND definition ILIKE '%LEFT JOIN%'
+              -- Proves transaction totals pre-aggregated by account_id with INCOME/EXPENSE weighting
+              AND definition ~* 'SELECT[[:space:]]+.*account_id.*SUM\(.*CASE.*INCOME.*EXPENSE.*END\).*FROM[[:space:]]+(public\.)?transactions.*GROUP BY[[:space:]]+.*account_id'
+              -- Proves incoming transfers pre-aggregated by to_account_id
+              AND definition ~* 'SELECT[[:space:]]+.*to_account_id.*SUM\(.*amount\).*FROM[[:space:]]+(public\.)?transfers.*GROUP BY[[:space:]]+.*to_account_id'
+              -- Proves outgoing transfers pre-aggregated by from_account_id
+              AND definition ~* 'SELECT[[:space:]]+.*from_account_id.*SUM\(.*amount\).*FROM[[:space:]]+(public\.)?transfers.*GROUP BY[[:space:]]+.*from_account_id'
+              -- Proves arithmetic formula: opening_balance + net_transactions + in_transfers - out_transfers
+              AND definition ~* 'opening_balance[[:space:]]*\+[[:space:]]*COALESCE\(.*,[[:space:]]*0\)[[:space:]]*\+[[:space:]]*COALESCE\(.*,[[:space:]]*0\)[[:space:]]*-[[:space:]]*COALESCE\(.*,[[:space:]]*0\)'
+              -- Proves final result is cast to text
+              AND definition ~* '::text|CAST\(.*AS text\)'
         ),
         COALESCE((
             SELECT 'definition_length=' || length(definition)::text
@@ -739,7 +742,14 @@ checks AS (
             SELECT 1
             FROM pg_catalog.pg_views
             WHERE schemaname = 'public' AND viewname = 'account_balances'
-              AND definition ILIKE '%is_voided = false%' OR definition ILIKE '%is_voided = false%'
+              -- Proves active-only filter is applied in all 3 CTEs (at least 3 distinct occurrences of is_voided = false)
+              AND (length(lower(definition)) - length(replace(lower(definition), 'is_voided', ''))) / length('is_voided') >= 3
+              AND (
+                  (length(lower(definition)) - length(replace(lower(definition), 'false', ''))) / length('false') >= 3
+                  OR (length(lower(definition)) - length(replace(lower(definition), 'not is_voided', ''))) / length('not is_voided') >= 3
+              )
+              AND definition ~* 'transactions.*WHERE.*is_voided[[:space:]]*=[[:space:]]*false'
+              AND definition ~* 'transfers.*WHERE.*is_voided[[:space:]]*=[[:space:]]*false'
         ),
         'account_balances filters is_voided = false on transactions and transfers'
 

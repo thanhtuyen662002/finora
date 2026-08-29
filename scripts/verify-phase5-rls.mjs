@@ -54,6 +54,17 @@ async function readTransferDetail(client, id) {
   return data;
 }
 
+async function readTransactionDetail(client, id) {
+  const { data, error } = await client
+    .from('transaction_details')
+    .select('*')
+    .eq('id', id)
+    .single();
+  assert(!error && data, `transaction_details read failed for ${id}: ${error?.message}`);
+  assert(typeof data.amount === 'string', 'transaction_details.amount must be returned as text');
+  return data;
+}
+
 async function readBalance(client, accountId) {
   const { data, error } = await client
     .from('account_balances')
@@ -65,26 +76,35 @@ async function readBalance(client, accountId) {
   return data;
 }
 
-async function assertCrossSelectEmpty(client, transferId, label) {
-  const { data, error } = await client
-    .from('transfers')
-    .select('id')
-    .eq('id', transferId);
-  assert(!error, `${label}: cross-user SELECT returned a database error instead of an RLS-empty result`);
-  assert(Array.isArray(data) && data.length === 0, `${label}: cross-user SELECT leaked a transfer`);
-}
-
-async function archiveFixture(client, table, id) {
+async function assertCrossSelectEmpty(client, table, id, label) {
   const { data, error } = await client
     .from(table)
+    .select('*')
+    .eq('id', id);
+  assert(!error, `${label}: cross-user SELECT returned a database error instead of an RLS-empty result: ${error?.message}`);
+  assert(Array.isArray(data) && data.length === 0, `${label}: cross-user SELECT leaked row from ${table}`);
+}
+
+async function assertCrossBalanceEmpty(client, accountId, label) {
+  const { data, error } = await client
+    .from('account_balances')
+    .select('*')
+    .eq('account_id', accountId);
+  assert(!error, `${label}: cross-user account_balances SELECT returned database error: ${error?.message}`);
+  assert(Array.isArray(data) && data.length === 0, `${label}: account_balances leaked foreign account balance`);
+}
+
+async function archiveAccountDirect(client, id) {
+  const { data, error } = await client
+    .from('accounts')
     .update({ is_archived: true })
     .eq('id', id)
     .select('id,is_archived')
     .single();
-  assert(!error && data?.is_archived === true, `cleanup failed to archive ${table}:${id}: ${error?.message}`);
+  assert(!error && data?.is_archived === true, `cleanup failed to archive account ${id}: ${error?.message}`);
 }
 
-async function voidTransferFixture(client, id) {
+async function voidTransferDirect(client, id) {
   const { data, error } = await client
     .from('transfers')
     .update({ is_voided: true })
@@ -94,7 +114,7 @@ async function voidTransferFixture(client, id) {
   assert(!error && data?.is_voided === true, `cleanup failed to void transfer ${id}: ${error?.message}`);
 }
 
-async function voidTransactionFixture(client, id) {
+async function voidTransactionDirect(client, id) {
   const { data, error } = await client
     .from('transactions')
     .update({ is_voided: true })
@@ -108,12 +128,14 @@ async function checkSchemaReadiness(client) {
   const { error: tErr } = await client.from('transfers').select('id').limit(0);
   const { error: tdErr } = await client.from('transfer_details').select('id').limit(0);
   const { error: abErr } = await client.from('account_balances').select('account_id').limit(0);
+  const { error: txdErr } = await client.from('transaction_details').select('id').limit(0);
 
-  if (tErr || tdErr || abErr) {
+  if (tErr || tdErr || abErr || txdErr) {
     const details = [
       tErr ? `transfers: ${tErr.message}` : null,
       tdErr ? `transfer_details: ${tdErr.message}` : null,
       abErr ? `account_balances: ${abErr.message}` : null,
+      txdErr ? `transaction_details: ${txdErr.message}` : null,
     ].filter(Boolean).join('; ');
     throw new Error(
       `SCHEMA_NOT_READY: Database is missing Phase 5 entities or views (${details}). Phase 5 migration must be applied before running dynamic verifier.`
@@ -127,10 +149,11 @@ async function run() {
 
   const transferFixtures = [];
   const transactionFixtures = [];
-  const archiveFixtures = [];
-  let cleanupStarted = false;
+  const accountFixtures = [];
+  let mainSuiteCompleted = false;
 
   try {
+    // 1. Authentication
     const { data: authA, error: authAError } = await clientA.auth.signInWithPassword({
       email: USER_A_EMAIL,
       password: USER_A_PASSWORD,
@@ -152,7 +175,7 @@ async function run() {
     await checkSchemaReadiness(clientA);
     pass('SCHEMA_READINESS');
 
-    // Setup User A accounts: A1 (VND), A2 (VND), A3 (USD)
+    // Setup User A accounts: A1 (VND, 1,000,000), A2 (VND, 500,000), A3 (USD, 100)
     const { data: accountA1, error: accountA1Error } = await clientA
       .from('accounts')
       .insert({
@@ -166,7 +189,7 @@ async function run() {
       .select('*')
       .single();
     assert(!accountA1Error && accountA1, `A1 account setup failed: ${accountA1Error?.message}`);
-    archiveFixtures.push({ client: clientA, table: 'accounts', id: accountA1.id });
+    accountFixtures.push({ client: clientA, id: accountA1.id });
 
     const { data: accountA2, error: accountA2Error } = await clientA
       .from('accounts')
@@ -181,7 +204,7 @@ async function run() {
       .select('*')
       .single();
     assert(!accountA2Error && accountA2, `A2 account setup failed: ${accountA2Error?.message}`);
-    archiveFixtures.push({ client: clientA, table: 'accounts', id: accountA2.id });
+    accountFixtures.push({ client: clientA, id: accountA2.id });
 
     const { data: accountA3, error: accountA3Error } = await clientA
       .from('accounts')
@@ -196,9 +219,9 @@ async function run() {
       .select('*')
       .single();
     assert(!accountA3Error && accountA3, `A3 account setup failed: ${accountA3Error?.message}`);
-    archiveFixtures.push({ client: clientA, table: 'accounts', id: accountA3.id });
+    accountFixtures.push({ client: clientA, id: accountA3.id });
 
-    // Setup User B accounts: B1 (VND), B2 (VND)
+    // Setup User B accounts: B1 (VND, 2,000,000), B2 (VND, 1,000,000), B3 (USD, 50)
     const { data: accountB1, error: accountB1Error } = await clientB
       .from('accounts')
       .insert({
@@ -212,7 +235,7 @@ async function run() {
       .select('*')
       .single();
     assert(!accountB1Error && accountB1, `B1 account setup failed: ${accountB1Error?.message}`);
-    archiveFixtures.push({ client: clientB, table: 'accounts', id: accountB1.id });
+    accountFixtures.push({ client: clientB, id: accountB1.id });
 
     const { data: accountB2, error: accountB2Error } = await clientB
       .from('accounts')
@@ -227,17 +250,32 @@ async function run() {
       .select('*')
       .single();
     assert(!accountB2Error && accountB2, `B2 account setup failed: ${accountB2Error?.message}`);
-    archiveFixtures.push({ client: clientB, table: 'accounts', id: accountB2.id });
+    accountFixtures.push({ client: clientB, id: accountB2.id });
 
-    // Get User A initial balances and net worth
+    const { data: accountB3, error: accountB3Error } = await clientB
+      .from('accounts')
+      .insert({
+        user_id: uidB,
+        name: `P5_${suffix}_B3_USD`,
+        type: 'BANK',
+        currency_code: 'USD',
+        opening_balance: '50.0000',
+        color: '#ec4899',
+      })
+      .select('*')
+      .single();
+    assert(!accountB3Error && accountB3, `B3 account setup failed: ${accountB3Error?.message}`);
+    accountFixtures.push({ client: clientB, id: accountB3.id });
+
+    // 2. User A Full Transfer Lifecycle & Combined Net Worth Neutrality
     const balA1_init = await readBalance(clientA, accountA1.id);
     const balA2_init = await readBalance(clientA, accountA2.id);
     assert(balA1_init.current_balance === '1000000.0000', 'A1 initial balance mismatch');
     assert(balA2_init.current_balance === '500000.0000', 'A2 initial balance mismatch');
-    const initialNetWorthVND = toScaledBigInt(balA1_init.current_balance) + toScaledBigInt(balA2_init.current_balance);
-    assert(initialNetWorthVND === 15000000000n, 'A1 + A2 initial sum must equal 1,500,000.0000 VND (scaled)');
+    const initialNetWorthA_VND = toScaledBigInt(balA1_init.current_balance) + toScaledBigInt(balA2_init.current_balance);
+    assert(initialNetWorthA_VND === 15000000000n, 'A1 + A2 initial sum must equal 1,500,000.0000 VND (scaled)');
 
-    // 1. User A creates transfer: 200,000 VND from A1 -> A2
+    // 2a. Create Transfer A: 200,000 VND from A1 -> A2
     const { data: transferA, error: transferAError } = await clientA
       .from('transfers')
       .insert({
@@ -246,7 +284,7 @@ async function run() {
         to_account_id: accountA2.id,
         amount: '200000.0000',
         currency_code: 'VND',
-        note: 'Initial transfer 200k',
+        note: 'User A initial transfer 200k',
         occurred_on: today,
       })
       .select('id')
@@ -254,7 +292,6 @@ async function run() {
     assert(!transferAError && transferA, `A transfer insert failed: ${transferAError?.message}`);
     transferFixtures.push({ client: clientA, id: transferA.id });
 
-    // Read back transfer_details
     const detailA = await readTransferDetail(clientA, transferA.id);
     assert(detailA.amount === '200000.0000', 'A transfer amount read-back mismatch');
     assert(detailA.from_account_name === accountA1.name, 'A from_account_name mismatch');
@@ -264,34 +301,32 @@ async function run() {
     assert(detailA.currency_code === 'VND', 'A currency_code mismatch');
     assert(detailA.is_voided === false, 'A is_voided must be false');
 
-    // Verify derived balances: A1 = 800,000, A2 = 700,000
     const balA1_afterT1 = await readBalance(clientA, accountA1.id);
     const balA2_afterT1 = await readBalance(clientA, accountA2.id);
     assert(balA1_afterT1.current_balance === '800000.0000', 'A1 balance after 200k transfer mismatch');
     assert(balA2_afterT1.current_balance === '700000.0000', 'A2 balance after 200k transfer mismatch');
-    const netWorthAfterT1 = toScaledBigInt(balA1_afterT1.current_balance) + toScaledBigInt(balA2_afterT1.current_balance);
-    assert(netWorthAfterT1 === initialNetWorthVND, 'Net worth must be invariant after transfer');
+    const netWorthA_afterT1 = toScaledBigInt(balA1_afterT1.current_balance) + toScaledBigInt(balA2_afterT1.current_balance);
+    assert(netWorthA_afterT1 === initialNetWorthA_VND, 'A net worth must be invariant after transfer create');
 
-    // 2. Edit/update transfer: 200,000 -> 300,000 VND
+    // 2b. Edit Transfer A: 200,000 -> 300,000 VND
     const { error: updateAError } = await clientA
       .from('transfers')
-      .update({ amount: '300000.0000', note: 'Updated transfer 300k' })
+      .update({ amount: '300000.0000', note: 'User A updated transfer 300k' })
       .eq('id', transferA.id)
       .select('id')
       .single();
     assert(!updateAError, `A transfer update failed: ${updateAError?.message}`);
     const detailA_up = await readTransferDetail(clientA, transferA.id);
-    assert(detailA_up.amount === '300000.0000' && detailA_up.note === 'Updated transfer 300k', 'A transfer update read-back mismatch');
+    assert(detailA_up.amount === '300000.0000' && detailA_up.note === 'User A updated transfer 300k', 'A transfer update read-back mismatch');
 
-    // Verify derived balances: A1 = 700,000, A2 = 800,000
     const balA1_afterUp = await readBalance(clientA, accountA1.id);
     const balA2_afterUp = await readBalance(clientA, accountA2.id);
     assert(balA1_afterUp.current_balance === '700000.0000', 'A1 balance after transfer update mismatch');
     assert(balA2_afterUp.current_balance === '800000.0000', 'A2 balance after transfer update mismatch');
-    const netWorthAfterUp = toScaledBigInt(balA1_afterUp.current_balance) + toScaledBigInt(balA2_afterUp.current_balance);
-    assert(netWorthAfterUp === initialNetWorthVND, 'Net worth must be invariant after transfer update');
+    const netWorthA_afterUp = toScaledBigInt(balA1_afterUp.current_balance) + toScaledBigInt(balA2_afterUp.current_balance);
+    assert(netWorthA_afterUp === initialNetWorthA_VND, 'A net worth must be invariant after transfer update');
 
-    // 3. Void transfer: is_voided = true
+    // 2c. Void Transfer A: is_voided = true
     const { error: voidAError } = await clientA
       .from('transfers')
       .update({ is_voided: true })
@@ -301,15 +336,14 @@ async function run() {
     assert(!voidAError, `A transfer void failed: ${voidAError?.message}`);
     assert((await readTransferDetail(clientA, transferA.id)).is_voided === true, 'A transfer void status mismatch');
 
-    // Verify derived balances restored: A1 = 1,000,000, A2 = 500,000
     const balA1_afterVoid = await readBalance(clientA, accountA1.id);
     const balA2_afterVoid = await readBalance(clientA, accountA2.id);
     assert(balA1_afterVoid.current_balance === '1000000.0000', 'A1 balance after void mismatch');
     assert(balA2_afterVoid.current_balance === '500000.0000', 'A2 balance after void mismatch');
-    const netWorthAfterVoid = toScaledBigInt(balA1_afterVoid.current_balance) + toScaledBigInt(balA2_afterVoid.current_balance);
-    assert(netWorthAfterVoid === initialNetWorthVND, 'Net worth must be invariant after transfer void');
+    const netWorthA_afterVoid = toScaledBigInt(balA1_afterVoid.current_balance) + toScaledBigInt(balA2_afterVoid.current_balance);
+    assert(netWorthA_afterVoid === initialNetWorthA_VND, 'A net worth must be invariant after transfer void');
 
-    // 4. Restore transfer: is_voided = false
+    // 2d. Restore Transfer A: is_voided = false
     const { error: restoreAError } = await clientA
       .from('transfers')
       .update({ is_voided: false })
@@ -319,16 +353,23 @@ async function run() {
     assert(!restoreAError, `A transfer restore failed: ${restoreAError?.message}`);
     assert((await readTransferDetail(clientA, transferA.id)).is_voided === false, 'A transfer restore status mismatch');
 
-    // Verify derived balances restored to active transfer state: A1 = 700,000, A2 = 800,000
     const balA1_afterRestore = await readBalance(clientA, accountA1.id);
     const balA2_afterRestore = await readBalance(clientA, accountA2.id);
     assert(balA1_afterRestore.current_balance === '700000.0000', 'A1 balance after restore mismatch');
     assert(balA2_afterRestore.current_balance === '800000.0000', 'A2 balance after restore mismatch');
-    const netWorthAfterRestore = toScaledBigInt(balA1_afterRestore.current_balance) + toScaledBigInt(balA2_afterRestore.current_balance);
-    assert(netWorthAfterRestore === initialNetWorthVND, 'Net worth must be invariant after transfer restore');
+    const netWorthA_afterRestore = toScaledBigInt(balA1_afterRestore.current_balance) + toScaledBigInt(balA2_afterRestore.current_balance);
+    assert(netWorthA_afterRestore === initialNetWorthA_VND, 'A net worth must be invariant after transfer restore');
     pass('USER_A_TRANSFER_LIFECYCLE_AND_NET_WORTH_NEUTRALITY');
 
-    // User B transfer lifecycle: 500,000 VND from B1 to B2
+    // 3. User B Full Transfer Lifecycle & Combined Net Worth Neutrality
+    const balB1_init = await readBalance(clientB, accountB1.id);
+    const balB2_init = await readBalance(clientB, accountB2.id);
+    assert(balB1_init.current_balance === '2000000.0000', 'B1 initial balance mismatch');
+    assert(balB2_init.current_balance === '1000000.0000', 'B2 initial balance mismatch');
+    const initialNetWorthB_VND = toScaledBigInt(balB1_init.current_balance) + toScaledBigInt(balB2_init.current_balance);
+    assert(initialNetWorthB_VND === 30000000000n, 'B1 + B2 initial sum must equal 3,000,000.0000 VND (scaled)');
+
+    // 3a. Create Transfer B: 500,000 VND from B1 -> B2
     const { data: transferB, error: transferBError } = await clientB
       .from('transfers')
       .insert({
@@ -337,7 +378,7 @@ async function run() {
         to_account_id: accountB2.id,
         amount: '500000.0000',
         currency_code: 'VND',
-        note: 'B transfer lifecycle',
+        note: 'User B initial transfer 500k',
         occurred_on: today,
       })
       .select('id')
@@ -345,34 +386,76 @@ async function run() {
     assert(!transferBError && transferB, `B transfer insert failed: ${transferBError?.message}`);
     transferFixtures.push({ client: clientB, id: transferB.id });
 
-    assert((await readTransferDetail(clientB, transferB.id)).amount === '500000.0000', 'B transfer amount read-back mismatch');
-    assert((await readBalance(clientB, accountB1.id)).current_balance === '1500000.0000', 'B1 balance after transfer mismatch');
-    assert((await readBalance(clientB, accountB2.id)).current_balance === '1500000.0000', 'B2 balance after transfer mismatch');
-    pass('USER_B_TRANSFER_LIFECYCLE');
+    const detailB = await readTransferDetail(clientB, transferB.id);
+    assert(detailB.amount === '500000.0000', 'B transfer amount read-back mismatch');
+    assert(detailB.from_account_name === accountB1.name, 'B from_account_name mismatch');
+    assert(detailB.to_account_name === accountB2.name, 'B to_account_name mismatch');
+    assert(detailB.currency_code === 'VND', 'B currency_code mismatch');
+    assert(detailB.is_voided === false, 'B is_voided must be false');
 
-    // 5. Cross-user isolation tests
-    // User B cannot SELECT User A's transfers directly
-    await assertCrossSelectEmpty(clientB, transferA.id, 'B->A transfers');
-    await assertCrossSelectEmpty(clientA, transferB.id, 'A->B transfers');
+    const balB1_afterT1 = await readBalance(clientB, accountB1.id);
+    const balB2_afterT1 = await readBalance(clientB, accountB2.id);
+    assert(balB1_afterT1.current_balance === '1500000.0000', 'B1 balance after 500k transfer mismatch');
+    assert(balB2_afterT1.current_balance === '1500000.0000', 'B2 balance after 500k transfer mismatch');
+    const netWorthB_afterT1 = toScaledBigInt(balB1_afterT1.current_balance) + toScaledBigInt(balB2_afterT1.current_balance);
+    assert(netWorthB_afterT1 === initialNetWorthB_VND, 'B net worth must be invariant after transfer create');
 
-    // User B cannot read User A's transfers via transfer_details
-    const { data: crossTransferBA, error: crossTransferBAError } = await clientB.from('transfer_details').select('id').eq('id', transferA.id);
-    const { data: crossTransferAB, error: crossTransferABError } = await clientA.from('transfer_details').select('id').eq('id', transferB.id);
-    assert(!crossTransferBAError && crossTransferBA?.length === 0, 'transfer_details leaked A row to B');
-    assert(!crossTransferABError && crossTransferAB?.length === 0, 'transfer_details leaked B row to A');
+    // 3b. Edit Transfer B: 500,000 -> 700,000 VND
+    const { error: updateBError } = await clientB
+      .from('transfers')
+      .update({ amount: '700000.0000', note: 'User B updated transfer 700k' })
+      .eq('id', transferB.id)
+      .select('id')
+      .single();
+    assert(!updateBError, `B transfer update failed: ${updateBError?.message}`);
+    const detailB_up = await readTransferDetail(clientB, transferB.id);
+    assert(detailB_up.amount === '700000.0000' && detailB_up.note === 'User B updated transfer 700k', 'B transfer update read-back mismatch');
 
-    // User B cannot UPDATE User A's transfer
-    await clientB.from('transfers').update({ note: 'HACKED_BY_B' }).eq('id', transferA.id);
-    await clientA.from('transfers').update({ note: 'HACKED_BY_A' }).eq('id', transferB.id);
-    assert((await readTransferDetail(clientA, transferA.id)).note !== 'HACKED_BY_B', 'B updated A transfer note');
-    assert((await readTransferDetail(clientB, transferB.id)).note !== 'HACKED_BY_A', 'A updated B transfer note');
+    const balB1_afterUp = await readBalance(clientB, accountB1.id);
+    const balB2_afterUp = await readBalance(clientB, accountB2.id);
+    assert(balB1_afterUp.current_balance === '1300000.0000', 'B1 balance after transfer update mismatch');
+    assert(balB2_afterUp.current_balance === '1700000.0000', 'B2 balance after transfer update mismatch');
+    const netWorthB_afterUp = toScaledBigInt(balB1_afterUp.current_balance) + toScaledBigInt(balB2_afterUp.current_balance);
+    assert(netWorthB_afterUp === initialNetWorthB_VND, 'B net worth must be invariant after transfer update');
 
-    // User B cannot void User A's transfer
-    await clientB.from('transfers').update({ is_voided: true }).eq('id', transferA.id);
-    assert((await readTransferDetail(clientA, transferA.id)).is_voided === false, 'B voided A transfer');
+    // 3c. Void Transfer B: is_voided = true
+    const { error: voidBError } = await clientB
+      .from('transfers')
+      .update({ is_voided: true })
+      .eq('id', transferB.id)
+      .select('id')
+      .single();
+    assert(!voidBError, `B transfer void failed: ${voidBError?.message}`);
+    assert((await readTransferDetail(clientB, transferB.id)).is_voided === true, 'B transfer void status mismatch');
 
-    // User B cannot INSERT a transfer with user_id = User A (spoofing)
-    const { error: spoofUserAError } = await clientB.from('transfers').insert({
+    const balB1_afterVoid = await readBalance(clientB, accountB1.id);
+    const balB2_afterVoid = await readBalance(clientB, accountB2.id);
+    assert(balB1_afterVoid.current_balance === '2000000.0000', 'B1 balance after void mismatch');
+    assert(balB2_afterVoid.current_balance === '1000000.0000', 'B2 balance after void mismatch');
+    const netWorthB_afterVoid = toScaledBigInt(balB1_afterVoid.current_balance) + toScaledBigInt(balB2_afterVoid.current_balance);
+    assert(netWorthB_afterVoid === initialNetWorthB_VND, 'B net worth must be invariant after transfer void');
+
+    // 3d. Restore Transfer B: is_voided = false
+    const { error: restoreBError } = await clientB
+      .from('transfers')
+      .update({ is_voided: false })
+      .eq('id', transferB.id)
+      .select('id')
+      .single();
+    assert(!restoreBError, `B transfer restore failed: ${restoreBError?.message}`);
+    assert((await readTransferDetail(clientB, transferB.id)).is_voided === false, 'B transfer restore status mismatch');
+
+    const balB1_afterRestore = await readBalance(clientB, accountB1.id);
+    const balB2_afterRestore = await readBalance(clientB, accountB2.id);
+    assert(balB1_afterRestore.current_balance === '1300000.0000', 'B1 balance after restore mismatch');
+    assert(balB2_afterRestore.current_balance === '1700000.0000', 'B2 balance after restore mismatch');
+    const netWorthB_afterRestore = toScaledBigInt(balB1_afterRestore.current_balance) + toScaledBigInt(balB2_afterRestore.current_balance);
+    assert(netWorthB_afterRestore === initialNetWorthB_VND, 'B net worth must be invariant after transfer restore');
+    pass('USER_B_TRANSFER_LIFECYCLE_AND_NET_WORTH_NEUTRALITY');
+
+    // 4. Bidirectional Cross-User Isolation Matrix (A -> B and B -> A)
+    // 4a. Spoofed foreign user_id INSERT blocked
+    const { error: spoofAfromB } = await clientB.from('transfers').insert({
       user_id: uidA,
       from_account_id: accountB1.id,
       to_account_id: accountB2.id,
@@ -380,10 +463,20 @@ async function run() {
       currency_code: 'VND',
       occurred_on: today,
     });
-    assert(spoofUserAError, 'B spoofed user_id = User A');
+    assert(spoofAfromB, 'B spoofed user_id = User A on insert');
 
-    // User B cannot INSERT a transfer with from_account_id = User A's account
-    const { error: crossAccountFromError } = await clientB.from('transfers').insert({
+    const { error: spoofBfromA } = await clientA.from('transfers').insert({
+      user_id: uidB,
+      from_account_id: accountA1.id,
+      to_account_id: accountA2.id,
+      amount: '10000.0000',
+      currency_code: 'VND',
+      occurred_on: today,
+    });
+    assert(spoofBfromA, 'A spoofed user_id = User B on insert');
+
+    // 4b. Foreign source-account reference blocked
+    const { error: crossSourceBA } = await clientB.from('transfers').insert({
       user_id: uidB,
       from_account_id: accountA1.id,
       to_account_id: accountB2.id,
@@ -391,21 +484,77 @@ async function run() {
       currency_code: 'VND',
       occurred_on: today,
     });
-    assert(crossAccountFromError, 'B created transfer using A source account');
+    assert(crossSourceBA, 'B inserted transfer referencing A source account');
 
-    // User B cannot INSERT a transfer with to_account_id = User A's account
-    const { error: crossAccountToError } = await clientB.from('transfers').insert({
-      user_id: uidB,
+    const { error: crossSourceAB } = await clientA.from('transfers').insert({
+      user_id: uidA,
       from_account_id: accountB1.id,
-      to_account_id: accountA1.id,
+      to_account_id: accountA2.id,
       amount: '10000.0000',
       currency_code: 'VND',
       occurred_on: today,
     });
-    assert(crossAccountToError, 'B created transfer using A destination account');
+    assert(crossSourceAB, 'A inserted transfer referencing B source account');
+
+    // 4c. Foreign destination-account reference blocked
+    const { error: crossDestBA } = await clientB.from('transfers').insert({
+      user_id: uidB,
+      from_account_id: accountB1.id,
+      to_account_id: accountA2.id,
+      amount: '10000.0000',
+      currency_code: 'VND',
+      occurred_on: today,
+    });
+    assert(crossDestBA, 'B inserted transfer referencing A destination account');
+
+    const { error: crossDestAB } = await clientA.from('transfers').insert({
+      user_id: uidA,
+      from_account_id: accountA1.id,
+      to_account_id: accountB2.id,
+      amount: '10000.0000',
+      currency_code: 'VND',
+      occurred_on: today,
+    });
+    assert(crossDestAB, 'A inserted transfer referencing B destination account');
+
+    // 4d. Foreign SELECT returns RLS-empty without database error
+    await assertCrossSelectEmpty(clientB, 'transfers', transferA.id, 'B querying transfer A');
+    await assertCrossSelectEmpty(clientA, 'transfers', transferB.id, 'A querying transfer B');
+
+    // 4e. transfer_details view does not leak foreign transfers
+    await assertCrossSelectEmpty(clientB, 'transfer_details', transferA.id, 'B querying transfer_details A');
+    await assertCrossSelectEmpty(clientA, 'transfer_details', transferB.id, 'A querying transfer_details B');
+
+    // 4f. account_balances view does not leak foreign accounts
+    await assertCrossBalanceEmpty(clientB, accountA1.id, 'B querying account_balances A1');
+    await assertCrossBalanceEmpty(clientA, accountB1.id, 'A querying account_balances B1');
+
+    // 4g. Foreign UPDATE cannot change the row (note or void state)
+    await clientB.from('transfers').update({ note: 'HACKED_BY_B' }).eq('id', transferA.id);
+    await clientA.from('transfers').update({ note: 'HACKED_BY_A' }).eq('id', transferB.id);
+    assert((await readTransferDetail(clientA, transferA.id)).note !== 'HACKED_BY_B', 'B mutated A transfer note');
+    assert((await readTransferDetail(clientB, transferB.id)).note !== 'HACKED_BY_A', 'A mutated B transfer note');
+
+    await clientB.from('transfers').update({ is_voided: true }).eq('id', transferA.id);
+    await clientA.from('transfers').update({ is_voided: true }).eq('id', transferB.id);
+    assert((await readTransferDetail(clientA, transferA.id)).is_voided === false, 'B voided A transfer');
+    assert((await readTransferDetail(clientB, transferB.id)).is_voided === false, 'A voided B transfer');
+
+    // 4h. Ownership mutation blocked
+    const { error: userMutationAtoB } = await clientA
+      .from('transfers')
+      .update({ user_id: uidB })
+      .eq('id', transferA.id);
+    assert(userMutationAtoB, 'A mutated transfer user_id to B');
+
+    const { error: userMutationBtoA } = await clientB
+      .from('transfers')
+      .update({ user_id: uidA })
+      .eq('id', transferB.id);
+    assert(userMutationBtoA, 'B mutated transfer user_id to A');
     pass('CROSS_USER_ISOLATION_AND_SPOOFING_BLOCKED');
 
-    // 6. Domain & integrity rejection cases
+    // 5. Domain & Integrity Rejection Cases
     const domainRejectionCases = [
       {
         label: 'zero amount',
@@ -452,17 +601,9 @@ async function run() {
     // Direct DELETE blocked
     const { error: deleteAError } = await clientA.from('transfers').delete().eq('id', transferA.id);
     assert(deleteAError, 'Direct DELETE on transfers was not blocked');
-
-    // Immutable column mutation blocked (user_id mutation)
-    const { error: userMutationError } = await clientA
-      .from('transfers')
-      .update({ user_id: uidB })
-      .eq('id', transferA.id);
-    assert(userMutationError, 'Mutation of transfer user_id was not blocked');
     pass('DOMAIN_AND_INTEGRITY_REJECTIONS');
 
-    // 7. Phase 4 Non-Regression: Transactions + Transfers co-derivation
-    // Fetch an existing active category for User A or create one
+    // 6. Phase 4 Non-Regression: Transactions + Transfers Co-Derivation with Exact View Read
     const { data: catList, error: catListError } = await clientA
       .from('categories')
       .select('id,type')
@@ -491,12 +632,23 @@ async function run() {
     assert(!txAError && txA, `Phase 4 transaction insert failed: ${txAError?.message}`);
     transactionFixtures.push({ client: clientA, id: txA.id });
 
+    // Read back via transaction_details view and assert exact string amount and semantics
+    const txDetail = await readTransactionDetail(clientA, txA.id);
+    assert(typeof txDetail.amount === 'string', 'transaction_details.amount must be text');
+    assert(txDetail.amount === '100000.0000', 'transaction_details amount mismatch');
+    assert(txDetail.type === 'EXPENSE', 'transaction_details type mismatch');
+    assert(txDetail.is_voided === false, 'transaction_details is_voided must be false');
+
     // Verify account balance derivation reflects BOTH transaction and transfer:
-    // A1 = opening (1M) - transfer out (300k) - expense tx (100k) = 600,000 VND
+    // A1 = opening (1,000,000) - transfer out (300,000) - expense tx (100,000) = 600,000.0000 VND
     const balA1_withTx = await readBalance(clientA, accountA1.id);
     assert(balA1_withTx.current_balance === '600000.0000', 'A1 balance with combined tx + transfer mismatch');
 
-    // Voiding transaction restores A1 to 700,000 VND without corrupting transfer impact
+    // A2 balance remains unchanged at 800,000.0000 VND
+    const balA2_withTx = await readBalance(clientA, accountA2.id);
+    assert(balA2_withTx.current_balance === '800000.0000', 'A2 balance must be unaffected by transaction on A1');
+
+    // Voiding transaction restores A1 to 700,000.0000 VND without corrupting transfer impact
     const { error: voidTxError } = await clientA
       .from('transactions')
       .update({ is_voided: true })
@@ -505,35 +657,29 @@ async function run() {
       .single();
     assert(!voidTxError, `Phase 4 transaction void failed: ${voidTxError?.message}`);
 
+    const txDetailVoided = await readTransactionDetail(clientA, txA.id);
+    assert(txDetailVoided.is_voided === true, 'transaction_details is_voided must be true after void');
+
     const balA1_afterVoidTx = await readBalance(clientA, accountA1.id);
     assert(balA1_afterVoidTx.current_balance === '700000.0000', 'A1 balance after voiding tx mismatch');
     pass('PHASE_4_NON_REGRESSION_AND_CO_DERIVATION');
-  } finally {
-    cleanupStarted = true;
 
+    mainSuiteCompleted = true;
+  } finally {
+    // Fail-closed cleanup: every fixture must succeed or throw
     for (const fixture of transactionFixtures) {
-      try {
-        await voidTransactionFixture(fixture.client, fixture.id);
-      } catch (err) {
-        console.warn(`Failed to void test transaction ${fixture.id}:`, err);
-      }
+      await voidTransactionDirect(fixture.client, fixture.id);
     }
     for (const fixture of transferFixtures) {
-      try {
-        await voidTransferFixture(fixture.client, fixture.id);
-      } catch (err) {
-        console.warn(`Failed to void test transfer ${fixture.id}:`, err);
-      }
+      await voidTransferDirect(fixture.client, fixture.id);
     }
-    for (const fixture of archiveFixtures) {
-      try {
-        await archiveFixture(fixture.client, fixture.table, fixture.id);
-      } catch (err) {
-        console.warn(`Failed to archive test account ${fixture.id}:`, err);
-      }
+    for (const fixture of accountFixtures) {
+      await archiveAccountDirect(fixture.client, fixture.id);
     }
 
-    if (cleanupStarted) pass('TEST_RECORD_CLEANUP');
+    if (mainSuiteCompleted) {
+      pass('TEST_RECORD_CLEANUP');
+    }
   }
 
   pass('PHASE_5_TWO_USER_RLS');
