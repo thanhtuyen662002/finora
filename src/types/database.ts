@@ -54,11 +54,11 @@ export interface Database {
         };
         Relationships: [
           {
-            foreignKeyName: "transaction_fx_snapshots_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "fk_snapshot_transaction"
+            columns: ["transaction_id", "user_id"]
             isOneToOne: false
             referencedRelation: "transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "user_id"]
           }
         ];
       };

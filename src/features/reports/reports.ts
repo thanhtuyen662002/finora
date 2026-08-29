@@ -375,17 +375,22 @@ export async function getDetailedReportData(
     dateRange.endDate
   );
 
-  let accountsInCurrency: AccountBalanceSnapshot[] = [];
-  let totalAccountBalance = '0.0000';
+  let accountsInCurrency: AccountBalanceSnapshot[] | null = [];
+  let totalAccountBalance: string | null = '0.0000';
 
-  if (selectedCurrency === 'BASE' && baseValuation.status === 'AVAILABLE') {
-    accountsInCurrency = baseAccountGroup.accounts;
-    totalAccountBalance = baseAccountGroup.totalBalance;
+  const accountGroups = aggregateAccountBalancesByCurrency(accounts, balances);
+
+  if (selectedCurrency === 'BASE') {
+    if (baseValuation.status === 'AVAILABLE' && baseAccountGroup) {
+      accountsInCurrency = baseAccountGroup.accounts;
+      totalAccountBalance = baseAccountGroup.totalBalance;
+    } else {
+      accountsInCurrency = null;
+      totalAccountBalance = null;
+    }
   } else {
-    const accountGroups = aggregateAccountBalancesByCurrency(accounts, balances);
-    const resolvedCurrency = selectedCurrency === 'BASE' ? baseCurrency : selectedCurrency;
-    accountsInCurrency = accountGroups[resolvedCurrency]?.accounts || [];
-    totalAccountBalance = accountGroups[resolvedCurrency]?.totalBalance || '0.0000';
+    accountsInCurrency = accountGroups[selectedCurrency]?.accounts || [];
+    totalAccountBalance = accountGroups[selectedCurrency]?.totalBalance || '0.0000';
   }
 
   const transactionsInScope: ExtendedTransaction[] = activeTransactions.filter((tx: ExtendedTransaction) => {

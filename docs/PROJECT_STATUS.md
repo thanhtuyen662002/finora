@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 7 — Budget + Goals + Recurring
-- **Phase status:** PHASE_7_SOURCE_COMPLETE_MIGRATION_PENDING_APPLY
+- **Current phase:** Phase 8 — Multi-Currency + FX
+- **Phase status:** PHASE_8_PASS_A_SOURCE_GATE_PASS_CODE_ONLY
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`

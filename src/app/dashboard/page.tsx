@@ -221,13 +221,25 @@ export default function DashboardPage() {
 
       {/* 4 Core Financial Summary Cards for active currency */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        <SummaryCard
-          title={`Tài sản (${displayCurrency})`}
-          value={formatExactMoney(activeAccountGroup.totalBalance, displayCurrency)}
-          icon={Wallet}
-          highlight={true}
-          subtext={`${activeAccountGroup.accounts.length} tài khoản ${displayCurrency}`}
-        />
+        {effectiveCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? (
+          <div className="flex flex-col p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Wallet className="w-5 h-5 text-slate-400" />
+              <h3 className="text-sm font-medium text-slate-500">Tài sản ({displayCurrency})</h3>
+            </div>
+            <div className="text-xl font-semibold text-slate-400 mb-1">— (Không khả dụng)</div>
+            <p className="text-xs text-amber-600 mb-2">Thiếu tỷ giá hiện tại.</p>
+            <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="w-fit h-7 text-xs">Thử lại</Button>
+          </div>
+        ) : (
+          <SummaryCard
+            title={`Tài sản (${displayCurrency})`}
+            value={formatExactMoney(activeAccountGroup.totalBalance, displayCurrency)}
+            icon={Wallet}
+            highlight={true}
+            subtext={`${activeAccountGroup.accounts.length} tài khoản ${displayCurrency}`}
+          />
+        )}
         <SummaryCard
           title="Thu nhập tháng này"
           value={formatExactMoney(activeSummary.totalIncome, displayCurrency)}
@@ -266,9 +278,9 @@ export default function DashboardPage() {
               const group = data.accountBalancesByCurrency[c];
               return (
                 <div key={c} className="flex items-center space-x-1.5 bg-muted/40 px-2.5 py-1 rounded-md border">
-                  <span className="font-bold text-foreground">{c}:</span>
+                  <span className="font-bold text-foreground">{c === 'BASE' ? `Tổng hợp (${data.baseCurrency})` : c}:</span>
                   <span className="font-medium text-foreground">
-                    {formatExactMoney(group?.totalBalance || '0.0000', c)}
+                    {formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c)}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
                     ({group?.accounts.length || 0} TK)

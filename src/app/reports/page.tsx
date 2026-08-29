@@ -266,7 +266,7 @@ export default function ReportsPage() {
               <PiggyBank className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             </div>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {formatExactMoney(summary.netSavings, currency, { showSign: true })}
+              {formatExactMoney(summary.netSavings, displayCurrency, { showSign: true })}
             </p>
             <span className="text-xs text-muted-foreground block">
               {summary.savingRatePercent
@@ -339,7 +339,7 @@ export default function ReportsPage() {
               <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">Tổng số dư {displayCurrency}:</span>
                 <span className="text-base font-bold text-foreground">
-                  {formatExactMoney(data.totalAccountBalance, displayCurrency)}
+                  {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? '— (Không khả dụng)' : formatExactMoney(data.totalAccountBalance || '0', displayCurrency)}
                 </span>
               </div>
 
@@ -361,7 +361,7 @@ export default function ReportsPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0 font-semibold text-foreground">
-                        {formatExactMoney(acc.currentBalance, acc.currency)}
+                        {formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency)}
                       </div>
                     </div>
                   ))}

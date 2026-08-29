@@ -561,19 +561,37 @@ export function exportTransactionsToCSV(
     return str;
   };
 
-  const headers = [
-    'Ngày',
-    'Loại',
-    'Danh mục',
-    'Tài khoản',
-    'Đối tác/Cửa hàng',
-    'Số tiền',
-    'Đơn vị tiền tệ',
-    'Trạng thái',
-    'Ghi chú',
-  ];
+  let headers: string[] = [];
   if (normCurrency === 'BASE') {
-    headers.push('Số tiền gốc', 'Tiền tệ gốc', 'Tỷ giá', 'Nguồn FX', 'Ngày tỷ giá');
+    headers = [
+      'Ngày',
+      'Loại',
+      'Danh mục',
+      'Tài khoản',
+      'Đối tác/Cửa hàng',
+      'Trạng thái',
+      'Ghi chú',
+      'Số tiền gốc',
+      'Tiền tệ gốc',
+      'Số tiền quy đổi',
+      'Tiền tệ đích',
+      'Tỷ giá',
+      'Ngày giao dịch yêu cầu',
+      'Ngày tỷ giá hiệu lực',
+      'Nguồn FX'
+    ];
+  } else {
+    headers = [
+      'Ngày',
+      'Loại',
+      'Danh mục',
+      'Tài khoản',
+      'Đối tác/Cửa hàng',
+      'Số tiền',
+      'Đơn vị tiền tệ',
+      'Trạng thái',
+      'Ghi chú',
+    ];
   }
 
   const rows = transactions
@@ -585,21 +603,37 @@ export function exportTransactionsToCSV(
       const accName = ('account_name' in tx ? tx.account_name : tx.accountName) || '';
       const status = tx.is_voided ? 'Đã vô hiệu hóa' : 'Hợp lệ';
 
-      const baseRow = [
-        escapeCell(tx.occurred_on),
-        escapeCell(typeLabel),
-        escapeCell(catName),
-        escapeCell(accName),
-        escapeCell(tx.merchant),
-        escapeCell(toExactDecimal(tx.amount)),
-        escapeCell(tx.currency_code),
-        escapeCell(status),
-        escapeCell(tx.note),
-      ];
       if (normCurrency === 'BASE') {
-        baseRow.push(escapeCell(txAny.fx_original_amount ? toExactDecimal(txAny.fx_original_amount) : ''), escapeCell(txAny.fx_original_currency), escapeCell(txAny.fx_rate), escapeCell(txAny.fx_provider), escapeCell(txAny.fx_effective_date));
+        return [
+          escapeCell(tx.occurred_on),
+          escapeCell(typeLabel),
+          escapeCell(catName),
+          escapeCell(accName),
+          escapeCell(tx.merchant),
+          escapeCell(status),
+          escapeCell(tx.note),
+          escapeCell(txAny.fx_original_amount ? toExactDecimal(txAny.fx_original_amount) : ''),
+          escapeCell(txAny.fx_original_currency),
+          escapeCell(toExactDecimal(tx.amount)),
+          escapeCell(txAny.fx_target_currency || ''),
+          escapeCell(txAny.fx_rate),
+          escapeCell(tx.occurred_on), // requested transaction date
+          escapeCell(txAny.fx_effective_date),
+          escapeCell(txAny.fx_provider),
+        ].join(',');
+      } else {
+        return [
+          escapeCell(tx.occurred_on),
+          escapeCell(typeLabel),
+          escapeCell(catName),
+          escapeCell(accName),
+          escapeCell(tx.merchant),
+          escapeCell(toExactDecimal(tx.amount)),
+          escapeCell(tx.currency_code),
+          escapeCell(status),
+          escapeCell(tx.note),
+        ].join(',');
       }
-      return baseRow.join(',');
     });
 
   // Prepend UTF-8 BOM for Microsoft Excel compatibility

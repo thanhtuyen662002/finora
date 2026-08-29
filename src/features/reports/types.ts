@@ -129,7 +129,7 @@ export interface DetailedReportData {
   summary: CurrencySummary;
   cashFlow: MonthlyCashFlowPoint[];
   categoryBreakdown: CategoryExpenseBreakdown[];
-  accountsInCurrency: AccountBalanceSnapshot[];
-  totalAccountBalance: string; // Exact decimal sum of accounts in selected currency
+  accountsInCurrency: AccountBalanceSnapshot[] | null;
+  totalAccountBalance: string | null; // Exact decimal sum of accounts in selected currency
   transactions: ExtendedTransaction[]; // could contain BaseConvertedTransaction
 }

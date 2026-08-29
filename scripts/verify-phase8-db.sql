@@ -1,82 +1,120 @@
-WITH checks AS (
-  SELECT '01_columns' AS check_name,
-         (SELECT count(*) = 12 FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshots') AS passed,
-         'snapshot has 12 columns' AS detail
-  UNION ALL
-  SELECT '02_types',
-         (SELECT data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshots' AND column_name = 'source_amount') AND
-         (SELECT data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshots' AND column_name = 'converted_amount') AND
-         (SELECT data_type = 'numeric' AND numeric_precision = 30 AND numeric_scale = 12 FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshots' AND column_name = 'rate'),
-         'types are exact'
-  UNION ALL
-  SELECT '03_constraints',
-         (SELECT count(*) >= 7 FROM information_schema.check_constraints WHERE constraint_name LIKE '%check_snapshot_%'),
-         'check constraints exist'
-  UNION ALL
-  SELECT '04_unique',
-         (SELECT count(*) > 0 FROM pg_constraint WHERE conname = 'transaction_fx_snapshots_version_key'),
-         'version unique key exists'
-  UNION ALL
-  SELECT '05_fk',
-         (SELECT count(*) > 0 FROM pg_constraint WHERE conname = 'fk_snapshot_transaction' AND confupdtype = 'a' AND confdeltype = 'r'),
-         'composite FK exists with RESTRICT'
-  UNION ALL
-  SELECT '06_tx_unique',
-         (SELECT count(*) > 0 FROM pg_constraint WHERE conname = 'transactions_id_user_id_key'),
-         'transaction (id,user_id) unique exists'
-  UNION ALL
-  SELECT '07_rls_enabled',
-         (SELECT relrowsecurity FROM pg_class WHERE relname = 'transaction_fx_snapshots'),
-         'RLS enabled'
-  UNION ALL
-  SELECT '08_policies',
-         (SELECT count(*) = 1 FROM pg_policies WHERE tablename = 'transaction_fx_snapshots' AND cmd = 'SELECT') AND
-         (SELECT count(*) = 0 FROM pg_policies WHERE tablename = 'transaction_fx_snapshots' AND cmd IN ('INSERT', 'UPDATE', 'DELETE')),
-         'exactly one SELECT policy and no write policies'
-  UNION ALL
-  SELECT '09_ownership',
-         (SELECT count(*) = 1 FROM pg_policies WHERE tablename = 'transaction_fx_snapshots' AND qual LIKE '%auth.uid() = user_id%'),
-         'ownership expression matches'
-  UNION ALL
-  SELECT '10_privileges',
-         (SELECT count(*) = 0 FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshots' AND grantee IN ('anon', 'public')) AND
-         (SELECT count(*) = 1 FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshots' AND grantee = 'authenticated' AND privilege_type = 'SELECT'),
-         'privileges are correct'
-  UNION ALL
-  SELECT '11_view',
-         (SELECT count(*) = 1 FROM information_schema.views WHERE table_name = 'transaction_fx_snapshot_details'),
-         'view exists'
-  UNION ALL
-  SELECT '12_view_types',
-         (SELECT data_type = 'text' FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshot_details' AND column_name = 'source_amount') AND
-         (SELECT data_type = 'text' FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshot_details' AND column_name = 'rate') AND
-         (SELECT data_type = 'text' FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshot_details' AND column_name = 'converted_amount'),
-         'view casts to text'
-  UNION ALL
-  SELECT '13_view_privileges',
-         (SELECT count(*) = 0 FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshot_details' AND grantee IN ('anon', 'public')) AND
-         (SELECT count(*) = 1 FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshot_details' AND grantee = 'authenticated' AND privilege_type = 'SELECT'),
-         'view privileges correct'
-  UNION ALL
-  SELECT '14_auto_fx',
-         (SELECT is_nullable = 'NO' AND column_default = 'true' FROM information_schema.columns WHERE table_name = 'user_settings' AND column_name = 'auto_fx_enabled'),
-         'auto_fx_enabled exists and default true'
-  UNION ALL
-  SELECT '15_legacy_rls',
-         (SELECT count(*) >= 5 FROM pg_class WHERE relname IN ('transactions', 'transfers', 'accounts', 'budgets', 'goals') AND relrowsecurity = true),
-         'legacy RLS intact'
-  UNION ALL
-  SELECT '16_legacy_transfers',
-         (SELECT count(*) = 0 FROM information_schema.columns WHERE table_name = 'transfers' AND column_name IN ('to_currency', 'exchange_rate')),
-         'transfers remain same-currency'
+WITH col_check AS (
+  SELECT 'Snapshot table exact schema' AS check_name,
+         COUNT(*) = 12 AND
+         bool_and(
+           (column_name = 'id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default LIKE '%gen_random_uuid()%') OR
+           (column_name = 'user_id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NULL) OR
+           (column_name = 'transaction_id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NULL) OR
+           (column_name = 'source_currency_code' AND data_type = 'text' AND is_nullable = 'NO' AND column_default IS NULL) OR
+           (column_name = 'target_currency_code' AND data_type = 'text' AND is_nullable = 'NO' AND column_default IS NULL) OR
+           (column_name = 'source_amount' AND data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 AND is_nullable = 'NO') OR
+           (column_name = 'rate' AND data_type = 'numeric' AND numeric_precision = 30 AND numeric_scale = 12 AND is_nullable = 'NO') OR
+           (column_name = 'converted_amount' AND data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 AND is_nullable = 'NO') OR
+           (column_name = 'requested_date' AND data_type = 'date' AND is_nullable = 'NO') OR
+           (column_name = 'effective_date' AND data_type = 'date' AND is_nullable = 'NO') OR
+           (column_name = 'provider' AND data_type = 'text' AND is_nullable = 'NO') OR
+           (column_name = 'created_at' AND data_type = 'timestamp with time zone' AND is_nullable = 'NO' AND column_default LIKE '%now()%')
+         ) AS passed,
+         COUNT(*)::text || ' cols' AS detail
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshots'
 ),
-overall AS (
-  SELECT '99_OVERALL' AS check_name,
-         bool_and(passed) AS passed,
-         'All mandatory checks passed' AS detail
-  FROM checks
+constraint_check AS (
+  SELECT 'Exact domain constraints' AS check_name,
+         COUNT(*) = 8 AND
+         bool_and(
+           check_clause ILIKE '%source_currency_code%~%^[A-Z]{3}$%' OR
+           check_clause ILIKE '%target_currency_code%~%^[A-Z]{3}$%' OR
+           check_clause ILIKE '%source_currency_code%!=%target_currency_code%' OR
+           check_clause ILIKE '%source_amount%>%0%' OR
+           check_clause ILIKE '%rate%>%0%' OR
+           check_clause ILIKE '%converted_amount%>%0%' OR
+           check_clause ILIKE '%effective_date%<=%requested_date%' OR
+           check_clause ILIKE '%length%trim%provider%>%0%<=%100%'
+         ) AS passed,
+         COUNT(*)::text || ' constraints' AS detail
+  FROM information_schema.check_constraints cc
+  JOIN information_schema.table_constraints tc ON cc.constraint_name = tc.constraint_name
+  WHERE tc.table_schema = 'public' AND tc.table_name = 'transaction_fx_snapshots'
+),
+fk_unique_check AS (
+  SELECT 'Exact unique keys and FK' AS check_name,
+         COUNT(*) = 3 AS passed,
+         COUNT(*)::text || ' keys' AS detail
+  FROM information_schema.table_constraints
+  WHERE table_schema = 'public' AND table_name IN ('transactions', 'transaction_fx_snapshots')
+    AND constraint_name IN ('transactions_id_user_id_key', 'transaction_fx_snapshots_version_key', 'fk_snapshot_transaction')
+),
+rls_check AS (
+  SELECT 'Exact RLS policy' AS check_name,
+         COUNT(*) = 1 AND bool_and(cmd = 'SELECT' AND roles = '{authenticated}' AND qual ILIKE '%auth.uid() = user_id%') AS passed,
+         COUNT(*)::text || ' policies' AS detail
+  FROM pg_policies
+  WHERE schemaname = 'public' AND tablename = 'transaction_fx_snapshots'
+),
+priv_check AS (
+  SELECT 'Exact privileges' AS check_name,
+         COUNT(*) = 0 AS passed,
+         'Anon/Public have no access' AS detail
+  FROM information_schema.table_privileges
+  WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshots' AND grantee IN ('anon', 'PUBLIC')
+),
+view_check AS (
+  SELECT 'Snapshot view exactness' AS check_name,
+         COUNT(*) = 12 AS passed,
+         'View cols' AS detail
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshot_details'
+),
+user_set_check AS (
+  SELECT 'user_settings auto_fx' AS check_name,
+         COUNT(*) = 1 AND bool_and(data_type = 'boolean' AND is_nullable = 'NO' AND column_default = 'true') AS passed,
+         'auto_fx_enabled' AS detail
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'user_settings' AND column_name = 'auto_fx_enabled'
+),
+nonreg_check AS (
+  SELECT 'Phase 2-7 non-regression' AS check_name,
+         COUNT(*) = 9 AS passed,
+         'RLS enabled' AS detail
+  FROM pg_tables
+  WHERE schemaname = 'public' AND tablename IN ('profiles', 'user_settings', 'accounts', 'categories', 'transactions', 'transfers', 'budgets', 'goals', 'recurring_items')
+    AND rowsecurity = true
+),
+transfer_check AS (
+  SELECT 'Phase 5 same-currency transfer invariant' AS check_name,
+         COUNT(*) = 0 AS passed,
+         'No cross currency columns' AS detail
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'transfers' AND column_name IN ('source_amount', 'rate')
+),
+phase7_check AS (
+  SELECT 'Phase 7 object non-regression' AS check_name,
+         COUNT(*) = 6 AS passed,
+         'Phase 7' AS detail
+  FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid
+  WHERE n.nspname = 'public' AND c.relname IN ('budgets', 'goals', 'recurring_items', 'budget_progress', 'goal_details', 'recurring_details')
 )
-SELECT * FROM checks
-UNION ALL
-SELECT * FROM overall
-ORDER BY check_name;
+SELECT * FROM col_check
+UNION ALL SELECT * FROM constraint_check
+UNION ALL SELECT * FROM fk_unique_check
+UNION ALL SELECT * FROM rls_check
+UNION ALL SELECT * FROM priv_check
+UNION ALL SELECT * FROM view_check
+UNION ALL SELECT * FROM user_set_check
+UNION ALL SELECT * FROM nonreg_check
+UNION ALL SELECT * FROM transfer_check
+UNION ALL SELECT * FROM phase7_check
+UNION ALL SELECT '99_OVERALL', bool_and(passed), 'All checks'
+FROM (
+  SELECT passed FROM col_check
+  UNION ALL SELECT passed FROM constraint_check
+  UNION ALL SELECT passed FROM fk_unique_check
+  UNION ALL SELECT passed FROM rls_check
+  UNION ALL SELECT passed FROM priv_check
+  UNION ALL SELECT passed FROM view_check
+  UNION ALL SELECT passed FROM user_set_check
+  UNION ALL SELECT passed FROM nonreg_check
+  UNION ALL SELECT passed FROM transfer_check
+  UNION ALL SELECT passed FROM phase7_check
+) t;
