@@ -22,6 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
 import { cn } from '@/lib/utils';
 import { getCurrentUserContext, signOut } from '@/lib/auth';
+import { resolveDisplayIdentity } from '@/lib/auth/identity';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -52,12 +53,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             setUserEmail(user.email || '');
 
             // Resolve final identity with precedence
-            const fallbackName =
-              profile?.display_name ||
-              user.user_metadata?.full_name ||
-              user.user_metadata?.name ||
-              user.email?.split('@')[0] ||
-              'Người dùng';
+            const fallbackName = resolveDisplayIdentity(profile, user);
 
             setDisplayName(fallbackName);
             setAvatarUrl(profile?.avatar_url || user.user_metadata?.avatar_url || null);

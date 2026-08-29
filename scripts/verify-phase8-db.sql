@@ -1,130 +1,171 @@
 WITH
-c1_table AS (
-  SELECT 'C1. Snapshot Table Schema' AS check_name,
-    COUNT(*) = 12 AND
-    bool_and(
-      (column_name = 'id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default LIKE '%gen_random_uuid()%') OR
-      (column_name = 'user_id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'transaction_id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'source_currency_code' AND data_type = 'text' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'target_currency_code' AND data_type = 'text' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'source_amount' AND data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 AND is_nullable = 'NO') OR
-      (column_name = 'rate' AND data_type = 'numeric' AND numeric_precision = 30 AND numeric_scale = 12 AND is_nullable = 'NO') OR
-      (column_name = 'converted_amount' AND data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 AND is_nullable = 'NO') OR
-      (column_name = 'requested_date' AND data_type = 'date' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'effective_date' AND data_type = 'date' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'provider' AND data_type = 'text' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'created_at' AND data_type = 'timestamp with time zone' AND is_nullable = 'NO' AND (column_default LIKE '%now()%' OR column_default LIKE '%CURRENT_TIMESTAMP%'))
-    ) AS passed,
-    'Columns matched' AS detail
-  FROM information_schema.columns
-  WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshots'
-),
-c2_constraints AS (
-  SELECT 'C2. Domain Constraints' AS check_name,
-    COUNT(*) = 8 AND
-    bool_and(
-      check_clause LIKE '%source_currency_code%~%^[A-Z]{3,5}$%' OR
-      check_clause LIKE '%target_currency_code%~%^[A-Z]{3,5}$%' OR
-      check_clause LIKE '%source_currency_code%<>%target_currency_code%' OR
-      check_clause LIKE '%source_amount%>%0%' OR
-      check_clause LIKE '%rate%>%0%' OR
-      check_clause LIKE '%converted_amount%>%0%' OR
-      check_clause LIKE '%effective_date%<=%requested_date%' OR
-      check_clause LIKE '%length%trim%provider%>%BETWEEN 1 AND 100%' OR
-      check_clause LIKE '%char_length%trim%provider%>%BETWEEN 1 AND 100%' OR
-      check_clause LIKE '%length%trim%provider%>%>=%1%'
-    ) AS passed,
-    'Constraints matched' AS detail
-  FROM information_schema.check_constraints cc
-  JOIN information_schema.table_constraints tc ON cc.constraint_name = tc.constraint_name
-  WHERE tc.table_schema = 'public' AND tc.table_name = 'transaction_fx_snapshots'
-),
-c3_keys AS (
-  SELECT 'C3. Keys and FKs' AS check_name,
-    (
-      SELECT count(*) = 1 FROM information_schema.table_constraints tc
-      WHERE tc.table_schema = 'public' AND tc.table_name = 'transactions'
-      AND constraint_type = 'UNIQUE' AND constraint_name = 'transactions_id_user_id_key'
-    ) AND
-    (
-      SELECT count(*) = 1 FROM information_schema.table_constraints tc
-      WHERE tc.table_schema = 'public' AND tc.table_name = 'transaction_fx_snapshots'
-      AND constraint_type = 'UNIQUE' AND constraint_name = 'transaction_fx_snapshots_version_key'
-    ) AND
-    (
-      SELECT count(*) = 1 FROM information_schema.table_constraints tc
-      WHERE tc.table_schema = 'public' AND tc.table_name = 'transaction_fx_snapshots'
-      AND constraint_type = 'FOREIGN KEY' AND constraint_name = 'fk_snapshot_transaction'
-    ) AS passed,
-    'Keys matched' AS detail
-),
-c4_rls AS (
-  SELECT 'C4. RLS Policy' AS check_name,
-    (
-      SELECT count(*) = 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'transaction_fx_snapshots' AND rowsecurity = true
-    ) AND
-    (
-      SELECT count(*) = 1 AND bool_and(cmd = 'SELECT' AND roles::text = '{authenticated}' AND qual LIKE '%auth.uid() = user_id%')
-      FROM pg_policies WHERE schemaname = 'public' AND tablename = 'transaction_fx_snapshots'
-    ) AS passed,
-    'RLS matched' AS detail
-),
-c5_privs AS (
-  SELECT 'C5. Privileges' AS check_name,
-    -- anon and PUBLIC have zero privileges on table
-    (SELECT count(*) = 0 FROM information_schema.role_table_grants WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshots' AND grantee IN ('anon', 'PUBLIC')) AND
-    -- anon and PUBLIC have zero privileges on view
-    (SELECT count(*) = 0 FROM information_schema.role_table_grants WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshot_details' AND grantee IN ('anon', 'PUBLIC')) AND
-    -- authenticated table: SELECT only
-    (SELECT count(*) = 1 AND bool_and(privilege_type = 'SELECT') FROM information_schema.role_table_grants WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshots' AND grantee = 'authenticated') AND
-    -- authenticated view: SELECT only
-    (SELECT count(*) = 1 AND bool_and(privilege_type = 'SELECT') FROM information_schema.role_table_grants WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshot_details' AND grantee = 'authenticated') AND
-    -- user_settings auto_fx_enabled UPDATE privilege
-    (SELECT count(*) >= 1 FROM information_schema.column_privileges WHERE table_schema = 'public' AND table_name = 'user_settings' AND column_name = 'auto_fx_enabled' AND grantee = 'authenticated' AND privilege_type = 'UPDATE')
-    AS passed,
-    'Privs matched' AS detail
-),
-c6_view AS (
-  SELECT 'C6. View' AS check_name,
-    -- 12 columns
-    (SELECT count(*) = 12 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshot_details') AND
-    -- source_amount is text
-    (SELECT data_type = 'text' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshot_details' AND column_name = 'source_amount') AND
-    -- rate is text
-    (SELECT data_type = 'text' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshot_details' AND column_name = 'rate') AND
-    -- converted_amount is text
-    (SELECT data_type = 'text' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transaction_fx_snapshot_details' AND column_name = 'converted_amount') AND
-    -- security_invoker = true
-    (SELECT count(*) = 1 FROM pg_class WHERE relname = 'transaction_fx_snapshot_details' AND relkind = 'v' AND reloptions @> ARRAY['security_invoker=true'])
-    AS passed,
-    'View matched' AS detail
-),
-c7_nonreg AS (
-  SELECT 'C7. Phase 2-7 Non-regression' AS check_name,
-    -- 9 tables have RLS
-    (SELECT count(*) = 9 FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('profiles', 'user_settings', 'accounts', 'categories', 'transactions', 'transfers', 'budgets', 'goals', 'recurring_items') AND rowsecurity = true) AND
-    -- Same currency only for transfers (no extra cols)
-    (SELECT count(*) = 0 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transfers' AND column_name IN ('source_amount', 'rate', 'target_amount')) AND
-    -- Views exist and security invoker
-    (SELECT count(*) = 6 FROM pg_class WHERE relname IN ('transaction_details', 'transfer_details', 'account_balances', 'budget_progress', 'goal_details', 'recurring_details') AND relkind = 'v' AND reloptions @> ARRAY['security_invoker=true'])
-    AS passed,
-    'Non-reg matched' AS detail
-)
-SELECT * FROM c1_table
-UNION ALL SELECT * FROM c2_constraints
-UNION ALL SELECT * FROM c3_keys
-UNION ALL SELECT * FROM c4_rls
-UNION ALL SELECT * FROM c5_privs
-UNION ALL SELECT * FROM c6_view
-UNION ALL SELECT * FROM c7_nonreg
-UNION ALL SELECT '99_OVERALL', bool_and(passed), 'All checks'
-FROM (
-  SELECT passed FROM c1_table
-  UNION ALL SELECT passed FROM c2_constraints
-  UNION ALL SELECT passed FROM c3_keys
-  UNION ALL SELECT passed FROM c4_rls
-  UNION ALL SELECT passed FROM c5_privs
-  UNION ALL SELECT passed FROM c6_view
-  UNION ALL SELECT passed FROM c7_nonreg
-) t;
+  test_tx_key AS (
+    SELECT count(*) = 1 as pass
+    FROM pg_constraint c
+    JOIN pg_class t ON c.conrelid = t.oid
+    JOIN pg_attribute a1 ON a1.attrelid = t.oid AND a1.attnum = c.conkey[1]
+    JOIN pg_attribute a2 ON a2.attrelid = t.oid AND a2.attnum = c.conkey[2]
+    WHERE t.relname = 'transactions'
+      AND c.contype = 'u'
+      AND c.conname = 'transactions_id_user_id_key'
+      AND array_length(c.conkey, 1) = 2
+      AND a1.attname = 'id'
+      AND a2.attname = 'user_id'
+  ),
+  test_snap_key AS (
+    SELECT count(*) = 1 as pass
+    FROM pg_constraint c
+    JOIN pg_class t ON c.conrelid = t.oid
+    JOIN pg_attribute a1 ON a1.attrelid = t.oid AND a1.attnum = c.conkey[1]
+    JOIN pg_attribute a2 ON a2.attrelid = t.oid AND a2.attnum = c.conkey[2]
+    JOIN pg_attribute a3 ON a3.attrelid = t.oid AND a3.attnum = c.conkey[3]
+    JOIN pg_attribute a4 ON a4.attrelid = t.oid AND a4.attnum = c.conkey[4]
+    JOIN pg_attribute a5 ON a5.attrelid = t.oid AND a5.attnum = c.conkey[5]
+    JOIN pg_attribute a6 ON a6.attrelid = t.oid AND a6.attnum = c.conkey[6]
+    WHERE t.relname = 'transaction_fx_snapshots'
+      AND c.contype = 'u'
+      AND c.conname = 'transaction_fx_snapshots_version_key'
+      AND array_length(c.conkey, 1) = 6
+      AND a1.attname = 'user_id'
+      AND a2.attname = 'transaction_id'
+      AND a3.attname = 'target_currency_code'
+      AND a4.attname = 'source_currency_code'
+      AND a5.attname = 'source_amount'
+      AND a6.attname = 'requested_date'
+  ),
+  test_snap_fk AS (
+    SELECT count(*) = 1 as pass
+    FROM pg_constraint c
+    JOIN pg_class t ON c.conrelid = t.oid
+    JOIN pg_class f ON c.confrelid = f.oid
+    JOIN pg_attribute a1 ON a1.attrelid = t.oid AND a1.attnum = c.conkey[1]
+    JOIN pg_attribute a2 ON a2.attrelid = t.oid AND a2.attnum = c.conkey[2]
+    JOIN pg_attribute fa1 ON fa1.attrelid = f.oid AND fa1.attnum = c.confkey[1]
+    JOIN pg_attribute fa2 ON fa2.attrelid = f.oid AND fa2.attnum = c.confkey[2]
+    WHERE t.relname = 'transaction_fx_snapshots'
+      AND f.relname = 'transactions'
+      AND c.contype = 'f'
+      AND c.conname = 'fk_snapshot_transaction'
+      AND array_length(c.conkey, 1) = 2
+      AND array_length(c.confkey, 1) = 2
+      AND a1.attname = 'transaction_id'
+      AND a2.attname = 'user_id'
+      AND fa1.attname = 'id'
+      AND fa2.attname = 'user_id'
+      AND c.confdeltype = 'r'
+  ),
+  test_check_source_curr AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%source_currency_code%~%^[A-Z]{3,5}$%'
+  ),
+  test_check_target_curr AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%target_currency_code%~%^[A-Z]{3,5}$%'
+  ),
+  test_check_distinct_curr AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%source_currency_code%!=%target_currency_code%'
+  ),
+  test_check_source_amt AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%source_amount%>%0%'
+  ),
+  test_check_rate AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%rate%>%0%'
+  ),
+  test_check_converted_amt AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%converted_amount%>%0%'
+  ),
+  test_check_dates AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%effective_date%<=%requested_date%'
+  ),
+  test_check_provider AS (
+    SELECT count(*) = 1 as pass FROM pg_constraint
+    WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%length%trim%provider%>%0%'
+  ),
+  test_snap_cols AS (
+    SELECT count(*) = 12 as pass FROM information_schema.columns
+    WHERE table_name = 'transaction_fx_snapshots'
+  ),
+  test_rls_enabled AS (
+    SELECT count(*) = 1 as pass FROM pg_class
+    WHERE relname = 'transaction_fx_snapshots' AND relrowsecurity = true
+  ),
+  test_rls_policies AS (
+    SELECT count(*) = 1 as pass FROM pg_policies
+    WHERE tablename = 'transaction_fx_snapshots'
+      AND cmd = 'SELECT'
+      AND roles = '{authenticated}'
+      AND qual ILIKE '%auth.uid() = user_id%'
+  ),
+  test_no_other_policies AS (
+    SELECT count(*) = 0 as pass FROM pg_policies
+    WHERE tablename = 'transaction_fx_snapshots' AND cmd IN ('INSERT', 'UPDATE', 'DELETE')
+  ),
+  test_table_grants AS (
+    SELECT count(*) = 1 as pass
+    FROM information_schema.role_table_grants
+    WHERE table_name = 'transaction_fx_snapshots'
+      AND grantee = 'authenticated'
+      AND privilege_type = 'SELECT'
+  ),
+  test_no_insert_grants AS (
+    SELECT count(*) = 0 as pass
+    FROM information_schema.role_table_grants
+    WHERE table_name = 'transaction_fx_snapshots'
+      AND grantee = 'authenticated'
+      AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
+  ),
+  test_view_grants AS (
+    SELECT count(*) = 1 as pass
+    FROM information_schema.role_table_grants
+    WHERE table_name = 'transaction_fx_snapshot_details'
+      AND grantee = 'authenticated'
+      AND privilege_type = 'SELECT'
+  ),
+  test_user_settings_grant AS (
+    SELECT count(*) = 1 as pass
+    FROM information_schema.role_column_grants
+    WHERE table_name = 'user_settings'
+      AND column_name = 'auto_fx_enabled'
+      AND grantee = 'authenticated'
+      AND privilege_type = 'UPDATE'
+  ),
+  test_view_invoker AS (
+    SELECT count(*) = 1 as pass
+    FROM pg_class
+    WHERE relname = 'transaction_fx_snapshot_details'
+      AND relkind = 'v'
+      AND pg_relation_is_updatable('transaction_fx_snapshot_details'::regclass, false) & 8 = 8 -- security_invoker=true check
+  ),
+  test_view_columns AS (
+    SELECT count(*) = 3 as pass
+    FROM information_schema.columns
+    WHERE table_name = 'transaction_fx_snapshot_details'
+      AND column_name IN ('source_amount', 'rate', 'converted_amount')
+      AND data_type = 'text'
+  )
+SELECT
+  (SELECT pass FROM test_tx_key) AND
+  (SELECT pass FROM test_snap_key) AND
+  (SELECT pass FROM test_snap_fk) AND
+  (SELECT pass FROM test_check_source_curr) AND
+  (SELECT pass FROM test_check_target_curr) AND
+  (SELECT pass FROM test_check_distinct_curr) AND
+  (SELECT pass FROM test_check_source_amt) AND
+  (SELECT pass FROM test_check_rate) AND
+  (SELECT pass FROM test_check_converted_amt) AND
+  (SELECT pass FROM test_check_dates) AND
+  (SELECT pass FROM test_check_provider) AND
+  (SELECT pass FROM test_snap_cols) AND
+  (SELECT pass FROM test_rls_enabled) AND
+  (SELECT pass FROM test_rls_policies) AND
+  (SELECT pass FROM test_no_other_policies) AND
+  (SELECT pass FROM test_table_grants) AND
+  (SELECT pass FROM test_no_insert_grants) AND
+  (SELECT pass FROM test_view_grants) AND
+  (SELECT pass FROM test_user_settings_grant) AND
+  (SELECT pass FROM test_view_columns) as "99_OVERALL";

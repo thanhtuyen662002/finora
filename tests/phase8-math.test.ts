@@ -1,6 +1,8 @@
 import { toExactRate, convertExactAmount, matchSnapshotVersion } from '../src/lib/exchange-rate/fx-math';
 import { FrankfurterProvider } from '../src/lib/exchange-rate/frankfurter';
 import { aggregateCashFlow, aggregateCurrencySummaries, getAvailableCurrenciesAndDefault } from '../src/features/reports/engine';
+import { resolveAutoFxCapability } from '../src/lib/exchange-rate/capability';
+import { resolveDisplayIdentity } from '../src/lib/auth/identity';
 
 let passed = 0;
 let total = 0;
@@ -132,17 +134,16 @@ async function runTests() {
 
   // pre-migration settings compatibility
   const preMigUserSet = { base_currency: 'VND', auto_fx_enabled: undefined };
-  const hasAutoFx = typeof preMigUserSet.auto_fx_enabled === 'boolean';
+  const hasAutoFx = resolveAutoFxCapability(preMigUserSet).schemaAvailable;
   assertEq(hasAutoFx, false, 'pre-migration settings compatibility - missing property correctly flagged');
 
   // identity display precedence helper
   const profile = { display_name: 'Profile Name' };
   const user = { user_metadata: { full_name: 'Full Name' }, email: 'user@example.com' };
-  const fb1 = profile.display_name || user.user_metadata.full_name || user.email.split('@')[0] || 'Người dùng';
+  const fb1 = resolveDisplayIdentity(profile, user);
   assertEq(fb1, 'Profile Name', 'identity display precedence helper - profile first');
 
-  const profileDisplay: string | undefined = undefined;
-  const fb2 = profileDisplay || user.user_metadata.full_name || user.email.split('@')[0] || 'Người dùng';
+  const fb2 = resolveDisplayIdentity(undefined, user);
   assertEq(fb2, 'Full Name', 'identity display precedence helper - fallback to metadata');
 
   console.log(`PHASE_8_TESTS PASS ${passed}/${total}`);

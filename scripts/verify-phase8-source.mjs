@@ -3,7 +3,7 @@ import path from 'fs';
 import crypto from 'crypto';
 
 let passed = 0;
-const total = 26;
+const total = 32;
 
 function check(num, name, condition) {
   if (condition) {
@@ -91,6 +91,19 @@ const appShell = fs.readFileSync('src/components/layout/AppShell.tsx', 'utf-8');
 check(25, "AppShell fake identity and sequential set is forbidden", !appShell.includes("setDisplayName('Người dùng')") && appShell.includes('getCurrentUserContext'));
 
 check(26, "Tests test actual logic, not placeholder", mathTests.includes('pre-migration settings compatibility') && mathTests.includes('identity display precedence'));
+
+
+
+
+check(27, "RLS verifier NO delete() cleanup", !rlsVer.includes('.delete()') && rlsVer.includes('is_voided: true') && rlsVer.includes('is_archived: true'));
+check(28, "RLS verifier requires explicit env vars", !rlsVer.includes("testa@example.com") && rlsVer.includes("process.env.FINORA_TEST_USER_A_EMAIL"));
+check(29, "RLS verifier uses correct phase 3/4/5 schema", !rlsVer.includes('base_amount') && !rlsVer.includes('exchange_rate') && !rlsVer.includes('occurred_at'));
+check(30, "RLS verifier bidirectional isolation checks lack self-equality", !rlsVer.match(/assertEq\(.*?\.data.*?,.*?\.data.*?\)/) && rlsVer.includes('xUpdateA.data.length === 0'));
+check(31, "DB verifier proves ordered keys/FKs", dbVer.includes('c.conkey[1]') && dbVer.includes('c.confkey[1]') && dbVer.includes('pg_attribute'));
+check(32, "Tests import production helpers", mathTests.includes('resolveAutoFxCapability') && mathTests.includes('resolveDisplayIdentity'));
+
+
+
 
 console.log(`\nPHASE_8_SOURCE_CHECK_COUNT: ${passed}/${total}`);
 if (passed !== total) process.exit(1);

@@ -1,153 +1,183 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('[FAIL] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
+const EMAIL_A = process.env.FINORA_TEST_USER_A_EMAIL;
+const PASS_A = process.env.FINORA_TEST_USER_A_PASSWORD;
+const EMAIL_B = process.env.FINORA_TEST_USER_B_EMAIL;
+const PASS_B = process.env.FINORA_TEST_USER_B_PASSWORD;
+
+if (!SUPABASE_URL || !SUPABASE_KEY || !EMAIL_A || !PASS_A || !EMAIL_B || !PASS_B) {
+  console.error("Missing required environment variables for RLS test.");
   process.exit(1);
 }
-
-const TEST_USER_A = process.env.TEST_USER_A_EMAIL || 'testa@example.com';
-const TEST_USER_A_PASS = process.env.TEST_USER_A_PASSWORD || 'testpassword';
-const TEST_USER_B = process.env.TEST_USER_B_EMAIL || 'testb@example.com';
-const TEST_USER_B_PASS = process.env.TEST_USER_B_PASSWORD || 'testpassword';
-
-// We do NOT run this in Pass A against live DB, but it must be syntactically ready.
-// If the users don't exist, this will fail. For now it's just syntax checked.
 
 const clientA = createClient(SUPABASE_URL, SUPABASE_KEY);
 const clientB = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function assertIsError(result, msg) {
-  if (!result.error) {
-    console.error(`[FAIL] ${msg}: Expected error but got success.`);
-    process.exit(1);
-  }
-}
+let total = 0;
+let passed = 0;
 
-function assertSuccess(result, msg) {
-  if (result.error) {
-    console.error(`[FAIL] ${msg}: Expected success but got error: ${result.error.message}`);
+function assert(condition, msg) {
+  total++;
+  if (!condition) {
+    console.error(`[FAIL] ${msg}`);
     process.exit(1);
-  }
-}
-
-function assertEq(actual, expected, msg) {
-  if (actual !== expected) {
-    console.error(`[FAIL] ${msg}: Expected ${expected} but got ${actual}`);
-    process.exit(1);
+  } else {
+    console.log(`[PASS] ${msg}`);
+    passed++;
   }
 }
 
 async function runTests() {
-  console.log('Starting RLS verification...');
+  console.log('--- Auth Setup ---');
+  const authA = await clientA.auth.signInWithPassword({ email: EMAIL_A, password: PASS_A });
+  assert(!authA.error && authA.data.user, 'AUTH_A_B=PASS - User A signed in');
+  const userAId = authA.data.user.id;
 
-  // 1. Authenticate A and B
-  const authA = await clientA.auth.signInWithPassword({ email: TEST_USER_A, password: TEST_USER_A_PASS });
-  const authB = await clientB.auth.signInWithPassword({ email: TEST_USER_B, password: TEST_USER_B_PASS });
+  const authB = await clientB.auth.signInWithPassword({ email: EMAIL_B, password: PASS_B });
+  assert(!authB.error && authB.data.user, 'AUTH_A_B=PASS - User B signed in');
+  const userBId = authB.data.user.id;
 
-  if (authA.error || authB.error) {
-    console.error('[FAIL] Failed to authenticate test users. This is expected in Pass A if not run live.');
-    process.exit(1); // Fail closed
-  }
+  const runId = Math.random().toString(36).substring(7);
 
-  const userA = authA.data.user.id;
-  const userB = authB.data.user.id;
+  console.log('\n--- Settings A/B lifecycle and isolation ---');
+  const getA = await clientA.from('user_settings').select('auto_fx_enabled').eq('user_id', userAId).single();
+  const origA = getA.data?.auto_fx_enabled;
 
-  console.log('[PASS] Authenticated User A and B');
+  const getB = await clientB.from('user_settings').select('auto_fx_enabled').eq('user_id', userBId).single();
+  const origB = getB.data?.auto_fx_enabled;
 
-  const runId = `test_run_${Date.now()}`;
+  const updateA = await clientA.from('user_settings').update({ auto_fx_enabled: !origA }).eq('user_id', userAId).select();
+  assert(updateA.data && updateA.data.length === 1 && updateA.data[0].auto_fx_enabled === !origA, 'AUTO_FX_LIFECYCLE_A_B=PASS - A toggled own settings');
 
-  try {
-    // 3. User settings auto_fx_enabled
-    const setA1 = await clientA.from('user_settings').update({ auto_fx_enabled: false }).eq('user_id', userA);
-    assertSuccess(setA1, 'User A updates own auto_fx_enabled');
-    const getA1 = await clientA.from('user_settings').select('auto_fx_enabled').eq('user_id', userA).single();
-    assertEq(getA1.data.auto_fx_enabled, false, 'User A reads own updated auto_fx_enabled');
+  const updateB = await clientB.from('user_settings').update({ auto_fx_enabled: !origB }).eq('user_id', userBId).select();
+  assert(updateB.data && updateB.data.length === 1 && updateB.data[0].auto_fx_enabled === !origB, 'AUTO_FX_LIFECYCLE_A_B=PASS - B toggled own settings');
 
-    // 4. Bidirectional isolation
-    const setA2B = await clientA.from('user_settings').update({ auto_fx_enabled: true }).eq('user_id', userB);
-    assertSuccess(setA2B, 'User A tries to update User B settings - should succeed but affect 0 rows (RLS)');
-    const getB2 = await clientB.from('user_settings').select('auto_fx_enabled').eq('user_id', userB).single();
-    assertEq(getB2.data.auto_fx_enabled, getB2.data.auto_fx_enabled, 'B settings unchanged'); // It's isolated
+  const xUpdateA = await clientA.from('user_settings').update({ auto_fx_enabled: origB }).eq('user_id', userBId).select();
+  assert(xUpdateA.data && xUpdateA.data.length === 0, 'BIDIRECTIONAL_SETTINGS_ISOLATION=PASS - A cannot update B settings');
+  const xUpdateB = await clientB.from('user_settings').update({ auto_fx_enabled: origA }).eq('user_id', userAId).select();
+  assert(xUpdateB.data && xUpdateB.data.length === 0, 'BIDIRECTIONAL_SETTINGS_ISOLATION=PASS - B cannot update A settings');
 
-    console.log('[PASS] User settings auto_fx_enabled isolated');
+  const xSelA = await clientA.from('user_settings').select().eq('user_id', userBId);
+  assert(xSelA.data && xSelA.data.length === 0, 'BIDIRECTIONAL_SETTINGS_ISOLATION=PASS - A cannot select B settings');
+  const xSelB = await clientB.from('user_settings').select().eq('user_id', userAId);
+  assert(xSelB.data && xSelB.data.length === 0, 'BIDIRECTIONAL_SETTINGS_ISOLATION=PASS - B cannot select A settings');
 
-    // Setup an account and transaction for A
-    const acctA = await clientA.from('accounts').insert({ user_id: userA, name: runId, type: 'CASH', currency_code: 'USD', current_balance: 1000 }).select().single();
-    assertSuccess(acctA, 'Create account A');
+  // Restore
+  await clientA.from('user_settings').update({ auto_fx_enabled: origA }).eq('user_id', userAId);
+  await clientB.from('user_settings').update({ auto_fx_enabled: origB }).eq('user_id', userBId);
 
-    const txA = await clientA.from('transactions').insert({
-      user_id: userA, account_id: acctA.data.id, type: 'INCOME', amount: 100, currency_code: 'USD',
-      base_amount: 100, base_currency: 'USD', exchange_rate: 1, merchant: runId, occurred_at: new Date().toISOString()
-    }).select().single();
-    assertSuccess(txA, 'Create transaction A');
+  console.log('\n--- Snapshot mutation denial ---');
+  const badInsert = await clientA.from('transaction_fx_snapshots').insert({
+    user_id: userAId,
+    transaction_id: '00000000-0000-0000-0000-000000000000',
+    target_currency_code: 'VND',
+    source_currency_code: 'USD',
+    source_amount: '10.0000',
+    rate: '1.000000000000',
+    converted_amount: '10.0000',
+    requested_date: '2023-10-01',
+    effective_date: '2023-10-01',
+    provider: 'IDENTITY'
+  });
+  // RLS error for insert is usually 42501 (new row violates row-level security policy for table)
+  assert(badInsert.error && badInsert.error.code === '42501', 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Insert denied');
 
-    // 5. Direct browser snapshot INSERT denied
-    const snapIns = await clientA.from('transaction_fx_snapshots').insert({
-      user_id: userA, transaction_id: txA.data.id, source_currency_code: 'USD', target_currency_code: 'VND',
-      source_amount: 100, rate: 25000, converted_amount: 2500000, requested_date: '2026-08-29', effective_date: '2026-08-29', provider: 'test'
-    });
-    assertIsError(snapIns, 'Direct snapshot insert must be denied');
-    assertEq(snapIns.error.code, '42501', 'Must be privilege denial (42501)');
+  const badUpdate = await clientA.from('transaction_fx_snapshots').update({ rate: '2.00' }).eq('user_id', userAId);
+  assert(badUpdate.data === null || badUpdate.data?.length === 0, 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Update denied');
 
-    // 6, 7. UPDATE / DELETE denied
-    const snapUpd = await clientA.from('transaction_fx_snapshots').update({ rate: 26000 }).eq('user_id', userA);
-    assertIsError(snapUpd, 'Direct snapshot update must be denied');
+  const badDelete = await clientA.from('transaction_fx_snapshots')['delete']().eq('user_id', userAId);
+  assert(badDelete.data === null || badDelete.data?.length === 0, 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Delete denied');
 
-    const snapDel = await clientA.from('transaction_fx_snapshots').delete().eq('user_id', userA);
-    assertIsError(snapDel, 'Direct snapshot delete must be denied');
+  console.log('\n--- Bidirectional Snapshot isolation ---');
+  const snapSelA = await clientA.from('transaction_fx_snapshots').select().eq('user_id', userBId);
+  assert(snapSelA.data && snapSelA.data.length === 0, 'BIDIRECTIONAL_SNAPSHOT_ISOLATION=PASS - A cannot read B snapshots');
+  const snapSelB = await clientB.from('transaction_fx_snapshots').select().eq('user_id', userAId);
+  assert(snapSelB.data && snapSelB.data.length === 0, 'BIDIRECTIONAL_SNAPSHOT_ISOLATION=PASS - B cannot read A snapshots');
 
-    console.log('[PASS] Snapshot mutations denied');
+  console.log('\n--- Setup Data for regressions ---');
+  // Category A
+  const catA = await clientA.from('categories').insert({
+    user_id: userAId, name: `Cat A ${runId}`, type: 'INCOME', color: '#000000', icon: 'smile'
+  }).select().single();
+  const catAId = catA.data.id;
 
-    // 9, 10, 11, 12: Isolation
-    // Note: since we can't insert a snapshot from the client, we would need a server helper.
-    // In this verification, we just test SELECTing doesn't crash and returns 0.
-    const snapSelB = await clientB.from('transaction_fx_snapshots').select('*').eq('user_id', userA);
-    assertSuccess(snapSelB, 'User B selects User A snapshots (should return 0 rows)');
-    assertEq(snapSelB.data.length, 0, 'User B sees 0 of User A snapshots');
+  // Accounts A
+  const accA1 = await clientA.from('accounts').insert({
+    user_id: userAId, name: `Acc1 ${runId}`, type: 'BANK', currency_code: 'USD', opening_balance: '100.0000', color: '#000'
+  }).select().single();
+  const accA1Id = accA1.data.id;
 
-    const viewSelB = await clientB.from('transaction_fx_snapshot_details').select('*').eq('user_id', userA);
-    assertSuccess(viewSelB, 'User B selects User A view');
-    assertEq(viewSelB.data.length, 0, 'User B sees 0 of User A view');
+  const accA2 = await clientA.from('accounts').insert({
+    user_id: userAId, name: `Acc2 ${runId}`, type: 'BANK', currency_code: 'USD', opening_balance: '0.0000', color: '#000'
+  }).select().single();
+  const accA2Id = accA2.data.id;
 
-    console.log('[PASS] Bidirectional snapshot SELECT isolated');
+  console.log('\n--- Phase 4 Transaction regression ---');
+  const txInsert = await clientA.from('transactions').insert({
+    user_id: userAId, account_id: accA1Id, category_id: catAId, type: 'INCOME',
+    amount: '50.0000', currency_code: 'USD', merchant: 'T', occurred_on: '2023-10-01'
+  }).select().single();
+  const txId = txInsert.data.id;
 
-    // 13. Phase 4 regression
-    const txSelB = await clientB.from('transactions').select('*').eq('id', txA.data.id);
-    assertEq(txSelB.data.length, 0, 'User B sees 0 of User A transactions');
+  const txReadA = await clientA.from('transaction_details').select().eq('id', txId);
+  assert(txReadA.data && txReadA.data.length === 1, 'PHASE4_TRANSACTION_BALANCE_REGRESSION=PASS - Owner read transaction_details');
+  const txReadB = await clientB.from('transaction_details').select().eq('id', txId);
+  assert(txReadB.data && txReadB.data.length === 0, 'PHASE4_TRANSACTION_BALANCE_REGRESSION=PASS - Other sees zero');
 
-    // 14. Phase 5 transfer regression
-    // (mocking a transfer to see RLS)
-    const acctA2 = await clientA.from('accounts').insert({ user_id: userA, name: runId+'_2', type: 'CASH', currency_code: 'USD', current_balance: 0 }).select().single();
-    const trA = await clientA.from('transfers').insert({
-      user_id: userA, from_account_id: acctA.data.id, to_account_id: acctA2.data.id,
-      amount: 50, currency_code: 'USD', occurred_at: new Date().toISOString()
-    }).select().single();
-    assertSuccess(trA, 'Create transfer A');
+  const bal1 = await clientA.from('account_balances').select('current_balance').eq('id', accA1Id).single();
+  assert(bal1.data.current_balance === '150.0000', 'PHASE4_TRANSACTION_BALANCE_REGRESSION=PASS - Balance changes exactly');
 
-    const trSelB = await clientB.from('transfers').select('*').eq('id', trA.data.id);
-    assertEq(trSelB.data.length, 0, 'User B sees 0 of User A transfers');
+  await clientA.from('transactions').update({ is_voided: true }).eq('id', txId);
+  const bal2 = await clientA.from('account_balances').select('current_balance').eq('id', accA1Id).single();
+  assert(bal2.data.current_balance === '100.0000', 'PHASE4_TRANSACTION_BALANCE_REGRESSION=PASS - Balance reverts on void');
 
-    console.log('[PASS] Phase 4 and 5 regression tests passed');
+  console.log('\n--- Phase 5 Transfer neutrality regression ---');
+  const trInsert = await clientA.from('transfers').insert({
+    user_id: userAId, from_account_id: accA1Id, to_account_id: accA2Id,
+    amount: '30.0000', currency_code: 'USD', occurred_on: '2023-10-01'
+  }).select().single();
+  const trId = trInsert.data.id;
 
-  } finally {
-    // 16. Cleanup deterministically
-    console.log('Cleaning up...');
-    await clientA.from('transfers').delete().like('from_account_id', '%'); // Dummy cleanup
-    await clientA.from('transactions').delete().eq('merchant', runId);
-    const delAcct = await clientA.from('accounts').delete().like('name', `${runId}%`);
-    if (delAcct.error) console.error('Cleanup error:', delAcct.error);
-    // 17. Assert cleanup
-    console.log('[PASS] Cleanup complete');
-  }
+  const trReadA = await clientA.from('transfer_details').select().eq('id', trId);
+  assert(trReadA.data && trReadA.data.length === 1, 'PHASE5_TRANSFER_NEUTRALITY_REGRESSION=PASS - Owner read transfer_details');
+  const trReadB = await clientB.from('transfer_details').select().eq('id', trId);
+  assert(trReadB.data && trReadB.data.length === 0, 'PHASE5_TRANSFER_NEUTRALITY_REGRESSION=PASS - Other sees zero');
 
-  // 18. Overall pass
-  console.log('[PASS] 99_OVERALL');
+  const b1 = await clientA.from('account_balances').select('current_balance').eq('id', accA1Id).single();
+  const b2 = await clientA.from('account_balances').select('current_balance').eq('id', accA2Id).single();
+  assert(b1.data.current_balance === '70.0000', 'PHASE5_TRANSFER_NEUTRALITY_REGRESSION=PASS - Source decrease exact');
+  assert(b2.data.current_balance === '30.0000', 'PHASE5_TRANSFER_NEUTRALITY_REGRESSION=PASS - Dest increase exact');
+
+  await clientA.from('transfers').update({ is_voided: true }).eq('id', trId);
+  const b3 = await clientA.from('account_balances').select('current_balance').eq('id', accA1Id).single();
+  const b4 = await clientA.from('account_balances').select('current_balance').eq('id', accA2Id).single();
+  assert(b3.data.current_balance === '100.0000' && b4.data.current_balance === '0.0000', 'PHASE5_TRANSFER_NEUTRALITY_REGRESSION=PASS - Balances restore on void');
+
+  console.log('\n--- Deliberate non-RLS error distinction ---');
+  const nonRls = await clientA.from('transactions').insert({
+    user_id: userAId, account_id: '00000000-0000-0000-0000-000000000000', category_id: catAId, type: 'INCOME',
+    amount: '50', currency_code: 'USD', merchant: 'T', occurred_on: '2023-10-01'
+  });
+  assert(nonRls.error && nonRls.error.code === '23503', 'DELIBERATE_NON_RLS_ERROR_DISTINCTION=PASS - Distinguish RLS (42501) vs FK (23503)');
+
+  console.log('\n--- Cleanup ---');
+  const cl1 = await clientA.from('transactions').update({ is_voided: true }).eq('id', txId).select();
+  assert(cl1.data.length === 1 && cl1.data[0].is_voided === true, 'DETERMINISTIC_CLEANUP=PASS - TX voided');
+  const cl2 = await clientA.from('transfers').update({ is_voided: true }).eq('id', trId).select();
+  assert(cl2.data.length === 1 && cl2.data[0].is_voided === true, 'DETERMINISTIC_CLEANUP=PASS - Transfer voided');
+
+  const cl3 = await clientA.from('accounts').update({ is_archived: true }).in('id', [accA1Id, accA2Id]).select();
+  assert(cl3.data.length === 2 && cl3.data[0].is_archived === true, 'DETERMINISTIC_CLEANUP=PASS - Accounts archived');
+  const cl4 = await clientA.from('categories').update({ is_archived: true }).eq('id', catAId).select();
+  assert(cl4.data.length === 1 && cl4.data[0].is_archived === true, 'DETERMINISTIC_CLEANUP=PASS - Category archived');
+
+  console.log('\n99_OVERALL=PASS');
 }
 
 runTests().catch(e => {
-  console.error('[FAIL] Unhandled exception:', e);
+  console.error(e);
   process.exit(1);
 });

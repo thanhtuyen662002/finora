@@ -1,3 +1,4 @@
+import { resolveAutoFxCapability } from '@/lib/exchange-rate/capability';
 
 import { createClient } from '@/lib/supabase/client';
 import { getTransactions, type ExtendedTransaction } from '@/features/transactions';
@@ -60,8 +61,7 @@ export async function getDashboardReportData(
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-  const schemaHasAutoFx = typeof userSettingsResult.data?.auto_fx_enabled === 'boolean';
-  const autoFxEnabled = schemaHasAutoFx ? userSettingsResult.data!.auto_fx_enabled : false;
+  const { schemaAvailable: schemaHasAutoFx, enabled: autoFxEnabled } = resolveAutoFxCapability(userSettingsResult.data);
   const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,
@@ -226,8 +226,7 @@ export async function getDetailedReportData(
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-  const schemaHasAutoFx = typeof userSettingsResult.data?.auto_fx_enabled === 'boolean';
-  const autoFxEnabled = schemaHasAutoFx ? userSettingsResult.data!.auto_fx_enabled : false;
+  const { schemaAvailable: schemaHasAutoFx, enabled: autoFxEnabled } = resolveAutoFxCapability(userSettingsResult.data);
   const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,
