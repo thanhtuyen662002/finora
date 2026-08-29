@@ -203,3 +203,27 @@ This file records decisions with architectural consequences. New decisions shoul
 - Foreign currency accounts and transactions are displayed with full currency integrity.
 - Voided transactions are cleanly excluded from financial aggregations.
 - CSV export enables user-directed financial data extraction with Excel compatibility.
+
+---
+
+## ADR-012 — Planning Layer Architecture: Budgets, Goals, and Recurring Schedules
+
+**Status:** Accepted
+
+**Decision:**
+1. Implement the Phase 7 Planning Layer as three discrete user-owned relational domains: `budgets` (monthly category expense caps), `goals` (saving/investment targets with target dates), and `recurring_items` (scheduled recurring income/expense templates).
+2. All monetary columns are PostgreSQL `numeric(20,4)` at rest, validated with exact decimal string checks at application boundary, and read via `security_invoker = true` views (`budget_progress`, `goal_details`, `recurring_details`) as exact string values.
+3. Budgets are strictly scoped to `EXPENSE` categories and month intervals (`period_month` normalized to the 1st of each month). Spent amounts are derived directly from active non-voided transactions within that calendar month.
+4. Recurring items are defined as planning templates/schedules, NOT automated transaction posting background daemons. A pure calendar date engine computes future occurrences, leap years, month-end clamping (Jan 31 -> Feb 28), and next due dates.
+5. Strict pre-FX currency isolation is maintained across all planning summaries.
+6. Zero-trust security: RLS enabled with 9 exact ownership policies (3 per table, no DELETE policy; soft delete via `is_archived` only).
+
+**Reason:**
+- Financial Invariant: Budgets, goals, and recurring schedules are planning and forecast records. Creating, updating, or pausing them does not alter actual account balances or user net worth.
+- Date calculation for recurring bills must handle edge cases like February leap years and 31-day month transitions without drift.
+- Security and data isolation must match the core transaction layer.
+
+**Consequences:**
+- User budgets and goals provide real-time tracking against actual transaction data.
+- Recurring bills allow accurate monthly cash flow forecasting without unsolicited transaction generation.
+- Zero-trust database constraints prevent invalid foreign keys, negative amounts, or cross-user data leakage.

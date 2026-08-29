@@ -13,18 +13,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { MockGoalInput } from '@/types/finance';
-import { Sparkles, Check } from 'lucide-react';
+import { Sparkles, AlertCircle } from 'lucide-react';
+import type { GoalInsertInput } from '@/features/goals';
+import { toExactDecimal, isPositiveExactDecimal, isNonNegativeExactDecimal } from '@/lib/money';
 
 interface AddGoalModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (goalData: MockGoalInput) => void;
+  currencyCode?: string;
+  onSuccess?: (goalData: GoalInsertInput) => Promise<void> | void;
 }
 
 export const AddGoalModal: React.FC<AddGoalModalProps> = ({
   open,
   onOpenChange,
+  currencyCode = 'VND',
   onSuccess,
 }) => {
   const [name, setName] = useState('');
@@ -35,6 +38,7 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
   const [category, setCategory] = useState('An toàn tài chính');
   const [color, setColor] = useState('#10b981');
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
 
   const colors = [
     '#10b981', // Emerald
@@ -45,29 +49,58 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
     '#ef4444', // Red
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !targetAmount) return;
+    setError('');
 
-    setSubmitted(true);
-    setTimeout(() => {
-      onSuccess?.({
-        name,
-        targetAmount: parseFloat(targetAmount),
-        currentAmount: parseFloat(initialAmount) || 0,
-        currency: 'VND',
-        targetDate,
-        monthlyContribution: parseFloat(monthlyContribution) || 0,
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError('Vui lòng nhập tên mục tiêu');
+      return;
+    }
+
+    try {
+      const exactTarget = toExactDecimal(targetAmount);
+      if (!isPositiveExactDecimal(exactTarget)) {
+        setError('Số tiền mục tiêu phải lớn hơn 0');
+        return;
+      }
+
+      const exactInitial = initialAmount.trim() ? toExactDecimal(initialAmount) : '0.0000';
+      if (!isNonNegativeExactDecimal(exactInitial)) {
+        setError('Số tiền hiện có không được âm');
+        return;
+      }
+
+      const exactMonthly = monthlyContribution.trim() ? toExactDecimal(monthlyContribution) : '0.0000';
+      if (!isNonNegativeExactDecimal(exactMonthly)) {
+        setError('Đóng góp hàng tháng không được âm');
+        return;
+      }
+
+      setSubmitted(true);
+      await onSuccess?.({
+        name: trimmedName,
+        target_amount: exactTarget,
+        current_amount: exactInitial,
+        currency_code: currencyCode,
+        target_date: targetDate || null,
+        monthly_contribution: exactMonthly,
         color,
         category,
         icon: 'Target',
       });
+
       setSubmitted(false);
       onOpenChange(false);
       setName('');
       setTargetAmount('');
       setInitialAmount('');
-    }, 400);
+      setMonthlyContribution('');
+    } catch (err: unknown) {
+      setSubmitted(false);
+      setError(err instanceof Error ? err.message : 'Lỗi khi tạo mục tiêu');
+    }
   };
 
   return (
@@ -79,9 +112,16 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
             <span>Tạo mục tiêu tài chính mới</span>
           </DialogTitle>
           <DialogDescription>
-            Thiết lập kế hoạch tiết kiệm hoặc đầu tư cho các dự định lớn.
+            Thiết lập kế hoạch tiết kiệm hoặc đầu tư cho các dự định lớn ({currencyCode}).
           </DialogDescription>
         </DialogHeader>
+
+        {error && (
+          <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg text-sm flex items-center space-x-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
@@ -98,23 +138,23 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="targetAmt">Số tiền mục tiêu (VND)</Label>
+              <Label htmlFor="targetAmount">Số tiền mục tiêu ({currencyCode})</Label>
               <Input
-                id="targetAmt"
-                type="number"
-                step="any"
-                placeholder="100.000.000"
+                id="targetAmount"
+                type="text"
+                inputMode="decimal"
+                placeholder="100000000"
                 value={targetAmount}
                 onChange={(e) => setTargetAmount(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="initAmt">Đã có sẵn (VND)</Label>
+              <Label htmlFor="initialAmount">Đã tích lũy ({currencyCode})</Label>
               <Input
-                id="initAmt"
-                type="number"
-                step="any"
+                id="initialAmount"
+                type="text"
+                inputMode="decimal"
                 placeholder="0"
                 value={initialAmount}
                 onChange={(e) => setInitialAmount(e.target.value)}
@@ -124,23 +164,21 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="tDate">Ngày dự kiến hoàn thành</Label>
+              <Label htmlFor="targetDate">Hạn hoàn thành</Label>
               <Input
-                id="tDate"
+                id="targetDate"
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                required
               />
             </div>
-
             <div className="space-y-1.5">
-              <Label htmlFor="mContrib">Góp đều hàng tháng (VND)</Label>
+              <Label htmlFor="monthlyContrib">Góp mỗi tháng ({currencyCode})</Label>
               <Input
-                id="mContrib"
-                type="number"
-                step="any"
-                placeholder="5.000.000"
+                id="monthlyContrib"
+                type="text"
+                inputMode="decimal"
+                placeholder="5000000"
                 value={monthlyContribution}
                 onChange={(e) => setMonthlyContribution(e.target.value)}
               />
@@ -148,33 +186,34 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="goalCat">Phân loại</Label>
+            <Label htmlFor="goalCategory">Nhóm mục tiêu</Label>
             <Select
-              id="goalCat"
+              id="goalCategory"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               options={[
                 { value: 'An toàn tài chính', label: 'An toàn tài chính' },
-                { value: 'Trải nghiệm cuộc sống', label: 'Trải nghiệm cuộc sống' },
-                { value: 'Tài sản lớn', label: 'Tài sản lớn' },
-                { value: 'Đầu tư & Tự do', label: 'Đầu tư & Tự do' },
+                { value: 'Mua sắm lớn', label: 'Mua sắm lớn' },
+                { value: 'Nghỉ dưỡng & Du lịch', label: 'Nghỉ dưỡng & Du lịch' },
+                { value: 'Đầu tư phát triển', label: 'Đầu tư phát triển' },
+                { value: 'Khác', label: 'Khác' },
               ]}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label>Màu đại diện</Label>
-            <div className="flex gap-2 pt-1">
+            <Label>Màu sắc nhận diện</Label>
+            <div className="flex items-center space-x-2 pt-1">
               {colors.map((c) => (
                 <button
-                  key={c}
                   type="button"
-                  onClick={() => setColor(c)}
-                  className="h-7 w-7 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                  key={c}
+                  className={`h-7 w-7 rounded-full transition-transform ${
+                    color === c ? 'scale-110 ring-2 ring-offset-2 ring-primary' : 'opacity-70 hover:opacity-100'
+                  }`}
                   style={{ backgroundColor: c }}
-                >
-                  {color === c && <Check className="h-4 w-4 text-white" />}
-                </button>
+                  onClick={() => setColor(c)}
+                />
               ))}
             </div>
           </div>

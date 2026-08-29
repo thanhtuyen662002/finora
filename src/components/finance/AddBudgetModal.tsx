@@ -13,44 +13,65 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { MOCK_CATEGORIES } from '@/lib/mock/transactions';
-import { MockBudgetInput } from '@/types/finance';
-import { Target } from 'lucide-react';
+import { Target, AlertCircle } from 'lucide-react';
+import type { CategoryRow } from '@/types/database';
+import { toExactDecimal, isPositiveExactDecimal } from '@/lib/money';
 
 interface AddBudgetModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (budgetData: MockBudgetInput & { categoryName: string; spent: number }) => void;
+  categories: CategoryRow[];
+  currencyCode?: string;
+  periodMonth?: string;
+  onSuccess?: (data: { categoryId: string; limitAmount: string }) => Promise<void> | void;
 }
 
 export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
   open,
   onOpenChange,
+  categories,
+  currencyCode = 'VND',
+  periodMonth: _periodMonth,
   onSuccess,
 }) => {
-  const [categoryId, setCategoryId] = useState('cat-food');
+  const expenseCategories = categories.filter((c) => c.type === 'EXPENSE');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [limit, setLimit] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
 
-  const expenseCategories = MOCK_CATEGORIES.filter((c) => c.type === 'EXPENSE');
+  const effectiveCategoryId = selectedCategoryId || expenseCategories[0]?.id || '';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!limit) return;
+    setError('');
 
-    setSubmitted(true);
-    setTimeout(() => {
-      const cat = expenseCategories.find((c) => c.id === categoryId);
-      onSuccess?.({
-        categoryId,
-        categoryName: cat?.name || 'Danh mục',
-        limit: parseFloat(limit),
-        spent: 0,
+    if (!effectiveCategoryId) {
+      setError('Vui lòng chọn danh mục chi tiêu');
+      return;
+    }
+
+    try {
+      const exactLimit = toExactDecimal(limit);
+      if (!isPositiveExactDecimal(exactLimit)) {
+        setError('Hạn mức ngân sách phải lớn hơn 0');
+        return;
+      }
+
+      setSubmitted(true);
+      await onSuccess?.({
+        categoryId: effectiveCategoryId,
+        limitAmount: exactLimit,
       });
+
       setSubmitted(false);
       onOpenChange(false);
       setLimit('');
-    }, 400);
+      setSelectedCategoryId('');
+    } catch (err: unknown) {
+      setSubmitted(false);
+      setError(err instanceof Error ? err.message : 'Lỗi khi lưu ngân sách');
+    }
   };
 
   return (
@@ -62,17 +83,24 @@ export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
             <span>Thiết lập hạn mức ngân sách</span>
           </DialogTitle>
           <DialogDescription>
-            Đặt ngân sách chi tiêu hàng tháng cho từng danh mục.
+            Đặt ngân sách chi tiêu hàng tháng cho từng danh mục ({currencyCode}).
           </DialogDescription>
         </DialogHeader>
+
+        {error && (
+          <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg text-sm flex items-center space-x-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="bgtCat">Danh mục chi tiêu</Label>
             <Select
               id="bgtCat"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+              value={effectiveCategoryId}
+              onChange={(e) => setSelectedCategoryId(e.target.value)}
               options={expenseCategories.map((c) => ({
                 value: c.id,
                 label: c.name,
@@ -81,12 +109,12 @@ export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="bgtLimit">Hạn mức chi tiêu tháng (VND)</Label>
+            <Label htmlFor="bgtLimit">Hạn mức chi tiêu tháng ({currencyCode})</Label>
             <Input
               id="bgtLimit"
-              type="number"
-              step="any"
-              placeholder="5.000.000"
+              type="text"
+              inputMode="decimal"
+              placeholder="5000000"
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
               required

@@ -1,55 +1,83 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/finance/PageHeader';
 import { GoalCard } from '@/components/finance/GoalCard';
 import { AddGoalModal } from '@/components/finance/AddGoalModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { MOCK_GOALS } from '@/lib/mock/goals';
-import { MockGoal, MockGoalInput } from '@/types/finance';
-import { formatMoney } from '@/lib/money/format';
 import { EmptyState } from '@/components/finance/EmptyState';
-import { Plus, Target, TrendingUp, Sparkles } from 'lucide-react';
+import { Plus, Target, TrendingUp, Sparkles, RefreshCw } from 'lucide-react';
+import {
+  getGoals,
+  createGoal,
+  computeGoalSummary,
+  ExtendedGoal,
+  GoalInsertInput,
+} from '@/features/goals';
+import { formatExactMoney } from '@/lib/money/format';
 
 export default function GoalsPage() {
-  const [goals, setGoals] = useState<MockGoal[]>(MOCK_GOALS);
+  const [selectedCurrency, setSelectedCurrency] = useState('VND');
+  const [goals, setGoals] = useState<ExtendedGoal[]>([]);
   const [addGoalOpen, setAddGoalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const totalTargetVND = goals.reduce((sum, g) => sum + g.targetAmount, 0);
-  const totalSavedVND = goals.reduce((sum, g) => sum + g.currentAmount, 0);
-  const totalMonthlyPace = goals.reduce((sum, g) => sum + g.monthlyContribution, 0);
-  const averageProgress = totalTargetVND > 0 ? Math.round((totalSavedVND / totalTargetVND) * 100) : 0;
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const fetchedGoals = await getGoals({ currencyCode: selectedCurrency });
+      setGoals(fetchedGoals);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Không thể tải mục tiêu');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCurrency]);
 
-  const handleAddGoal = (newG: MockGoalInput) => {
-    const created: MockGoal = {
-      id: `goal-${Date.now()}`,
-      userId: 'user-demo-1',
-      name: newG.name,
-      targetAmount: newG.targetAmount,
-      currentAmount: newG.currentAmount,
-      currency: newG.currency || 'VND',
-      targetDate: newG.targetDate,
-      color: newG.color,
-      icon: newG.icon,
-      category: newG.category,
-      monthlyContribution: newG.monthlyContribution,
-    };
-    setGoals([...goals, created]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
+
+  const summary = useMemo(() => {
+    return computeGoalSummary(goals, selectedCurrency);
+  }, [goals, selectedCurrency]);
+
+  const handleAddGoal = async (newGoal: GoalInsertInput) => {
+    await createGoal({
+      ...newGoal,
+      currency_code: selectedCurrency,
+    });
+    await loadData();
   };
 
   return (
     <AppShell>
       <PageHeader
         title="Mục tiêu tài chính"
-        subtitle="Lập kế hoạch tích lũy và theo dõi tiến độ các mục tiêu lớn."
+        subtitle={`Lập kế hoạch tích lũy và theo dõi tiến độ các mục tiêu lớn (${selectedCurrency}).`}
       >
-        <Button size="sm" onClick={() => setAddGoalOpen(true)}>
-          <Plus className="h-4 w-4 mr-1.5" />
-          Tạo mục tiêu mới
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button size="sm" variant="outline" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button size="sm" onClick={() => setAddGoalOpen(true)}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Tạo mục tiêu mới
+          </Button>
+        </div>
       </PageHeader>
+
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <Button size="sm" variant="outline" onClick={loadData}>Thử lại</Button>
+        </div>
+      )}
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
@@ -60,10 +88,10 @@ export default function GoalsPage() {
                 Tổng đã tích lũy
               </span>
               <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                {formatMoney(totalSavedVND)}
+                {formatExactMoney(summary.totalCurrent, selectedCurrency)}
               </p>
               <span className="text-xs text-muted-foreground">
-                Đạt {averageProgress}% tổng các mục tiêu
+                Đạt {summary.percentStr}% tổng các mục tiêu
               </span>
             </div>
             <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -79,10 +107,10 @@ export default function GoalsPage() {
                 Tổng giá trị mục tiêu
               </span>
               <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                {formatMoney(totalTargetVND)}
+                {formatExactMoney(summary.totalTarget, selectedCurrency)}
               </p>
               <span className="text-xs text-muted-foreground">
-                Bao gồm {goals.length} mục tiêu dài hạn
+                Bao gồm {summary.activeCount} mục tiêu dài hạn
               </span>
             </div>
             <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center text-slate-600 dark:text-slate-400">
@@ -95,13 +123,13 @@ export default function GoalsPage() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Tốc độ góp hàng tháng
+                Còn lại cần góp
               </span>
               <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                +{formatMoney(totalMonthlyPace)}
+                {formatExactMoney(summary.remaining, selectedCurrency)}
               </p>
               <span className="text-xs text-muted-foreground">
-                Dự kiến hoàn thành đúng tiến độ
+                Đã hoàn thành {summary.completedCount}/{summary.activeCount} mục tiêu
               </span>
             </div>
             <div className="h-10 w-10 rounded-xl bg-amber-50 dark:bg-amber-950 flex items-center justify-center text-amber-600 dark:text-amber-400">
@@ -112,10 +140,14 @@ export default function GoalsPage() {
       </div>
 
       {/* Goals Grid or Empty State */}
-      {goals.length === 0 ? (
+      {loading && goals.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          Đang tải mục tiêu tài chính...
+        </div>
+      ) : goals.length === 0 ? (
         <EmptyState
           title="Chưa có mục tiêu tài chính"
-          description="Tạo mục tiêu tiết kiệm mới (mua nhà, du lịch, quỹ khẩn cấp) để theo dõi tiến độ."
+          description={`Tạo mục tiêu tiết kiệm mới (mua nhà, du lịch, quỹ khẩn cấp) để theo dõi tiến độ bằng ${selectedCurrency}.`}
           actionLabel="+ Tạo mục tiêu mới"
           onAction={() => setAddGoalOpen(true)}
         />
@@ -131,6 +163,7 @@ export default function GoalsPage() {
       <AddGoalModal
         open={addGoalOpen}
         onOpenChange={setAddGoalOpen}
+        currencyCode={selectedCurrency}
         onSuccess={handleAddGoal}
       />
     </AppShell>

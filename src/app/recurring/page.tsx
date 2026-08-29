@@ -1,72 +1,100 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/finance/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MOCK_RECURRING } from '@/lib/mock/recurring';
-import { MockRecurringItem } from '@/types/finance';
-import { formatMoney, formatDateVN } from '@/lib/money/format';
-import { CurrencyBadge } from '@/components/finance/CurrencyBadge';
+import { EmptyState } from '@/components/finance/EmptyState';
+import { AddRecurringModal } from '@/components/finance/AddRecurringModal';
+import { formatExactMoney, formatDateVN } from '@/lib/money/format';
 import {
   Repeat,
   Calendar,
   Plus,
   Play,
   Pause,
-  AlertCircle,
-  Film,
-  Tv,
-  Music,
-  Wifi,
-  Dumbbell,
-  Briefcase,
   Layers,
+  RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  getRecurringItems,
+  createRecurringItem,
+  pauseRecurringItem,
+  resumeRecurringItem,
+  computeRecurringSummary,
+  ExtendedRecurringItem,
+  RecurringItemInsertInput,
+} from '@/features/recurring';
+import { getAccounts } from '@/features/accounts/accounts';
+import { getCategories } from '@/features/categories/categories';
+import type { AccountRow, CategoryRow } from '@/types/database';
 
 export default function RecurringPage() {
-  const [recurringList, setRecurringList] = useState<MockRecurringItem[]>(MOCK_RECURRING);
+  const [selectedCurrency, setSelectedCurrency] = useState('VND');
+  const [recurringList, setRecurringList] = useState<ExtendedRecurringItem[]>([]);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const totalMonthlyOutflowVND = recurringList
-    .filter((r) => r.type === 'EXPENSE' && r.status === 'ACTIVE')
-    .reduce((sum, r) => sum + r.amount, 0);
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const [items, accs, cats] = await Promise.all([
+        getRecurringItems({ currencyCode: selectedCurrency }),
+        getAccounts(),
+        getCategories(),
+      ]);
+      setRecurringList(items);
+      setAccounts(accs);
+      setCategories(cats);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Không thể tải danh sách định kỳ');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCurrency]);
 
-  const totalMonthlyInflowVND = recurringList
-    .filter((r) => r.type === 'INCOME' && r.status === 'ACTIVE')
-    .reduce((sum, r) => sum + r.amount, 0);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
 
-  const toggleStatus = (id: string) => {
-    setRecurringList((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              status: item.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
-            }
-          : item
-      )
-    );
+  const summary = useMemo(() => {
+    return computeRecurringSummary(recurringList, selectedCurrency);
+  }, [recurringList, selectedCurrency]);
+
+  const handleToggleStatus = async (item: ExtendedRecurringItem) => {
+    try {
+      if (item.is_paused) {
+        await resumeRecurringItem(item.id);
+      } else {
+        await pauseRecurringItem(item.id);
+      }
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Không thể cập nhật trạng thái');
+    }
   };
 
-  const getIcon = (iconName?: string) => {
-    switch (iconName) {
-      case 'Film':
-        return <Film className="h-4 w-4" />;
-      case 'Tv':
-        return <Tv className="h-4 w-4" />;
-      case 'Music':
-        return <Music className="h-4 w-4" />;
-      case 'Wifi':
-        return <Wifi className="h-4 w-4" />;
-      case 'Dumbbell':
-        return <Dumbbell className="h-4 w-4" />;
-      case 'Briefcase':
-        return <Briefcase className="h-4 w-4" />;
+  const handleAddRecurring = async (newItem: RecurringItemInsertInput) => {
+    await createRecurringItem(newItem);
+    await loadData();
+  };
+
+  const formatFrequencyLabel = (freq: string) => {
+    switch (freq) {
+      case 'WEEKLY':
+        return 'Hàng tuần';
+      case 'YEARLY':
+        return 'Hàng năm';
       default:
-        return <Layers className="h-4 w-4" />;
+        return 'Hàng tháng';
     }
   };
 
@@ -74,13 +102,25 @@ export default function RecurringPage() {
     <AppShell>
       <PageHeader
         title="Định kỳ & Hóa đơn"
-        subtitle="Quản lý các gói đăng ký, hóa đơn dịch vụ và thu nhập lặp lại hàng tháng."
+        subtitle={`Quản lý các gói đăng ký, hóa đơn dịch vụ và thu nhập lặp lại (${selectedCurrency}).`}
       >
-        <Button size="sm" onClick={() => alert('Chức năng thêm định kỳ mẫu')}>
-          <Plus className="h-4 w-4 mr-1.5" />
-          Thêm khoản định kỳ
-        </Button>
+        <div className="flex items-center space-x-2">
+          <Button size="sm" variant="outline" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button size="sm" onClick={() => setAddModalOpen(true)}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Thêm khoản định kỳ
+          </Button>
+        </div>
       </PageHeader>
+
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <Button size="sm" variant="outline" onClick={loadData}>Thử lại</Button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -91,10 +131,10 @@ export default function RecurringPage() {
                 Tổng hóa đơn cố định hàng tháng
               </span>
               <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                -{formatMoney(totalMonthlyOutflowVND)}
+                -{formatExactMoney(summary.monthlyExpenseProjected, selectedCurrency)}
               </p>
               <span className="text-xs text-muted-foreground">
-                {recurringList.filter((r) => r.type === 'EXPENSE' && r.status === 'ACTIVE').length} dịch vụ đang kích hoạt
+                {summary.activeCount} khoản đang kích hoạt ({summary.pausedCount} tạm ngưng)
               </span>
             </div>
             <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center text-slate-600 dark:text-slate-400">
@@ -110,10 +150,10 @@ export default function RecurringPage() {
                 Thu nhập định kỳ hàng tháng
               </span>
               <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                +{formatMoney(totalMonthlyInflowVND)}
+                +{formatExactMoney(summary.monthlyIncomeProjected, selectedCurrency)}
               </p>
               <span className="text-xs text-muted-foreground">
-                Lương cơ bản cố định
+                Dòng tiền ròng định kỳ: {formatExactMoney(summary.netMonthlyProjected, selectedCurrency)}/tháng
               </span>
             </div>
             <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -124,90 +164,122 @@ export default function RecurringPage() {
       </div>
 
       {/* Recurring Items List */}
-      <div className="space-y-3">
-        <h3 className="text-base font-semibold text-foreground">
-          Danh sách dịch vụ & hóa đơn ({recurringList.length})
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {recurringList.map((item) => {
-            const isIncome = item.type === 'INCOME';
-            const isActive = item.status === 'ACTIVE';
-
-            return (
-              <Card
-                key={item.id}
-                className={cn(
-                  'transition-all duration-200 border',
-                  !isActive ? 'opacity-60 bg-muted/20' : 'bg-card'
-                )}
-              >
-                <CardContent className="p-4 sm:p-5 flex items-center justify-between">
-                  <div className="flex items-center space-x-3 min-w-0 pr-2">
-                    <div
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-2xs"
-                      style={{ backgroundColor: item.color || '#64748b' }}
-                    >
-                      {getIcon(item.icon)}
-                    </div>
-                    <div className="truncate">
-                      <div className="flex items-center space-x-2">
-                        <h4 className="text-sm font-semibold text-foreground truncate">
-                          {item.name}
-                        </h4>
-                        <Badge
-                          variant={isActive ? 'default' : 'secondary'}
-                          className="text-[10px] uppercase font-mono px-1.5 py-0"
-                        >
-                          {isActive ? 'Đang chạy' : 'Tạm dừng'}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        {item.accountName} · Lặp lại hàng tháng (Ngày {new Date(item.nextDueDate).getDate()})
-                      </p>
-                      <div className="flex items-center space-x-1 text-[11px] text-muted-foreground mt-1">
-                        <Calendar className="h-3 w-3" />
-                        <span>Kỳ tới: {formatDateVN(item.nextDueDate)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0 flex flex-col items-end space-y-2">
-                    <span
-                      className={cn(
-                        'text-sm sm:text-base font-bold',
-                        isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
-                      )}
-                    >
-                      {isIncome ? '+' : '-'}
-                      {formatMoney(item.amount, item.currency)}
-                    </span>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleStatus(item.id)}
-                      className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
-                    >
-                      {isActive ? (
-                        <>
-                          <Pause className="h-3.5 w-3.5 mr-1 text-amber-500" />
-                          Tạm ngưng
-                        </>
-                      ) : (
-                        <>
-                          <Play className="h-3.5 w-3.5 mr-1 text-emerald-500" />
-                          Kích hoạt
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+      {loading && recurringList.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          Đang tải danh sách định kỳ...
         </div>
-      </div>
+      ) : recurringList.length === 0 ? (
+        <EmptyState
+          title="Chưa có khoản định kỳ"
+          description="Thiết lập các khoản thu hoặc chi lặp lại (Netflix, Spotify, tiền nhà, lương...) để quản lý dự báo."
+          actionLabel="+ Thêm khoản định kỳ"
+          onAction={() => setAddModalOpen(true)}
+        />
+      ) : (
+        <div className="space-y-3">
+          <h3 className="text-base font-semibold text-foreground">
+            Danh sách dịch vụ & hóa đơn ({recurringList.length})
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {recurringList.map((item) => {
+              const isIncome = item.transaction_type === 'INCOME';
+              const isActive = !item.is_paused;
+
+              return (
+                <Card
+                  key={item.id}
+                  className={cn(
+                    'transition-all duration-200 border',
+                    !isActive ? 'opacity-60 bg-muted/20' : 'bg-card'
+                  )}
+                >
+                  <CardContent className="p-4 sm:p-5 flex items-center justify-between">
+                    <div className="flex items-center space-x-3 min-w-0 pr-2">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-2xs"
+                        style={{ backgroundColor: item.categoryColor || '#64748b' }}
+                      >
+                        <Layers className="h-4 w-4" />
+                      </div>
+                      <div className="truncate">
+                        <div className="flex items-center space-x-2">
+                          <h4 className="text-sm font-semibold text-foreground truncate">
+                            {item.name}
+                          </h4>
+                          <Badge
+                            variant={isActive ? 'default' : 'secondary'}
+                            className="text-[10px] uppercase font-mono px-1.5 py-0"
+                          >
+                            {isActive ? 'Đang chạy' : 'Tạm dừng'}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {item.accountName} · {formatFrequencyLabel(item.frequency)} · {item.categoryName}
+                        </p>
+                        {item.nextDueDate && (
+                          <div className="flex items-center space-x-1 text-[11px] text-muted-foreground mt-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>
+                              Kỳ tới: {formatDateVN(item.nextDueDate)}
+                              {item.daysUntilDue !== null && item.daysUntilDue >= 0
+                                ? ` (sau ${item.daysUntilDue} ngày)`
+                                : item.daysUntilDue !== null && item.daysUntilDue < 0
+                                ? ` (đã qua hạn ${Math.abs(item.daysUntilDue)} ngày)`
+                                : ''}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0 flex flex-col items-end space-y-2">
+                      <span
+                        className={cn(
+                          'text-sm sm:text-base font-bold',
+                          isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
+                        )}
+                      >
+                        {isIncome ? '+' : '-'}
+                        {formatExactMoney(item.amount, item.currency_code)}
+                      </span>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleStatus(item)}
+                        className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
+                      >
+                        {isActive ? (
+                          <>
+                            <Pause className="h-3.5 w-3.5 mr-1 text-amber-500" />
+                            Tạm ngưng
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-3.5 w-3.5 mr-1 text-emerald-500" />
+                            Kích hoạt
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Add Recurring Modal */}
+      <AddRecurringModal
+        open={addModalOpen}
+        onOpenChange={setAddModalOpen}
+        accounts={accounts}
+        categories={categories}
+        currencyCode={selectedCurrency}
+        onSuccess={handleAddRecurring}
+      />
     </AppShell>
   );
 }

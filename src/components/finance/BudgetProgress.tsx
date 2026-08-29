@@ -9,13 +9,14 @@ import {
   MoreHorizontal,
   AlertTriangle,
 } from 'lucide-react';
-import { MockBudget } from '@/types/finance';
+import type { ExtendedBudget } from '@/features/budgets';
+import type { MockBudget } from '@/types/finance';
 import { Progress } from '@/components/ui/progress';
-import { formatMoney } from '@/lib/money/format';
+import { formatExactMoney, formatMoney } from '@/lib/money/format';
 import { cn } from '@/lib/utils';
 
 interface BudgetProgressProps {
-  budget: MockBudget;
+  budget: ExtendedBudget | MockBudget;
   onClick?: () => void;
 }
 
@@ -23,13 +24,43 @@ export const BudgetProgress: React.FC<BudgetProgressProps> = ({
   budget,
   onClick,
 }) => {
-  const percent = Math.round((budget.spent / budget.limit) * 100);
-  const remaining = budget.limit - budget.spent;
-  const isOver = percent > 100;
-  const isNear = percent >= 85 && percent <= 100;
+  const isExtended = 'limit_amount' in budget;
+
+  const categoryName = isExtended ? budget.categoryName : budget.categoryName;
+  const categoryIcon = isExtended ? budget.categoryIcon : budget.categoryIcon;
+  const categoryColor = isExtended ? budget.categoryColor : budget.categoryColor;
+  const currency = isExtended ? budget.currency_code : budget.currency;
+
+  let percent = 0;
+  let isOver = false;
+  let isNear = false;
+  let displaySpent = '';
+  let displayLimit = '';
+  let displayRemaining = '';
+
+  if (isExtended) {
+    percent = Math.floor(budget.basisPoints / 100);
+    isOver = budget.isOverBudget;
+    isNear = percent >= 85 && percent <= 100;
+    displaySpent = formatExactMoney(budget.spent_amount, currency);
+    displayLimit = formatExactMoney(budget.limit_amount, currency);
+    displayRemaining = isOver
+      ? `Vượt ngân sách`
+      : `Còn lại ${formatExactMoney(budget.remaining_amount, currency)}`;
+  } else {
+    percent = Math.round((budget.spent / budget.limit) * 100);
+    isOver = percent > 100;
+    isNear = percent >= 85 && percent <= 100;
+    const remaining = budget.limit - budget.spent;
+    displaySpent = formatMoney(budget.spent, currency);
+    displayLimit = formatMoney(budget.limit, currency);
+    displayRemaining = isOver
+      ? 'Vượt ngân sách'
+      : `Còn lại ${formatMoney(remaining, currency)}`;
+  }
 
   const getIcon = () => {
-    switch (budget.categoryIcon) {
+    switch (categoryIcon) {
       case 'Utensils':
         return <Utensils className="h-4 w-4" />;
       case 'Car':
@@ -63,16 +94,16 @@ export const BudgetProgress: React.FC<BudgetProgressProps> = ({
         <div className="flex items-center space-x-2.5">
           <div
             className="flex h-8 w-8 items-center justify-center rounded-lg text-white"
-            style={{ backgroundColor: budget.categoryColor }}
+            style={{ backgroundColor: categoryColor }}
           >
             {getIcon()}
           </div>
           <div>
             <h4 className="font-semibold text-sm text-foreground">
-              {budget.categoryName}
+              {categoryName}
             </h4>
             <span className="text-xs text-muted-foreground">
-              Định mức: {formatMoney(budget.limit, budget.currency)}
+              Định mức: {displayLimit}
             </span>
           </div>
         </div>
@@ -94,7 +125,7 @@ export const BudgetProgress: React.FC<BudgetProgressProps> = ({
             </span>
           </div>
           <span className="text-[11px] text-muted-foreground">
-            {isOver ? 'Vượt ngân sách' : `Còn lại ${formatMoney(remaining, budget.currency)}`}
+            {displayRemaining}
           </span>
         </div>
       </div>
@@ -112,8 +143,8 @@ export const BudgetProgress: React.FC<BudgetProgressProps> = ({
       />
 
       <div className="flex justify-between text-xs text-muted-foreground pt-0.5">
-        <span>Đã chi: {formatMoney(budget.spent, budget.currency)}</span>
-        <span>Hạn mức: {formatMoney(budget.limit, budget.currency)}</span>
+        <span>Đã chi: {displaySpent}</span>
+        <span>Hạn mức: {displayLimit}</span>
       </div>
     </div>
   );

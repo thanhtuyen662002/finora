@@ -38,6 +38,14 @@ export function isPositiveExactDecimal(amount: string | number): boolean {
   }
 }
 
+export function isNonNegativeExactDecimal(amount: string | number): boolean {
+  try {
+    return compareExactDecimals(toExactDecimal(amount), '0.0000') >= 0;
+  } catch {
+    return false;
+  }
+}
+
 function toScaledBigInt(value: string): bigint {
   const normalized = toExactDecimal(value);
   const isNegative = normalized.startsWith('-');

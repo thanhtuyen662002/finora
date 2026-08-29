@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 7 — Budget + Goals + Recurring — AUTHORIZED
-- **Phase status:** PHASE_6_COMPLETE_PHASE_7_AUTHORIZED
+- **Current phase:** Phase 7 — Budget + Goals + Recurring
+- **Phase status:** PHASE_7_SOURCE_COMPLETE_MIGRATION_PENDING_APPLY
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -477,6 +477,57 @@ PHASE_7_AUTHORIZED=true
 
 Phase 6 is CLOSED. Reopen it only if a concrete regression is found.
 
+## Phase 7 — Budgets + Goals + Recurring — Implementation Status
+
+Phase 7 implementation contract was executed in full:
+
+### 1. Database Migration & Schema Baseline
+- Created source migration `supabase/migrations/20260829000000_phase_7_budgets_goals_recurring.sql` (not applied to remote Supabase per instructions).
+- Tables:
+  - `budgets`: Monthly category expense limit (`numeric(20,4)`), composite FK to `categories (id, type)`, `check_budget_category_type` ensuring EXPENSE only, `check_budget_limit_positive`, `check_budget_period_month_first_day`.
+  - `goals`: Long-term saving/investment targets (`numeric(20,4)`), target/current amounts, monthly contribution, completion tracking.
+  - `recurring_items`: Scheduled templates for recurring income/expense items with frequencies `WEEKLY`, `MONTHLY`, `YEARLY`, `anchor_date`, `end_date`, `is_paused`, `is_archived`.
+- Views (all with `security_invoker = true`):
+  - `budget_progress`: Computes exact spent amount from non-voided transactions for the budget month, remaining amount, and basis points progress.
+  - `goal_details`: Computes remaining target amount and basis points.
+  - `recurring_details`: Computes template details joined with account and category names.
+- RLS Policies:
+  - 9 exact authenticated ownership policies (3 per table: SELECT, INSERT, UPDATE).
+  - No DELETE policy (soft delete only via `is_archived`).
+  - Column-level privileges granted strictly to `authenticated`.
+
+### 2. Feature & Application Services
+- `src/features/budgets`: Exact-money queries, creation, archive, basis points calculation, deterministic single-currency summary.
+- `src/features/goals`: Exact-money queries, creation, update, archive, completion tracking, deterministic single-currency summary.
+- `src/features/recurring`: Deterministic date engine (`engine.ts`) supporting leap-year calculations, month-end clamping (e.g. Jan 31 -> Feb 28), next due date calculation, days until due, pause/resume lifecycle, and monthly cash flow projection.
+
+### 3. User Interface Integration
+- `/src/app/budgets/page.tsx`: Connects to `getBudgets`, category breakdown, overall monthly budget card, progress bars, `AddBudgetModal`.
+- `/src/app/goals/page.tsx`: Connects to `getGoals`, saving progress cards, target deadlines, `AddGoalModal`.
+- `/src/app/recurring/page.tsx`: Connects to `getRecurringItems`, pause/resume toggle, days-until-due badges, `AddRecurringModal`.
+- Completely eradicated all mock data imports across all Phase 7 views and components.
+
+### 4. Verification Suite
+- `scripts/verify-phase7-source.mjs`: Complete source, exact-money arithmetic, and recurring date engine verifier.
+- `scripts/verify-phase7-db.sql`: Database structural SQL verifier.
+- `scripts/verify-phase7-rls.mjs`: Two-user RLS isolation test suite.
+
+```text
+PHASE_0=PASS
+PHASE_1=PASS
+PHASE_2=PASS
+PHASE_3=PASS
+PHASE_4=PASS
+PHASE_5=PASS
+PHASE_6=PASS
+PHASE_7_SOURCE_GATE=PASS_CODE_ONLY
+PHASE_7_MIGRATION_APPLY=PENDING_USER
+PHASE_7_OVERALL=IN_PROGRESS
+PHASE_8_AUTHORIZED=false
+```
+
 ## Next Recommended Action
 
-Define and audit the Phase 7 — Budget + Goals + Recurring contract before implementation. Phase 7 implementation has not started yet.
+1. Apply migration `supabase/migrations/20260829000000_phase_7_budgets_goals_recurring.sql` to the target Supabase project.
+2. Run database structural verification (`scripts/verify-phase7-db.sql`) and two-user live RLS smoke (`scripts/verify-phase7-rls.mjs`).
+3. Complete owner-attested live persistence verification for Budgets, Goals, and Recurring.

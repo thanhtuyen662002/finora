@@ -234,6 +234,153 @@ export interface Database {
         };
         Relationships: [];
       };
+      budgets: {
+        Row: {
+          id: string;
+          user_id: string;
+          category_id: string;
+          category_type: 'EXPENSE';
+          limit_amount: string;
+          currency_code: string;
+          period_month: string;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          category_id: string;
+          category_type?: 'EXPENSE';
+          limit_amount: string;
+          currency_code: string;
+          period_month: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          category_id?: string;
+          category_type?: 'EXPENSE';
+          limit_amount?: string;
+          currency_code?: string;
+          period_month?: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      goals: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          target_amount: string;
+          current_amount: string;
+          monthly_contribution: string;
+          currency_code: string;
+          target_date: string | null;
+          category: string;
+          icon: string;
+          color: string;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          name: string;
+          target_amount: string;
+          current_amount?: string;
+          monthly_contribution?: string;
+          currency_code: string;
+          target_date?: string | null;
+          category?: string;
+          icon?: string;
+          color?: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          target_amount?: string;
+          current_amount?: string;
+          monthly_contribution?: string;
+          currency_code?: string;
+          target_date?: string | null;
+          category?: string;
+          icon?: string;
+          color?: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      recurring_items: {
+        Row: {
+          id: string;
+          user_id: string;
+          account_id: string;
+          category_id: string;
+          transaction_type: 'INCOME' | 'EXPENSE';
+          name: string;
+          amount: string;
+          currency_code: string;
+          frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+          anchor_date: string;
+          end_date: string | null;
+          note: string | null;
+          is_paused: boolean;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          account_id: string;
+          category_id: string;
+          transaction_type: 'INCOME' | 'EXPENSE';
+          name: string;
+          amount: string;
+          currency_code: string;
+          frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+          anchor_date: string;
+          end_date?: string | null;
+          note?: string | null;
+          is_paused?: boolean;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          account_id?: string;
+          category_id?: string;
+          transaction_type?: 'INCOME' | 'EXPENSE';
+          name?: string;
+          amount?: string;
+          currency_code?: string;
+          frequency?: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+          anchor_date?: string;
+          end_date?: string | null;
+          note?: string | null;
+          is_paused?: boolean;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       account_balances: {
@@ -289,6 +436,69 @@ export interface Database {
         };
         Relationships: [];
       };
+      budget_progress: {
+        Row: {
+          id: string;
+          user_id: string;
+          category_id: string;
+          category_name: string;
+          category_icon: string;
+          category_color: string;
+          limit_amount: string;
+          spent_amount: string;
+          currency_code: string;
+          period_month: string;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Relationships: [];
+      };
+      goal_details: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          target_amount: string;
+          current_amount: string;
+          monthly_contribution: string;
+          currency_code: string;
+          target_date: string | null;
+          category: string;
+          icon: string;
+          color: string;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Relationships: [];
+      };
+      recurring_details: {
+        Row: {
+          id: string;
+          user_id: string;
+          account_id: string;
+          account_name: string;
+          account_color: string;
+          category_id: string;
+          category_name: string;
+          category_icon: string;
+          category_color: string;
+          transaction_type: 'INCOME' | 'EXPENSE';
+          name: string;
+          amount: string;
+          currency_code: string;
+          frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+          anchor_date: string;
+          end_date: string | null;
+          note: string | null;
+          is_paused: boolean;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       [_ in never]: never;
@@ -328,3 +538,21 @@ export type TransferRow = Database['public']['Tables']['transfers']['Row'];
 export type TransferInsert = Omit<Database['public']['Tables']['transfers']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type TransferUpdate = Omit<Database['public']['Tables']['transfers']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 export type TransferDetailRow = Database['public']['Views']['transfer_details']['Row'];
+
+export type BudgetRow = Database['public']['Tables']['budgets']['Row'];
+export type BudgetInsert = Omit<Database['public']['Tables']['budgets']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type BudgetUpdate = Omit<Database['public']['Tables']['budgets']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
+export type BudgetProgressRow = Database['public']['Views']['budget_progress']['Row'];
+
+export type GoalRow = Database['public']['Tables']['goals']['Row'];
+export type GoalInsert = Omit<Database['public']['Tables']['goals']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type GoalUpdate = Omit<Database['public']['Tables']['goals']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
+export type GoalDetailRow = Database['public']['Views']['goal_details']['Row'];
+export type GoalDetailsRow = GoalDetailRow;
+
+export type RecurringFrequency = 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+export type RecurringItemRow = Database['public']['Tables']['recurring_items']['Row'];
+export type RecurringItemInsert = Omit<Database['public']['Tables']['recurring_items']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type RecurringItemUpdate = Omit<Database['public']['Tables']['recurring_items']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
+export type RecurringDetailRow = Database['public']['Views']['recurring_details']['Row'];
+export type RecurringDetailsRow = RecurringDetailRow;
