@@ -713,19 +713,24 @@ checks AS (
     SELECT
         '34_account_balances_pre_aggregated_derivation_exact',
         EXISTS (
+            WITH v AS (
+                SELECT regexp_replace(lower(definition), '\s+', ' ', 'g') AS norm_def
+                FROM pg_catalog.pg_views
+                WHERE schemaname = 'public' AND viewname = 'account_balances'
+            )
             SELECT 1
-            FROM pg_catalog.pg_views
-            WHERE schemaname = 'public' AND viewname = 'account_balances'
-              -- Proves transaction totals pre-aggregated by account_id with INCOME/EXPENSE weighting
-              AND definition ~* 'SELECT[[:space:]]+.*account_id.*SUM\(.*CASE.*INCOME.*EXPENSE.*END\).*FROM[[:space:]]+(public\.)?transactions.*GROUP BY[[:space:]]+.*account_id'
-              -- Proves incoming transfers pre-aggregated by to_account_id
-              AND definition ~* 'SELECT[[:space:]]+.*to_account_id.*SUM\(.*amount\).*FROM[[:space:]]+(public\.)?transfers.*GROUP BY[[:space:]]+.*to_account_id'
-              -- Proves outgoing transfers pre-aggregated by from_account_id
-              AND definition ~* 'SELECT[[:space:]]+.*from_account_id.*SUM\(.*amount\).*FROM[[:space:]]+(public\.)?transfers.*GROUP BY[[:space:]]+.*from_account_id'
-              -- Proves arithmetic formula: opening_balance + net_transactions + in_transfers - out_transfers
-              AND definition ~* 'opening_balance[[:space:]]*\+[[:space:]]*COALESCE\(.*,[[:space:]]*0\)[[:space:]]*\+[[:space:]]*COALESCE\(.*,[[:space:]]*0\)[[:space:]]*-[[:space:]]*COALESCE\(.*,[[:space:]]*0\)'
-              -- Proves final result is cast to text
-              AND definition ~* '::text|CAST\(.*AS text\)'
+            FROM v
+            WHERE
+              -- 1. tx_totals CTE: grouped by account_id, signed sum with income/expense, is_voided = false
+              norm_def ~ 'tx_totals\s+as\s*\(\s*select\s+.*account_id.*sum\s*\(\s*case.*income.*expense.*end\)\s+as\s+net_transactions\s+from\s+(public\.)?transactions\s+where\s+.*is_voided\s*=\s*false.*group\s+by\s+.*account_id'
+              -- 2. incoming_transfers CTE: grouped by to_account_id, sum(amount), is_voided = false
+              AND norm_def ~ 'incoming_transfers\s+as\s*\(\s*select\s+.*to_account_id.*sum\s*\(\s*.*amount\s*\)\s+as\s+in_transfers\s+from\s+(public\.)?transfers\s+where\s+.*is_voided\s*=\s*false.*group\s+by\s+.*to_account_id'
+              -- 3. outgoing_transfers CTE: grouped by from_account_id, sum(amount), is_voided = false
+              AND norm_def ~ 'outgoing_transfers\s+as\s*\(\s*select\s+.*from_account_id.*sum\s*\(\s*.*amount\s*\)\s+as\s+out_transfers\s+from\s+(public\.)?transfers\s+where\s+.*is_voided\s*=\s*false.*group\s+by\s+.*from_account_id'
+              -- 4. Arithmetic formula: opening_balance + net_transactions + in_transfers - out_transfers
+              AND norm_def ~ 'opening_balance.*\+\s*coalesce\s*\(\s*.*net_transactions.*\+\s*coalesce\s*\(\s*.*in_transfers.*-\s*coalesce\s*\(\s*.*out_transfers'
+              -- 5. Result cast to text
+              AND (norm_def ~ '::text\s+as\s+current_balance' OR norm_def ~ 'cast\(.*as\s+text\)\s+as\s+current_balance')
         ),
         COALESCE((
             SELECT 'definition_length=' || length(definition)::text
