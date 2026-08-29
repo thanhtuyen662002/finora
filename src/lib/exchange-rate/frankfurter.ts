@@ -1,3 +1,4 @@
+import { toExactRate } from './fx-math';
 import { ExchangeRateProvider, ExchangeRateQuote } from './types';
 
 export class FrankfurterProvider implements ExchangeRateProvider {
@@ -16,7 +17,7 @@ export class FrankfurterProvider implements ExchangeRateProvider {
       };
     }
     const url = `${this.baseUrl}/v2/rates.csv?base=${sourceCurrency}&quotes=${targetCurrency}`;
-    return this.fetchAndParse(url, sourceCurrency, targetCurrency, null);
+    return this.fetchAndParse(url, sourceCurrency, targetCurrency, null, null);
   }
 
   async getHistoricalRate(sourceCurrency: string, targetCurrency: string, requestedDate: string): Promise<ExchangeRateQuote> {
@@ -48,10 +49,10 @@ export class FrankfurterProvider implements ExchangeRateProvider {
     const startDate = startDateObj.toISOString().split('T')[0];
 
     const url = `${this.baseUrl}/v2/rates.csv?base=${sourceCurrency}&quotes=${targetCurrency}&from=${startDate}&to=${requestedDate}`;
-    return this.fetchAndParse(url, sourceCurrency, targetCurrency, requestedDate);
+    return this.fetchAndParse(url, sourceCurrency, targetCurrency, requestedDate, startDate);
   }
 
-  private async fetchAndParse(url: string, sourceCurrency: string, targetCurrency: string, requestedDate: string | null): Promise<ExchangeRateQuote> {
+  private async fetchAndParse(url: string, sourceCurrency: string, targetCurrency: string, requestedDate: string | null, startDate: string | null = null): Promise<ExchangeRateQuote> {
     const response = await fetch(url, {
       headers: {
         'Accept': 'text/csv'
@@ -106,6 +107,10 @@ export class FrankfurterProvider implements ExchangeRateProvider {
     if (!latestValidRow) {
       throw new Error('Rate not found in provider response window');
     }
+
+    if (startDate && latestValidRow.date < startDate) {
+      throw new Error('Rate not found in provider response window');
+    }
     
     if (requestedDate && latestValidRow.date > requestedDate) {
       throw new Error('Provider returned a future effective date');
@@ -114,7 +119,7 @@ export class FrankfurterProvider implements ExchangeRateProvider {
     return {
       sourceCurrency,
       targetCurrency,
-      rate: latestValidRow.rate,
+      rate: toExactRate(latestValidRow.rate),
       requestedDate,
       effectiveDate: latestValidRow.date,
       provider: 'FRANKFURTER_V2',

@@ -277,6 +277,7 @@ export default function ReportsPage() {
         </Card>
       </div>
 
+      {data.baseHistorical.status === 'UNAVAILABLE' && (<div className="p-4 text-xs text-amber-600 bg-amber-50 rounded-lg">Historical BASE conversion is UNAVAILABLE due to missing FX snapshots.</div>)}
       {/* Full Width Cash Flow Chart */}
       <Card>
         <CardHeader>

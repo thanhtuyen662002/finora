@@ -567,4 +567,16 @@ Verification:
 1. User must apply the local `supabase/migrations/20260829000001_phase_8_fx.sql` to their remote Supabase.
 2. User must run the read-only `verify-phase8-db.sql` against their live DB to ensure structures are correct.
 3. User must run `verify-phase8-rls.mjs` against their live DB to ensure RLS protection for FX snapshots.
-4. Provide the receipt back to authorize Phase 8 Pass B.
+4. Provide the receipt back to authorize Phase 8 Pass B.```text
+PHASE_7_OVERALL=PASS
+FINORA_PHASE_7=PASS
+PHASE_8_AUTHORIZED=true
+PHASE_8_PASS_A_SOURCE_GATE=PASS_CODE_ONLY
+PHASE_8_REMOTE_DATABASE=BLOCKED_NOT_APPLIED
+PHASE_8_STRUCTURAL_GATE=NOT_RUN
+PHASE_8_TWO_USER_RLS=NOT_RUN
+PHASE_8_LIVE_PERSISTENCE_SMOKE=NOT_RUN
+PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS=NOT_STARTED
+PHASE_8_OVERALL=PARTIAL
+PHASE_9_AUTHORIZED=false
+```

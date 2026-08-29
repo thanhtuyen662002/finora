@@ -112,6 +112,7 @@ export default function SettingsPage() {
           if (settings.locale) setLocale(settings.locale);
           if (settings.timezone) setTimezone(settings.timezone);
           if (settings.theme) setAppearanceTheme(settings.theme);
+          if (settings.auto_fx_enabled !== undefined) setAutoFx(settings.auto_fx_enabled);
         }
       } catch (err) {
         console.debug('Failed to load user settings', err);

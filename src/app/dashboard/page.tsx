@@ -168,7 +168,7 @@ export default function DashboardPage() {
 
   // Flatten all accounts for the account list display
   const allAccounts: AccountBalanceSnapshot[] = [];
-  data.availableCurrencies.forEach((c) => {
+  data.availableCurrencies.filter(c => c !== 'BASE').forEach((c) => {
     if (data.accountBalancesByCurrency[c]) {
       allAccounts.push(...data.accountBalancesByCurrency[c].accounts);
     }
