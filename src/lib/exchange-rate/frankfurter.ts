@@ -15,8 +15,7 @@ export class FrankfurterProvider implements ExchangeRateProvider {
         fetchedAt: new Date().toISOString()
       };
     }
-
-    const url = `${this.baseUrl}/v1/latest?base=${sourceCurrency}&symbols=${targetCurrency}`;
+    const url = `${this.baseUrl}/v2/rates.csv?base=${sourceCurrency}&quotes=${targetCurrency}`;
     return this.fetchAndParse(url, sourceCurrency, targetCurrency, null);
   }
 
@@ -33,28 +32,29 @@ export class FrankfurterProvider implements ExchangeRateProvider {
       };
     }
 
-    // "when the requested date has no market/provider observation (weekend/holiday), use a bounded lookback of at most 7 calendar days"
-    // Frankfurter v1 endpoint for date naturally returns the latest available rate for that date or before.
-    // However, if we need to explicitly implement a 7-day lookback, we can query a range or just rely on the API.
-    // Frankfurter usually falls back to the last working day automatically for historical dates.
-    // For safety, we can request a bounded range: `startDate..requestedDate`
-    const dateObj = new Date(requestedDate);
-    dateObj.setDate(dateObj.getDate() - 7);
-    const startDate = dateObj.toISOString().split('T')[0];
+    const reqDate = new Date(requestedDate);
+    if (isNaN(reqDate.getTime())) {
+      throw new Error(`Invalid requestedDate: ${requestedDate}`);
+    }
     
-    // Request a 7-day window ending on the requested date to ensure we get the latest rate within that window.
-    // Wait, the prompt says: "select the latest provider effectiveDate such that effectiveDate <= requestedDate"
-    // The Frankfurter historical endpoint /YYYY-MM-DD returns the rate for that day or the closest preceding working day.
-    const url = `${this.baseUrl}/v1/${requestedDate}?base=${sourceCurrency}&symbols=${targetCurrency}`;
-    
+    // Future date check
+    const today = new Date().toISOString().split('T')[0];
+    if (requestedDate > today) {
+      throw new Error('Future effective date rejected');
+    }
+
+    const startDateObj = new Date(reqDate);
+    startDateObj.setDate(startDateObj.getDate() - 7);
+    const startDate = startDateObj.toISOString().split('T')[0];
+
+    const url = `${this.baseUrl}/v2/rates.csv?base=${sourceCurrency}&quotes=${targetCurrency}&from=${startDate}&to=${requestedDate}`;
     return this.fetchAndParse(url, sourceCurrency, targetCurrency, requestedDate);
   }
 
   private async fetchAndParse(url: string, sourceCurrency: string, targetCurrency: string, requestedDate: string | null): Promise<ExchangeRateQuote> {
-    // Add Accept header for CSV per requirement, though the API might return JSON.
     const response = await fetch(url, {
       headers: {
-        'Accept': 'text/csv, application/json'
+        'Accept': 'text/csv'
       }
     });
 
@@ -63,41 +63,60 @@ export class FrankfurterProvider implements ExchangeRateProvider {
     }
 
     const text = await response.text();
+    const lines = text.trim().split('\n');
     
-    // Parse the rate as an exact string to avoid JS floating point issues.
-    // Look for targetCurrency followed by the rate, supporting both CSV and JSON formats.
-    const rateMatch = text.match(new RegExp(`(?:^|,|")${targetCurrency}(?:":|",|,)\\s*([0-9]+(?:\\.[0-9]+)?)`, 'm'));
-    
-    if (!rateMatch || !rateMatch[1]) {
-      throw new Error(`Rate not found for ${targetCurrency} in provider response`);
+    // Format is assumed to be date,base,quote,rate or similar.
+    // Let's parse header
+    if (lines.length < 2) {
+      throw new Error('Provider returned no data');
     }
     
-    const rate = rateMatch[1];
-    
-    // Extract effective date
-    // CSV might have it as a column, JSON has "date":"YYYY-MM-DD"
-    let effectiveDate = requestedDate || new Date().toISOString().split('T')[0];
-    const dateMatch = text.match(/"date"\s*:\s*"([0-9]{4}-[0-9]{2}-[0-9]{2})"/);
-    if (dateMatch && dateMatch[1]) {
-      effectiveDate = dateMatch[1];
-    } else {
-      // Try to find a date in CSV (simple YYYY-MM-DD match)
-      const csvDateMatch = text.match(/([0-9]{4}-[0-9]{2}-[0-9]{2})/);
-      if (csvDateMatch && csvDateMatch[1]) {
-        effectiveDate = csvDateMatch[1];
+    const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+    const dateIdx = headers.indexOf('date');
+    const baseIdx = headers.indexOf('base');
+    const quoteIdx = headers.indexOf('quote');
+    const rateIdx = headers.indexOf('rate');
+
+    if (dateIdx === -1 || baseIdx === -1 || quoteIdx === -1 || rateIdx === -1) {
+      throw new Error('Malformed CSV headers from provider');
+    }
+
+    let latestValidRow: { date: string, rate: string } | null = null;
+
+    // Search from end (latest first) to start
+    for (let i = lines.length - 1; i >= 1; i--) {
+      const parts = lines[i].split(',').map(p => p.trim());
+      if (parts.length < Math.max(dateIdx, baseIdx, quoteIdx, rateIdx) + 1) continue;
+
+      const rDate = parts[dateIdx];
+      const rBase = parts[baseIdx];
+      const rQuote = parts[quoteIdx];
+      const rRate = parts[rateIdx];
+
+      if (rBase !== sourceCurrency || rQuote !== targetCurrency) continue;
+      
+      // If requestedDate provided, must be <= requestedDate
+      if (requestedDate && rDate > requestedDate) continue;
+      
+      if (!latestValidRow || rDate > latestValidRow.date) {
+        latestValidRow = { date: rDate, rate: rRate };
       }
     }
 
-    if (requestedDate && effectiveDate > requestedDate) {
+    if (!latestValidRow) {
+      throw new Error('Rate not found in provider response window');
+    }
+    
+    if (requestedDate && latestValidRow.date > requestedDate) {
       throw new Error('Provider returned a future effective date');
     }
 
     return {
       sourceCurrency,
       targetCurrency,
-      rate,
+      rate: latestValidRow.rate,
       requestedDate,
-      effectiveDate,
+      effectiveDate: latestValidRow.date,
       provider: 'FRANKFURTER_V2',
       fetchedAt: new Date().toISOString()
     };

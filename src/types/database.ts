@@ -9,11 +9,11 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-
       transaction_fx_snapshots: {
         Row: {
-          transaction_id: string;
+          id: string;
           user_id: string;
+          transaction_id: string;
           source_currency_code: string;
           target_currency_code: string;
           source_amount: string;
@@ -25,8 +25,9 @@ export interface Database {
           created_at: string;
         };
         Insert: {
+          id?: string;
+          user_id: string;
           transaction_id: string;
-          user_id?: string;
           source_currency_code: string;
           target_currency_code: string;
           source_amount: string;
@@ -38,8 +39,9 @@ export interface Database {
           created_at?: string;
         };
         Update: {
-          transaction_id?: string;
+          id?: string;
           user_id?: string;
+          transaction_id?: string;
           source_currency_code?: string;
           target_currency_code?: string;
           source_amount?: string;
@@ -52,11 +54,11 @@ export interface Database {
         };
         Relationships: [
           {
-            foreignKeyName: "transaction_fx_snapshots_transaction_id_fkey";
-            columns: ["transaction_id"];
-            isOneToOne: false;
-            referencedRelation: "transactions";
-            referencedColumns: ["id"];
+            foreignKeyName: "transaction_fx_snapshots_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
           }
         ];
       };
@@ -437,6 +439,23 @@ export interface Database {
       };
     };
     Views: {
+      transaction_fx_snapshot_details: {
+        Row: {
+          id: string;
+          user_id: string;
+          transaction_id: string;
+          source_currency_code: string;
+          target_currency_code: string;
+          source_amount: string;
+          rate: string;
+          converted_amount: string;
+          requested_date: string;
+          effective_date: string;
+          provider: string;
+          created_at: string;
+        };
+        Relationships: [];
+      };
       account_balances: {
         Row: {
           account_id: string;

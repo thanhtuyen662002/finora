@@ -1,24 +1,41 @@
 import fs from 'fs';
-let content = fs.readFileSync('src/features/reports/engine.ts', 'utf-8');
+const file = 'src/features/reports/engine.ts';
+let content = fs.readFileSync(file, 'utf-8');
 
-content = content.replace(
-  "    'Ghi chú',\n  ];\n  const rows = transactions\n    .filter((tx) => (tx.currency_code || '').toUpperCase() === normCurrency)",
-  "    'Ghi chú',\n  ];\n  if (normCurrency === 'BASE') {\n    headers.push('Số tiền gốc', 'Đơn vị gốc', 'Tỷ giá', 'Nhà cung cấp', 'Ngày áp dụng tỷ giá');\n  }\n  const rows = transactions\n    .filter((tx) => (tx.currency_code || '').toUpperCase() === normCurrency)"
-);
+const oldHeaders = `  const headers = [
+    'Ngày',
+    'Loại',
+    'Danh mục',
+    'Tài khoản',
+    'Đối tác/Cửa hàng',
+    'Số tiền',
+    'Đơn vị tiền tệ',
+    'Trạng thái',
+    'Ghi chú',
+  ];`;
 
-content = content.replace(
-  "      const typeLabel = tx.type === 'INCOME' ? 'Thu nhập' : 'Chi tiêu';",
-  "      const txAny = tx as any;\n      const typeLabel = tx.type === 'INCOME' ? 'Thu nhập' : 'Chi tiêu';"
-);
+const newHeaders = `  const headers = [
+    'Ngày',
+    'Loại',
+    'Danh mục',
+    'Tài khoản',
+    'Đối tác/Cửa hàng',
+    'Số tiền',
+    'Đơn vị tiền tệ',
+    'Trạng thái',
+    'Ghi chú',
+  ];
+  if (normCurrency === 'BASE') {
+    headers.push('Số tiền gốc', 'Tiền tệ gốc', 'Tỷ giá', 'Nguồn FX', 'Ngày tỷ giá');
+  }`;
 
-content = content.replace(
-  "        escapeCell(tx.currency_code),\n        escapeCell(status),\n        escapeCell(tx.note),\n      ].join(',');",
-  "        escapeCell(tx.currency_code),\n        escapeCell(status),\n        escapeCell(tx.note),\n      ];\n      if (normCurrency === 'BASE') {\n        baseRow.push(escapeCell(txAny._fx_original_amount ? toExactDecimal(txAny._fx_original_amount) : ''), escapeCell(txAny._fx_original_currency), escapeCell(txAny._fx_rate), escapeCell(txAny._fx_provider), escapeCell(txAny._fx_effective_date));\n      }\n      return baseRow.join(',');"
-);
+content = content.replace(oldHeaders, newHeaders);
 
-content = content.replace(
-  "      return [\n        escapeCell(tx.occurred_on),",
-  "      const baseRow = [\n        escapeCell(tx.occurred_on),"
-);
+// Also fix txAny._fx_* to txAny.fx_* since we changed it in BaseConvertedTransaction
+content = content.replace(/_fx_original_amount/g, 'fx_original_amount');
+content = content.replace(/_fx_original_currency/g, 'fx_original_currency');
+content = content.replace(/_fx_rate/g, 'fx_rate');
+content = content.replace(/_fx_provider/g, 'fx_provider');
+content = content.replace(/_fx_effective_date/g, 'fx_effective_date');
 
-fs.writeFileSync('src/features/reports/engine.ts', content);
+fs.writeFileSync(file, content);

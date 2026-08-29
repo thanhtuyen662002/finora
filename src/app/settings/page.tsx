@@ -143,6 +143,7 @@ export default function SettingsPage() {
         locale,
         timezone,
         theme: appearanceTheme,
+        auto_fx_enabled: autoFx,
       });
 
       if (profileError || settingsError) {

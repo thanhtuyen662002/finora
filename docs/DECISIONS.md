@@ -233,3 +233,15 @@ This file records decisions with architectural consequences. New decisions shoul
 - User budgets and goals provide real-time tracking against actual transaction data.
 - Recurring bills allow accurate monthly cash flow forecasting without unsolicited transaction generation.
 - Zero-trust database constraints prevent invalid foreign keys, negative amounts, or cross-user data leakage.
+
+ADR-013
+Decision:
+Implement Phase 8 Multi-Currency with strict exact-text provenance and immutable snapshotting, failing closed on missing rates.
+
+Reason:
+To prevent cascading numeric drift and preserve full traceability of cross-currency calculations without silently truncating provider exact decimals or failing open with identity fallbacks.
+
+Consequences:
+- transaction_fx_snapshots is authoritative.
+- Provider must be queried with bounded 7-day lookback.
+- UI will explicitly show UNAVAILABLE when a required rate is missing, rather than omitting it silently or defaulting to 1:1.

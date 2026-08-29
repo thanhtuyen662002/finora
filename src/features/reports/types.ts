@@ -2,6 +2,39 @@ import type { ExtendedTransaction } from '@/features/transactions';
 
 export type ReportPeriod = '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
+export type FxStatus = 'AVAILABLE' | 'UNAVAILABLE' | 'DISABLED';
+
+export interface FxQuote {
+  sourceCurrency: string;
+  targetCurrency: string;
+  rate: string;
+  requestedDate: string | null;
+  effectiveDate: string;
+  provider: string;
+}
+
+export interface BaseValuationProvenance {
+  status: FxStatus;
+  error: string | null;
+  quotes: Record<string, FxQuote>; // keyed by source currency
+}
+
+export interface BaseHistoricalProvenance {
+  status: FxStatus;
+  error: string | null;
+}
+
+export interface ConvertedTransactionProvenance {
+  fx_rate: string;
+  fx_provider: string;
+  fx_effective_date: string;
+  fx_original_amount: string;
+  fx_original_currency: string;
+  fx_target_currency: string;
+}
+
+export type BaseConvertedTransaction = ExtendedTransaction & ConvertedTransactionProvenance;
+
 export interface CurrencySummary {
   currency: string;
   totalIncome: string; // Exact decimal string e.g. "25000000.0000"
@@ -59,14 +92,23 @@ export interface DashboardReportData {
   defaultCurrency: string;
   timezone: string;
   availableCurrencies: string[];
+  
+  // Provenance
+  baseValuation: BaseValuationProvenance;
+  baseHistorical: BaseHistoricalProvenance;
+  
   // Current month active summaries grouped by currency
   currentMonthSummaries: Record<string, CurrencySummary>;
+  
   // Account balances grouped by currency
   accountBalancesByCurrency: Record<string, CurrencyAccountGroup>;
+  
   // 6-month cash flow series per currency
   sixMonthCashFlowByCurrency: Record<string, MonthlyCashFlowPoint[]>;
+  
   // Real recent transactions (limit 5-10)
-  recentTransactions: ExtendedTransaction[];
+  recentTransactions: ExtendedTransaction[]; // could contain BaseConvertedTransaction
+  
   // Current month label e.g. "Tháng 08/2026"
   currentMonthLabel: string;
 }
@@ -79,10 +121,15 @@ export interface DetailedReportData {
   availableCurrencies: string[];
   timezone: string;
   dateRangeLabel: string;
+  
+  // Provenance
+  baseValuation: BaseValuationProvenance;
+  baseHistorical: BaseHistoricalProvenance;
+  
   summary: CurrencySummary;
   cashFlow: MonthlyCashFlowPoint[];
   categoryBreakdown: CategoryExpenseBreakdown[];
   accountsInCurrency: AccountBalanceSnapshot[];
   totalAccountBalance: string; // Exact decimal sum of accounts in selected currency
-  transactions: ExtendedTransaction[];
+  transactions: ExtendedTransaction[]; // could contain BaseConvertedTransaction
 }

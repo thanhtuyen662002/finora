@@ -1,11 +1,15 @@
 import fs from 'fs';
-let content = fs.readFileSync('src/types/database.ts', 'utf-8');
+const file = 'src/types/database.ts';
+let content = fs.readFileSync(file, 'utf-8');
 
-const fxSnapshotType = `
-      transaction_fx_snapshots: {
+// I will just use regex to replace the entire transaction_fx_snapshots block
+const tableRegex = /transaction_fx_snapshots:\s*\{[\s\S]*?(?=\s*(profiles|user_settings|accounts|categories|transactions|transfers|budgets|goals|recurring_items):\s*\{)/;
+
+const newTableBlock = `transaction_fx_snapshots: {
         Row: {
-          transaction_id: string;
+          id: string;
           user_id: string;
+          transaction_id: string;
           source_currency_code: string;
           target_currency_code: string;
           source_amount: string;
@@ -17,8 +21,9 @@ const fxSnapshotType = `
           created_at: string;
         };
         Insert: {
+          id?: string;
+          user_id: string;
           transaction_id: string;
-          user_id?: string;
           source_currency_code: string;
           target_currency_code: string;
           source_amount: string;
@@ -30,8 +35,9 @@ const fxSnapshotType = `
           created_at?: string;
         };
         Update: {
-          transaction_id?: string;
+          id?: string;
           user_id?: string;
+          transaction_id?: string;
           source_currency_code?: string;
           target_currency_code?: string;
           source_amount?: string;
@@ -42,8 +48,9 @@ const fxSnapshotType = `
           provider?: string;
           created_at?: string;
         };
-      };`;
+      };
+      `;
 
-content = content.replace("    Tables: {", "    Tables: {" + fxSnapshotType);
+content = content.replace(tableRegex, newTableBlock);
 
-fs.writeFileSync('src/types/database.ts', content);
+fs.writeFileSync(file, content);

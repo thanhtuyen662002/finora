@@ -1,4 +1,6 @@
+import fs from 'fs';
 
+const content = `
 import { createClient } from '@/lib/supabase/client';
 import { getTransactions, type ExtendedTransaction } from '@/features/transactions';
 import { getAccounts, getAccountBalances } from '@/features/accounts';
@@ -56,7 +58,7 @@ export async function getDashboardReportData(
   ]);
 
   if (userSettingsResult.error) {
-    throw new Error(`Lỗi tải cấu hình người dùng: ${userSettingsResult.error.message}`);
+    throw new Error(\`Lỗi tải cấu hình người dùng: \${userSettingsResult.error.message}\`);
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
@@ -116,7 +118,7 @@ export async function getDashboardReportData(
         
         const rateObj = rates[c];
         if (!rateObj && c !== baseCurrency) {
-          throw new Error(`Missing required rate for ${c}`);
+          throw new Error(\`Missing required rate for \${c}\`);
         }
         const rate = rateObj ? rateObj.rate : '1.000000000000';
         
@@ -221,7 +223,7 @@ export async function getDetailedReportData(
   ]);
 
   if (userSettingsResult.error) {
-    throw new Error(`Lỗi tải cấu hình người dùng: ${userSettingsResult.error.message}`);
+    throw new Error(\`Lỗi tải cấu hình người dùng: \${userSettingsResult.error.message}\`);
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
@@ -274,7 +276,7 @@ export async function getDetailedReportData(
         
         const rateObj = rates[c];
         if (!rateObj && c !== baseCurrency) {
-          throw new Error(`Missing required rate for ${c}`);
+          throw new Error(\`Missing required rate for \${c}\`);
         }
         const rate = rateObj ? rateObj.rate : '1.000000000000';
         
@@ -414,3 +416,5 @@ export async function getDetailedReportData(
     transactions: transactionsInScope,
   };
 }
+`;
+fs.writeFileSync('src/features/reports/reports.ts', content);

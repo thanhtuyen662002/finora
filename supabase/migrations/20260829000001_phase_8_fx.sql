@@ -1,15 +1,14 @@
--- Phase 8: Multi-Currency + FX (Pass A)
--- Creates immutable historical transaction FX snapshots and auto_fx_enabled setting.
+BEGIN;
 
--- 1. Add auto_fx_enabled to user_settings
-ALTER TABLE public.user_settings
-ADD COLUMN IF NOT EXISTS auto_fx_enabled boolean NOT NULL DEFAULT true;
+-- 1. Add unique constraint to transactions for composite FK
+ALTER TABLE public.transactions ADD CONSTRAINT transactions_id_user_id_key UNIQUE (id, user_id);
 
--- Grant UPDATE on the new column to authenticated users
+-- 2. Add auto_fx_enabled to user_settings
+ALTER TABLE public.user_settings ADD COLUMN auto_fx_enabled boolean NOT NULL DEFAULT true;
 GRANT UPDATE (auto_fx_enabled) ON public.user_settings TO authenticated;
 
--- 2. Create transaction_fx_snapshots table
-CREATE TABLE IF NOT EXISTS public.transaction_fx_snapshots (
+-- 3. Create transaction_fx_snapshots table
+CREATE TABLE public.transaction_fx_snapshots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
   transaction_id uuid NOT NULL,
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS public.transaction_fx_snapshots (
   effective_date date NOT NULL,
   provider text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-
   CONSTRAINT check_snapshot_source_currency CHECK (source_currency_code ~ '^[A-Z]{3,5}$'),
   CONSTRAINT check_snapshot_target_currency CHECK (target_currency_code ~ '^[A-Z]{3,5}$'),
   CONSTRAINT check_snapshot_currency_diff CHECK (source_currency_code <> target_currency_code),
@@ -34,22 +32,8 @@ CREATE TABLE IF NOT EXISTS public.transaction_fx_snapshots (
   CONSTRAINT fk_snapshot_transaction FOREIGN KEY (transaction_id, user_id) REFERENCES public.transactions(id, user_id) ON DELETE RESTRICT
 );
 
--- Note: We need transactions(id, user_id) to be UNIQUE for the composite FK.
--- But wait, typically primary key is just `id`. We added `UNIQUE (id, user_id)` in an earlier phase if it didn't exist.
--- Let's ensure transactions has this unique constraint to support the composite FK.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'transactions_id_user_id_key'
-  ) THEN
-    ALTER TABLE public.transactions ADD CONSTRAINT transactions_id_user_id_key UNIQUE (id, user_id);
-  END IF;
-END $$;
-
 -- Enforce snapshot version uniqueness
-ALTER TABLE public.transaction_fx_snapshots
-ADD CONSTRAINT transaction_fx_snapshots_version_key UNIQUE (
+ALTER TABLE public.transaction_fx_snapshots ADD CONSTRAINT transaction_fx_snapshots_version_key UNIQUE (
   user_id,
   transaction_id,
   target_currency_code,
@@ -71,10 +55,10 @@ GRANT SELECT ON public.transaction_fx_snapshots TO authenticated;
 CREATE POLICY select_own_snapshots ON public.transaction_fx_snapshots
   FOR SELECT
   TO authenticated
-  USING (auth.uid() = user_id);
+  USING ((SELECT auth.uid()) = user_id);
 
--- 3. Create view public.transaction_fx_snapshot_details
-CREATE OR REPLACE VIEW public.transaction_fx_snapshot_details
+-- 4. Create view public.transaction_fx_snapshot_details
+CREATE VIEW public.transaction_fx_snapshot_details
   WITH (security_invoker = true)
 AS
 SELECT
@@ -94,3 +78,5 @@ FROM public.transaction_fx_snapshots;
 
 REVOKE ALL ON public.transaction_fx_snapshot_details FROM anon, public, authenticated;
 GRANT SELECT ON public.transaction_fx_snapshot_details TO authenticated;
+
+COMMIT;

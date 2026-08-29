@@ -572,6 +572,9 @@ export function exportTransactionsToCSV(
     'Trạng thái',
     'Ghi chú',
   ];
+  if (normCurrency === 'BASE') {
+    headers.push('Số tiền gốc', 'Tiền tệ gốc', 'Tỷ giá', 'Nguồn FX', 'Ngày tỷ giá');
+  }
 
   const rows = transactions
     .filter((tx) => (tx.currency_code || '').toUpperCase() === normCurrency)
@@ -594,7 +597,7 @@ export function exportTransactionsToCSV(
         escapeCell(tx.note),
       ];
       if (normCurrency === 'BASE') {
-        baseRow.push(escapeCell(txAny._fx_original_amount ? toExactDecimal(txAny._fx_original_amount) : ''), escapeCell(txAny._fx_original_currency), escapeCell(txAny._fx_rate), escapeCell(txAny._fx_provider), escapeCell(txAny._fx_effective_date));
+        baseRow.push(escapeCell(txAny.fx_original_amount ? toExactDecimal(txAny.fx_original_amount) : ''), escapeCell(txAny.fx_original_currency), escapeCell(txAny.fx_rate), escapeCell(txAny.fx_provider), escapeCell(txAny.fx_effective_date));
       }
       return baseRow.join(',');
     });

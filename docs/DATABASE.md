@@ -273,3 +273,11 @@ By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, 
 3. `supabase/migrations/20260828000002_phase_4_transactions.sql` — Phase 4: Transactions table, composite FKs, updated_at trigger, derived `account_balances` and `transaction_details` views with `security_invoker = true`, RLS policies, least-privilege column grants.
 4. `supabase/migrations/20260828000003_phase_5_transfers.sql` — Phase 5: Transfers table, composite source and destination FKs, distinct accounts constraint, updated derived `account_balances` view with pre-aggregation, `transfer_details` view with `security_invoker = true`, RLS policies, least-privilege column grants.
 5. `supabase/migrations/20260829000000_phase_7_budgets_goals_recurring.sql` — Phase 7: Budgets, Goals, and Recurring items tables, exact money constraints, composite FKs, derived `budget_progress`, `goal_details`, `recurring_details` views with `security_invoker = true`, 9 exact RLS policies (no delete), least-privilege column grants.
+
+## Phase 8: Multi-Currency FX
+- **transaction_fx_snapshots**: Stores immutable point-in-time exact-decimal FX records for transactions.
+  - `rate`: `numeric(30,12)` exact exchange rate.
+  - `source_amount`, `converted_amount`: `numeric(20,4)`.
+  - Composite unique key ensuring a single snapshot per transaction per target currency.
+  - RLS restricted to owner.
+  - Reads exposed via exact-text view `transaction_fx_snapshot_details`.

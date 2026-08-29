@@ -1,11 +1,12 @@
 import fs from 'fs';
-let content = fs.readFileSync('src/types/database.ts', 'utf-8');
+const file = 'src/types/database.ts';
+let lines = fs.readFileSync(file, 'utf-8').split('\n');
 
-const fxSnapshotType = `
-      transaction_fx_snapshots: {
+const newTableLines = `      transaction_fx_snapshots: {
         Row: {
-          transaction_id: string;
+          id: string;
           user_id: string;
+          transaction_id: string;
           source_currency_code: string;
           target_currency_code: string;
           source_amount: string;
@@ -17,8 +18,9 @@ const fxSnapshotType = `
           created_at: string;
         };
         Insert: {
+          id?: string;
+          user_id: string;
           transaction_id: string;
-          user_id?: string;
           source_currency_code: string;
           target_currency_code: string;
           source_amount: string;
@@ -30,8 +32,9 @@ const fxSnapshotType = `
           created_at?: string;
         };
         Update: {
-          transaction_id?: string;
+          id?: string;
           user_id?: string;
+          transaction_id?: string;
           source_currency_code?: string;
           target_currency_code?: string;
           source_amount?: string;
@@ -42,9 +45,14 @@ const fxSnapshotType = `
           provider?: string;
           created_at?: string;
         };
-      };
-`;
+      };`.split('\n');
 
-content = content.replace("    Tables: {", "    Tables: {" + fxSnapshotType);
+// Find Tables: {
+const tablesIndex = lines.findIndex(l => l.includes('Tables: {'));
+// Find profiles: {
+const profilesIndex = lines.findIndex(l => l.includes('profiles: {'));
 
-fs.writeFileSync('src/types/database.ts', content);
+// Replace everything between Tables: { and profiles: {
+lines.splice(tablesIndex + 1, profilesIndex - tablesIndex - 1, ...newTableLines);
+
+fs.writeFileSync(file, lines.join('\n'));
