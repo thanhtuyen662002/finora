@@ -55,6 +55,7 @@ export interface CurrencyAccountGroup {
 
 export interface DashboardReportData {
   baseCurrency: string;
+  autoFxEnabled: boolean;
   defaultCurrency: string;
   timezone: string;
   availableCurrencies: string[];
@@ -73,6 +74,8 @@ export interface DashboardReportData {
 export interface DetailedReportData {
   period: ReportPeriod;
   selectedCurrency: string;
+  autoFxEnabled: boolean;
+  baseCurrency: string;
   availableCurrencies: string[];
   timezone: string;
   dateRangeLabel: string;

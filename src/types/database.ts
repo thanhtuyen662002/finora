@@ -9,6 +9,57 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+
+      transaction_fx_snapshots: {
+        Row: {
+          transaction_id: string;
+          user_id: string;
+          source_currency_code: string;
+          target_currency_code: string;
+          source_amount: string;
+          rate: string;
+          converted_amount: string;
+          requested_date: string;
+          effective_date: string;
+          provider: string;
+          created_at: string;
+        };
+        Insert: {
+          transaction_id: string;
+          user_id?: string;
+          source_currency_code: string;
+          target_currency_code: string;
+          source_amount: string;
+          rate: string;
+          converted_amount: string;
+          requested_date: string;
+          effective_date: string;
+          provider: string;
+          created_at?: string;
+        };
+        Update: {
+          transaction_id?: string;
+          user_id?: string;
+          source_currency_code?: string;
+          target_currency_code?: string;
+          source_amount?: string;
+          rate?: string;
+          converted_amount?: string;
+          requested_date?: string;
+          effective_date?: string;
+          provider?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "transaction_fx_snapshots_transaction_id_fkey";
+            columns: ["transaction_id"];
+            isOneToOne: false;
+            referencedRelation: "transactions";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       profiles: {
         Row: {
           id: string;
@@ -43,6 +94,7 @@ export interface Database {
           locale: string;
           timezone: string;
           theme: 'light' | 'dark' | 'system';
+          auto_fx_enabled: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -52,6 +104,7 @@ export interface Database {
           locale?: string;
           timezone?: string;
           theme?: 'light' | 'dark' | 'system';
+          auto_fx_enabled?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -61,6 +114,7 @@ export interface Database {
           locale?: string;
           timezone?: string;
           theme?: 'light' | 'dark' | 'system';
+          auto_fx_enabled?: boolean;
           created_at?: string;
           updated_at?: string;
         };

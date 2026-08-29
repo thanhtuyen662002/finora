@@ -148,6 +148,7 @@ export default function DashboardPage() {
     activeCurrency && data.availableCurrencies.includes(activeCurrency)
       ? activeCurrency
       : data.defaultCurrency || data.availableCurrencies[0] || 'VND';
+  const displayCurrency = effectiveCurrency === 'BASE' ? data.baseCurrency : effectiveCurrency;
 
   const activeSummary = data.currentMonthSummaries[effectiveCurrency] || {
     currency: effectiveCurrency,
@@ -211,7 +212,7 @@ export default function DashboardPage() {
                     : 'bg-card text-muted-foreground hover:bg-muted border'
                 }`}
               >
-                {c}
+                {c === 'BASE' ? `Tổng hợp (${data.baseCurrency})` : c}
               </button>
             ))}
           </div>
@@ -221,27 +222,27 @@ export default function DashboardPage() {
       {/* 4 Core Financial Summary Cards for active currency */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         <SummaryCard
-          title={`Tài sản (${effectiveCurrency})`}
-          value={formatExactMoney(activeAccountGroup.totalBalance, effectiveCurrency)}
+          title={`Tài sản (${displayCurrency})`}
+          value={formatExactMoney(activeAccountGroup.totalBalance, displayCurrency)}
           icon={Wallet}
           highlight={true}
-          subtext={`${activeAccountGroup.accounts.length} tài khoản ${effectiveCurrency}`}
+          subtext={`${activeAccountGroup.accounts.length} tài khoản ${displayCurrency}`}
         />
         <SummaryCard
           title="Thu nhập tháng này"
-          value={formatExactMoney(activeSummary.totalIncome, effectiveCurrency)}
+          value={formatExactMoney(activeSummary.totalIncome, displayCurrency)}
           icon={ArrowDownLeft}
           subtext={data.currentMonthLabel}
         />
         <SummaryCard
           title="Chi tiêu tháng này"
-          value={formatExactMoney(activeSummary.totalExpense, effectiveCurrency)}
+          value={formatExactMoney(activeSummary.totalExpense, displayCurrency)}
           icon={ArrowUpRight}
           subtext={data.currentMonthLabel}
         />
         <SummaryCard
           title="Tiết kiệm & Tỷ lệ"
-          value={formatExactMoney(activeSummary.netSavings, effectiveCurrency, { showSign: true })}
+          value={formatExactMoney(activeSummary.netSavings, displayCurrency, { showSign: true })}
           icon={PiggyBank}
           subtext={
             activeSummary.savingRatePercent
@@ -292,11 +293,11 @@ export default function DashboardPage() {
                     Xu hướng dòng tiền 6 tháng
                   </CardTitle>
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded-sm bg-muted text-muted-foreground">
-                    {effectiveCurrency}
+                    {displayCurrency}
                   </span>
                 </div>
                 <CardDescription>
-                  So sánh thu nhập, chi tiêu và số dư tích lũy hàng tháng ({effectiveCurrency}).
+                  So sánh thu nhập, chi tiêu và số dư tích lũy hàng tháng ({displayCurrency}).
                 </CardDescription>
               </div>
               <Link
@@ -310,7 +311,7 @@ export default function DashboardPage() {
             <CardContent>
               <CashFlowChart
                 data={data.sixMonthCashFlowByCurrency[effectiveCurrency] || []}
-                currency={effectiveCurrency}
+                currency={displayCurrency}
               />
             </CardContent>
           </Card>

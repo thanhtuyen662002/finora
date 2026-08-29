@@ -170,6 +170,7 @@ export default function ReportsPage() {
 
   const currency = data.selectedCurrency;
   const summary = data.summary;
+  const displayCurrency = currency === 'BASE' ? data.baseCurrency : currency;
 
   return (
     <AppShell>
@@ -213,7 +214,7 @@ export default function ReportsPage() {
                     : 'bg-card text-muted-foreground hover:bg-muted border'
                 }`}
               >
-                {c}
+                {c === 'BASE' ? `Tổng hợp (${data.baseCurrency})` : c}
               </button>
             ))}
           </div>
@@ -231,7 +232,7 @@ export default function ReportsPage() {
               <ArrowDownLeft className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              {formatExactMoney(summary.totalIncome, currency)}
+              {formatExactMoney(summary.totalIncome, displayCurrency)}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.dateRangeLabel} ({summary.transactionCount} giao dịch)
@@ -248,7 +249,7 @@ export default function ReportsPage() {
               <ArrowUpRight className="h-4 w-4 text-slate-500" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {formatExactMoney(summary.totalExpense, currency)}
+              {formatExactMoney(summary.totalExpense, displayCurrency)}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.dateRangeLabel}
@@ -282,7 +283,7 @@ export default function ReportsPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base font-semibold">
-                Biểu đồ dòng tiền thực tế ({currency})
+                Biểu đồ dòng tiền thực tế ({displayCurrency})
               </CardTitle>
               <CardDescription>
                 So sánh thu nhập và chi tiêu qua các chu kỳ tháng trong khoảng thời gian đã chọn.
@@ -294,7 +295,7 @@ export default function ReportsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <CashFlowChart data={data.cashFlow} currency={currency} />
+          <CashFlowChart data={data.cashFlow} currency={displayCurrency} />
         </CardContent>
       </Card>
 
@@ -308,13 +309,13 @@ export default function ReportsPage() {
                 Cơ cấu chi tiêu theo danh mục
               </CardTitle>
               <CardDescription>
-                Phân bổ chi tiêu thực tế trong kỳ ({formatExactMoney(summary.totalExpense, currency)}).
+                Phân bổ chi tiêu thực tế trong kỳ ({formatExactMoney(summary.totalExpense, displayCurrency)}).
               </CardDescription>
             </CardHeader>
             <CardContent>
               <CategoryDonutChart
                 data={data.categoryBreakdown}
-                currency={currency}
+                currency={displayCurrency}
                 totalExpense={summary.totalExpense}
               />
             </CardContent>
@@ -327,17 +328,17 @@ export default function ReportsPage() {
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center space-x-2">
                 <Wallet className="h-4 w-4 text-primary" />
-                <span>Tài khoản ({currency})</span>
+                <span>Tài khoản ({displayCurrency})</span>
               </CardTitle>
               <CardDescription>
-                Tổng số dư các tài khoản nắm giữ {currency}.
+                Tổng số dư các tài khoản nắm giữ {displayCurrency}.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Tổng số dư {currency}:</span>
+                <span className="text-xs font-medium text-muted-foreground">Tổng số dư {displayCurrency}:</span>
                 <span className="text-base font-bold text-foreground">
-                  {formatExactMoney(data.totalAccountBalance, currency)}
+                  {formatExactMoney(data.totalAccountBalance, displayCurrency)}
                 </span>
               </div>
 
@@ -366,7 +367,7 @@ export default function ReportsPage() {
                 </div>
               ) : (
                 <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
-                  Không có tài khoản nào sử dụng {currency}.
+                  Không có tài khoản nào sử dụng {displayCurrency}.
                 </div>
               )}
             </CardContent>
@@ -382,7 +383,7 @@ export default function ReportsPage() {
               Chi tiết giao dịch trong kỳ ({data.transactions.length})
             </CardTitle>
             <CardDescription>
-              Các khoản thu/chi thực tế {currency} thuộc {data.dateRangeLabel}.
+              Các khoản thu/chi thực tế {displayCurrency} thuộc {data.dateRangeLabel}.
             </CardDescription>
           </div>
           {data.transactions.length > 0 && (

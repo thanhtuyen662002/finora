@@ -576,12 +576,13 @@ export function exportTransactionsToCSV(
   const rows = transactions
     .filter((tx) => (tx.currency_code || '').toUpperCase() === normCurrency)
     .map((tx) => {
+      const txAny = tx as any;
       const typeLabel = tx.type === 'INCOME' ? 'Thu nhập' : 'Chi tiêu';
       const catName = ('category_name' in tx ? tx.category_name : tx.categoryName) || '';
       const accName = ('account_name' in tx ? tx.account_name : tx.accountName) || '';
       const status = tx.is_voided ? 'Đã vô hiệu hóa' : 'Hợp lệ';
 
-      return [
+      const baseRow = [
         escapeCell(tx.occurred_on),
         escapeCell(typeLabel),
         escapeCell(catName),
@@ -591,7 +592,11 @@ export function exportTransactionsToCSV(
         escapeCell(tx.currency_code),
         escapeCell(status),
         escapeCell(tx.note),
-      ].join(',');
+      ];
+      if (normCurrency === 'BASE') {
+        baseRow.push(escapeCell(txAny._fx_original_amount ? toExactDecimal(txAny._fx_original_amount) : ''), escapeCell(txAny._fx_original_currency), escapeCell(txAny._fx_rate), escapeCell(txAny._fx_provider), escapeCell(txAny._fx_effective_date));
+      }
+      return baseRow.join(',');
     });
 
   // Prepend UTF-8 BOM for Microsoft Excel compatibility
