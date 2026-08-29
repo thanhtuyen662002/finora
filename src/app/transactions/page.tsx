@@ -4,11 +4,15 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/finance/PageHeader';
 import { TransactionList } from '@/components/finance/TransactionList';
+import { TransferList } from '@/components/finance/TransferList';
 import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
+import { AddTransferModal } from '@/components/finance/AddTransferModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Download, ArrowDownLeft, ArrowUpRight, ArrowRightLeft, Check } from 'lucide-react';
 import { getTransactions, ExtendedTransaction } from '@/features/transactions';
+import { getTransfers, ExtendedTransfer } from '@/features/transfers';
 import { getAccounts } from '@/features/accounts/accounts';
 import { getCategories } from '@/features/categories/categories';
 import { addExactDecimals, subExactDecimals, formatExactDecimal, toExactDecimal } from '@/lib/money';
@@ -21,11 +25,15 @@ function escapeCSV(val: unknown): string {
 }
 
 export default function TransactionsPage() {
+  const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'TRANSFERS'>('TRANSACTIONS');
   const [transactions, setTransactions] = useState<ExtendedTransaction[]>([]);
+  const [transfers, setTransfers] = useState<ExtendedTransfer[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [addTxOpen, setAddTxOpen] = useState(false);
   const [editTx, setEditTx] = useState<ExtendedTransaction | null>(null);
+  const [addTransferOpen, setAddTransferOpen] = useState(false);
+  const [editTransfer, setEditTransfer] = useState<ExtendedTransfer | null>(null);
   const [exported, setExported] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,8 +42,9 @@ export default function TransactionsPage() {
     try {
       setLoading(true);
       setError('');
-      const [txs, accs, cats] = await Promise.all([
+      const [txs, trs, accs, cats] = await Promise.all([
         getTransactions(),
+        getTransfers(),
         getAccounts(),
         getCategories(),
       ]);
@@ -43,7 +52,7 @@ export default function TransactionsPage() {
       const accMap = new Map(accs.map((a) => [a.id, a]));
       const catMap = new Map(cats.map((c) => [c.id, c]));
 
-      const extended: ExtendedTransaction[] = txs.map((tx) => {
+      const extendedTxs: ExtendedTransaction[] = txs.map((tx) => {
         const acc = accMap.get(tx.account_id);
         const cat = catMap.get(tx.category_id);
         return {
@@ -55,7 +64,22 @@ export default function TransactionsPage() {
         };
       });
 
-      setTransactions(extended);
+      const extendedTransfers: ExtendedTransfer[] = trs.map((tr) => {
+        const fromAcc = accMap.get(tr.from_account_id);
+        const toAcc = accMap.get(tr.to_account_id);
+        return {
+          ...tr,
+          fromAccountName: tr.fromAccountName || fromAcc?.name || 'Tài khoản ẩn',
+          fromAccountType: tr.fromAccountType || fromAcc?.type || 'OTHER',
+          fromAccountColor: tr.fromAccountColor || fromAcc?.color || '#64748b',
+          toAccountName: tr.toAccountName || toAcc?.name || 'Tài khoản ẩn',
+          toAccountType: tr.toAccountType || toAcc?.type || 'OTHER',
+          toAccountColor: tr.toAccountColor || toAcc?.color || '#64748b',
+        };
+      });
+
+      setTransactions(extendedTxs);
+      setTransfers(extendedTransfers);
       setAccounts(accs);
       setCategories(cats);
     } catch (err: unknown) {
@@ -72,42 +96,76 @@ export default function TransactionsPage() {
   }, [loadData]);
 
   const handleExportCSV = () => {
-    if (transactions.length === 0) return;
-    const headers = [
-      'Ngày',
-      'Loại',
-      'Danh mục',
-      'Tài khoản',
-      'Số tiền',
-      'Tiền tệ',
-      'Cửa hàng/Mô tả',
-      'Ghi chú',
-      'Trạng thái',
-    ];
+    if (activeTab === 'TRANSACTIONS') {
+      if (transactions.length === 0) return;
+      const headers = [
+        'Ngày',
+        'Loại',
+        'Danh mục',
+        'Tài khoản',
+        'Số tiền',
+        'Tiền tệ',
+        'Cửa hàng/Mô tả',
+        'Ghi chú',
+        'Trạng thái',
+      ];
 
-    const rows = transactions.map((t) => [
-      escapeCSV(t.occurred_on),
-      escapeCSV(t.type === 'INCOME' ? 'Thu' : 'Chi'),
-      escapeCSV(t.categoryName || ''),
-      escapeCSV(t.accountName || ''),
-      escapeCSV(t.amount),
-      escapeCSV(t.currency_code),
-      escapeCSV(t.merchant),
-      escapeCSV(t.note || ''),
-      escapeCSV(t.is_voided ? 'Đã hủy' : 'Hoạt động'),
-    ].join(','));
+      const rows = transactions.map((t) => [
+        escapeCSV(t.occurred_on),
+        escapeCSV(t.type === 'INCOME' ? 'Thu' : 'Chi'),
+        escapeCSV(t.categoryName || ''),
+        escapeCSV(t.accountName || ''),
+        escapeCSV(t.amount),
+        escapeCSV(t.currency_code),
+        escapeCSV(t.merchant),
+        escapeCSV(t.note || ''),
+        escapeCSV(t.is_voided ? 'Đã hủy' : 'Hoạt động'),
+      ].join(','));
 
-    const csvContent = [headers.map(escapeCSV).join(','), ...rows].join('\r\n');
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `finora-transactions-${new Date().toISOString().substring(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
+      const csvContent = [headers.map(escapeCSV).join(','), ...rows].join('\r\n');
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `finora-transactions-${new Date().toISOString().substring(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      if (transfers.length === 0) return;
+      const headers = [
+        'Ngày',
+        'Tài khoản nguồn (Từ)',
+        'Tài khoản đích (Đến)',
+        'Số tiền',
+        'Tiền tệ',
+        'Ghi chú',
+        'Trạng thái',
+      ];
+
+      const rows = transfers.map((t) => [
+        escapeCSV(t.occurred_on),
+        escapeCSV(t.fromAccountName || ''),
+        escapeCSV(t.toAccountName || ''),
+        escapeCSV(t.amount),
+        escapeCSV(t.currency_code),
+        escapeCSV(t.note || ''),
+        escapeCSV(t.is_voided ? 'Đã hủy' : 'Hoạt động'),
+      ].join(','));
+
+      const csvContent = [headers.map(escapeCSV).join(','), ...rows].join('\r\n');
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `finora-transfers-${new Date().toISOString().substring(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
     setExported(true);
     setTimeout(() => setExported(false), 2500);
   };
@@ -148,14 +206,14 @@ export default function TransactionsPage() {
     <AppShell>
       <PageHeader
         title="Sổ giao dịch"
-        subtitle="Toàn bộ lịch sử thu chi."
+        subtitle="Quản lý toàn bộ thu chi và chuyển tiền nội bộ."
       >
         <Button
           variant="outline"
           size="sm"
           onClick={handleExportCSV}
           className="hidden sm:inline-flex"
-          disabled={transactions.length === 0}
+          disabled={(activeTab === 'TRANSACTIONS' ? transactions : transfers).length === 0}
         >
           {exported ? (
             <>
@@ -169,10 +227,20 @@ export default function TransactionsPage() {
             </>
           )}
         </Button>
-        <Button size="sm" onClick={() => { setEditTx(null); setAddTxOpen(true); }}>
-          <Plus className="h-4 w-4 mr-1.5" />
-          Thêm giao dịch
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setEditTransfer(null); setAddTransferOpen(true); }}
+          >
+            <ArrowRightLeft className="h-4 w-4 mr-1.5 text-indigo-600 dark:text-indigo-400" />
+            Chuyển tiền
+          </Button>
+          <Button size="sm" onClick={() => { setEditTx(null); setAddTxOpen(true); }}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Thêm giao dịch
+          </Button>
+        </div>
       </PageHeader>
 
       {error && (
@@ -181,108 +249,146 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Monthly Summaries (Actual Current Calendar Month) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
-        <Card className="bg-card border">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Tổng thu nhập ({currentMonthLabel})
-              </span>
-              <div className="mt-1 flex flex-col gap-1">
-                {Object.keys(summaryByCurrency).length === 0 ? (
-                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">+0 ₫</p>
+      {/* Tabs for switching between Income/Expense Transactions and Internal Transfers */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => setActiveTab(val as 'TRANSACTIONS' | 'TRANSFERS')}
+        className="space-y-4"
+      >
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="TRANSACTIONS" className="text-xs sm:text-sm">
+            Thu & Chi ({transactions.length})
+          </TabsTrigger>
+          <TabsTrigger value="TRANSFERS" className="text-xs sm:text-sm">
+            Chuyển tiền ({transfers.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {activeTab === 'TRANSACTIONS' ? (
+          <div className="space-y-4">
+            {/* Monthly Summaries (Actual Current Calendar Month for Income/Expense ONLY) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+              <Card className="bg-card border">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Tổng thu nhập ({currentMonthLabel})
+                    </span>
+                    <div className="mt-1 flex flex-col gap-1">
+                      {Object.keys(summaryByCurrency).length === 0 ? (
+                        <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">+0 ₫</p>
+                      ) : (
+                        Object.entries(summaryByCurrency).map(([curr, vals]) => (
+                          <p key={curr} className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                            +{formatExactDecimal(vals.income)} {curr}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="h-9 w-9 rounded-lg bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                    <ArrowDownLeft className="h-5 w-5" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card border">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Tổng chi tiêu ({currentMonthLabel})
+                    </span>
+                    <div className="mt-1 flex flex-col gap-1">
+                      {Object.keys(summaryByCurrency).length === 0 ? (
+                        <p className="text-xl font-bold text-foreground">-0 ₫</p>
+                      ) : (
+                        Object.entries(summaryByCurrency).map(([curr, vals]) => (
+                          <p key={curr} className="text-xl font-bold text-foreground">
+                            -{formatExactDecimal(vals.expense)} {curr}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center text-slate-600 dark:text-slate-400">
+                    <ArrowUpRight className="h-5 w-5" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card border">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Chênh lệch thu - chi ({currentMonthLabel})
+                    </span>
+                    <div className="mt-1 flex flex-col gap-1">
+                      {Object.keys(summaryByCurrency).length === 0 ? (
+                        <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">+0 ₫</p>
+                      ) : (
+                        Object.entries(summaryByCurrency).map(([curr, vals]) => {
+                          const diffStr = subExactDecimals(vals.income, vals.expense);
+                          const isPositive = !diffStr.startsWith('-') && diffStr !== '0.0000';
+                          return (
+                            <p
+                              key={curr}
+                              className={`text-xl font-bold ${
+                                !diffStr.startsWith('-')
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-foreground'
+                              }`}
+                            >
+                              {isPositive ? '+' : ''}
+                              {formatExactDecimal(diffStr)} {curr}
+                            </p>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <div className="h-9 w-9 rounded-lg bg-blue-50 dark:bg-blue-950 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                    <ArrowRightLeft className="h-5 w-5" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardContent className="p-4 sm:p-6">
+                {loading ? (
+                  <div className="py-12 text-center text-muted-foreground text-sm">Đang tải giao dịch...</div>
                 ) : (
-                  Object.entries(summaryByCurrency).map(([curr, vals]) => (
-                    <p key={curr} className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                      +{formatExactDecimal(vals.income)} {curr}
-                    </p>
-                  ))
+                  <TransactionList
+                    transactions={transactions}
+                    accounts={accounts}
+                    categories={categories}
+                    onSelectTransaction={(tx) => { setEditTx(tx); setAddTxOpen(true); }}
+                  />
                 )}
-              </div>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <ArrowDownLeft className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Tổng chi tiêu ({currentMonthLabel})
-              </span>
-              <div className="mt-1 flex flex-col gap-1">
-                {Object.keys(summaryByCurrency).length === 0 ? (
-                  <p className="text-xl font-bold text-foreground">-0 ₫</p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="p-4 sm:p-6">
+                {loading ? (
+                  <div className="py-12 text-center text-muted-foreground text-sm">Đang tải chuyển tiền...</div>
                 ) : (
-                  Object.entries(summaryByCurrency).map(([curr, vals]) => (
-                    <p key={curr} className="text-xl font-bold text-foreground">
-                      -{formatExactDecimal(vals.expense)} {curr}
-                    </p>
-                  ))
+                  <TransferList
+                    transfers={transfers}
+                    accounts={accounts}
+                    onSelectTransfer={(tr) => { setEditTransfer(tr); setAddTransferOpen(true); }}
+                    onAddNewTransfer={() => { setEditTransfer(null); setAddTransferOpen(true); }}
+                  />
                 )}
-              </div>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center text-slate-600 dark:text-slate-400">
-              <ArrowUpRight className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </Tabs>
 
-        <Card className="bg-card border">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Chênh lệch thu - chi ({currentMonthLabel})
-              </span>
-              <div className="mt-1 flex flex-col gap-1">
-                {Object.keys(summaryByCurrency).length === 0 ? (
-                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">+0 ₫</p>
-                ) : (
-                  Object.entries(summaryByCurrency).map(([curr, vals]) => {
-                    const diffStr = subExactDecimals(vals.income, vals.expense);
-                    const isPositive = !diffStr.startsWith('-') && diffStr !== '0.0000';
-                    return (
-                      <p
-                        key={curr}
-                        className={`text-xl font-bold ${
-                          !diffStr.startsWith('-')
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-foreground'
-                        }`}
-                      >
-                        {isPositive ? '+' : ''}
-                        {formatExactDecimal(diffStr)} {curr}
-                      </p>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-blue-50 dark:bg-blue-950 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <ArrowRightLeft className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardContent className="p-4 sm:p-6">
-          {loading ? (
-            <div className="py-12 text-center text-muted-foreground text-sm">Đang tải giao dịch...</div>
-          ) : (
-            <TransactionList 
-              transactions={transactions} 
-              accounts={accounts} 
-              categories={categories} 
-              onSelectTransaction={(tx) => { setEditTx(tx); setAddTxOpen(true); }}
-            />
-          )}
-        </CardContent>
-      </Card>
-
+      {/* Modals */}
       <AddTransactionModal
         open={addTxOpen}
         onOpenChange={(open) => { setAddTxOpen(open); if (!open) setEditTx(null); }}
@@ -290,6 +396,14 @@ export default function TransactionsPage() {
         initialData={editTx}
         accounts={accounts}
         categories={categories}
+      />
+
+      <AddTransferModal
+        open={addTransferOpen}
+        onOpenChange={(open) => { setAddTransferOpen(open); if (!open) setEditTransfer(null); }}
+        onSuccess={loadData}
+        initialData={editTransfer}
+        accounts={accounts}
       />
     </AppShell>
   );

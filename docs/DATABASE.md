@@ -73,14 +73,28 @@ User financial transactions (Income/Expense) managed under RLS.
 - `created_at` (timestamptz, default now())
 - `updated_at` (timestamptz, default now())
 
+### `public.transfers` (Phase 5)
+User financial transfers (Same-Currency Account-to-Account movements) managed under RLS.
+- `id` (uuid, primary key, default `gen_random_uuid()`)
+- `user_id` (uuid, not null)
+- `from_account_id` (uuid, not null)
+- `to_account_id` (uuid, not null, check `from_account_id <> to_account_id`)
+- `amount` (numeric(20,4), not null, check > 0)
+- `currency_code` (text, not null, check format `^[A-Z]{3,5}$`)
+- `note` (text, nullable, max length 1000)
+- `occurred_on` (date, not null, default CURRENT_DATE)
+- `is_voided` (boolean, not null, default false)
+- `created_at` (timestamptz, default now())
+- `updated_at` (timestamptz, default now())
+
 ## Views
 
-### `public.account_balances` (Phase 4)
-A `security_invoker = true` view aggregating exact decimal totals per account.
+### `public.account_balances` (Phase 4 / Phase 5 Updated)
+A `security_invoker = true` view aggregating exact decimal totals per account, protected against Cartesian multiplication via pre-aggregated subqueries.
 - `account_id` (uuid)
 - `user_id` (uuid)
 - `currency_code` (text)
-- `current_balance` (text) — Exact string cast: `opening_balance + sum(active INCOME) - sum(active EXPENSE)`.
+- `current_balance` (text) — Exact string cast: `opening_balance + sum(active INCOME) - sum(active EXPENSE) + sum(active incoming TRANSFERS) - sum(active outgoing TRANSFERS)`.
 
 ### `public.transaction_details` (Phase 4)
 A `security_invoker = true` view providing exact decimal string reads and joined metadata.
@@ -102,6 +116,24 @@ A `security_invoker = true` view providing exact decimal string reads and joined
 - `category_icon` (text)
 - `category_color` (text)
 
+### `public.transfer_details` (Phase 5)
+A `security_invoker = true` view providing exact decimal string reads and joined account metadata.
+- `id` (uuid)
+- `user_id` (uuid)
+- `from_account_id` (uuid)
+- `to_account_id` (uuid)
+- `amount` (text) — Cast from `numeric(20,4)` to text for lossless client communication.
+- `currency_code` (text)
+- `note` (text)
+- `occurred_on` (date)
+- `is_voided` (boolean)
+- `created_at` (timestamptz)
+- `updated_at` (timestamptz)
+- `from_account_name` (text)
+- `from_account_color` (text)
+- `to_account_name` (text)
+- `to_account_color` (text)
+
 ## Ownership Model & Security Design
 
 Every user-owned record has an explicit foreign key to `auth.users(id)`.
@@ -109,9 +141,13 @@ RLS enforces data isolation at the database level. Frontend filters are not auth
 
 **Invariant 1:** User A cannot SELECT, INSERT, UPDATE, or DELETE User B's financial records.
 
+**Invariant 2:** Transfers are net-worth neutral. A transfer decrements source account balance and increments destination account balance by the exact same amount.
+
 **Ownership-Safe Composite Foreign Keys:**
 - `transactions_account_fkey` on `(account_id, user_id, currency_code)` references `accounts(id, user_id, currency_code)`
 - `transactions_category_fkey` on `(category_id, user_id, type)` references `categories(id, user_id, type)`
+- `transfers_from_account_fkey` on `(from_account_id, user_id, currency_code)` references `accounts(id, user_id, currency_code)`
+- `transfers_to_account_fkey` on `(to_account_id, user_id, currency_code)` references `accounts(id, user_id, currency_code)`
 
 ### Hardened Privileges (Zero-Trust Defaults)
 By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) to `anon`, `authenticated`, and `PUBLIC` roles. In Finora:
@@ -126,3 +162,4 @@ By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, 
 1. `supabase/migrations/20260828000000_phase_2_auth_rls.sql` — Phase 2: Profiles, user_settings, auth triggers, hardened search path & invoker permissions, explicit removal of Supabase default table grants, minimum column-level update grants, and RLS policies.
 2. `supabase/migrations/20260828000001_phase_3_accounts_categories.sql` — Phase 3: Accounts, Categories, seeding triggers, hardened `INSERT`/`UPDATE` column grants, explicit `EXECUTE` revocation, atomic transaction block.
 3. `supabase/migrations/20260828000002_phase_4_transactions.sql` — Phase 4: Transactions table, composite FKs, updated_at trigger, derived `account_balances` and `transaction_details` views with `security_invoker = true`, RLS policies, least-privilege column grants.
+4. `supabase/migrations/20260828000003_phase_5_transfers.sql` — Phase 5: Transfers table, composite source and destination FKs, distinct accounts constraint, updated derived `account_balances` view with pre-aggregation, `transfer_details` view with `security_invoker = true`, RLS policies, least-privilege column grants.

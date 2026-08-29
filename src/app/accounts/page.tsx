@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/finance/EmptyState';
-import { Plus, Wallet, Globe } from 'lucide-react';
+import { Plus, Wallet, Globe, ArrowRightLeft } from 'lucide-react';
 import { getAccounts, createAccount, updateAccount, getAccountBalances } from '@/features/accounts/accounts';
+import { AddTransferModal } from '@/components/finance/AddTransferModal';
 import type { AccountRow, AccountInsert, AccountUpdate } from '@/types/database';
 
 export default function AccountsPage() {
@@ -21,6 +22,7 @@ export default function AccountsPage() {
   const [filterType, setFilterType] = useState<string>('ALL');
   const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<AccountRow | null>(null);
+  const [addTransferOpen, setAddTransferOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
   const loadAccounts = async () => {
@@ -87,6 +89,14 @@ export default function AccountsPage() {
         title="Tài khoản & Ví"
         subtitle="Quản lý toàn bộ ngân hàng, ví điện tử, tiền mặt và tài khoản ngoại tệ."
       >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAddTransferOpen(true)}
+        >
+          <ArrowRightLeft className="h-4 w-4 mr-1.5 text-indigo-600 dark:text-indigo-400" />
+          Chuyển tiền
+        </Button>
         <Button size="sm" onClick={() => { setEditAccount(null); setAddAccountOpen(true); }}>
           <Plus className="h-4 w-4 mr-1.5" />
           Thêm tài khoản
@@ -209,6 +219,13 @@ export default function AccountsPage() {
         onOpenChange={(open) => { setAddAccountOpen(open); if (!open) setEditAccount(null); }}
         onSuccess={handleCreateAccount}
         initialData={editAccount}
+      />
+
+      <AddTransferModal
+        open={addTransferOpen}
+        onOpenChange={setAddTransferOpen}
+        onSuccess={loadAccounts}
+        accounts={accounts}
       />
     </AppShell>
   );

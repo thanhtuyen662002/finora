@@ -158,3 +158,24 @@ This file records decisions with architectural consequences. New decisions shoul
 - SSR password recovery flow is robust across email link mechanisms (PKCE code vs. OTP token_hash).
 - Verification tools act as authoritative test runners for RLS isolation.
 
+---
+
+## ADR-010 — Same-Currency Transfers Architecture and Cartesian-Safe Derived Account Balances
+
+**Status:** Accepted
+
+**Decision:**
+1. Implement same-currency transfers as a distinct `public.transfers` table with composite ownership foreign keys referencing source and destination accounts `(from_account_id, user_id, currency_code)` and `(to_account_id, user_id, currency_code)` onto `accounts(id, user_id, currency_code)`.
+2. Strictly prohibit `TRANSFER` from `transactions.type` and prohibit any transfer categories. Transfers are balance neutral movements between accounts, never revenue or expenses.
+3. Update `public.account_balances` view with `security_invoker = true` using pre-aggregated subqueries (`incoming_transfers`, `outgoing_transfers`, `tx_totals`) before joining `accounts` to mathematically prevent Cartesian row explosion when an account has multiple transactions and multiple transfers simultaneously.
+4. Expose exact string reads for all money fields via `public.transfer_details` and `public.account_balances`, maintaining strict floating-point protection across the TypeScript application layer.
+
+**Reason:**
+- Financial Invariant 2 requires transfer neutrality and isolation from income/expense metrics.
+- Direct join of one-to-many transactions and one-to-many transfers on the same account produces an $N \times M$ Cartesian product in PostgreSQL aggregates if not pre-aggregated, which would corrupt account balance calculations.
+- Exact string casts prevent IEEE 754 precision loss at the database driver/JSON boundary.
+
+**Consequences:**
+- User net worth remains perfectly conserved across all same-currency transfers.
+- Income and expense reports remain unaffected by transfers.
+- Database authorization enforces that cross-user transfers cannot be created, modified, or viewed.

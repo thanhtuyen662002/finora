@@ -192,6 +192,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      transfers: {
+        Row: {
+          id: string;
+          user_id: string;
+          from_account_id: string;
+          to_account_id: string;
+          amount: string;
+          currency_code: string;
+          note: string | null;
+          occurred_on: string;
+          is_voided: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          from_account_id: string;
+          to_account_id: string;
+          amount: number | string;
+          currency_code: string;
+          note?: string | null;
+          occurred_on?: string;
+          is_voided?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          from_account_id?: string;
+          to_account_id?: string;
+          amount?: number | string;
+          currency_code?: string;
+          note?: string | null;
+          occurred_on?: string;
+          is_voided?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       account_balances: {
@@ -222,6 +264,28 @@ export interface Database {
           category_name: string;
           category_icon: string;
           category_color: string;
+        };
+        Relationships: [];
+      };
+      transfer_details: {
+        Row: {
+          id: string;
+          user_id: string;
+          from_account_id: string;
+          to_account_id: string;
+          amount: string;
+          currency_code: string;
+          note: string | null;
+          occurred_on: string;
+          is_voided: boolean;
+          created_at: string;
+          updated_at: string;
+          from_account_name: string;
+          from_account_type: string;
+          from_account_color: string;
+          to_account_name: string;
+          to_account_type: string;
+          to_account_color: string;
         };
         Relationships: [];
       };
@@ -259,3 +323,8 @@ export type TransactionInsert = Omit<Database['public']['Tables']['transactions'
 export type TransactionUpdate = Omit<Database['public']['Tables']['transactions']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 export type AccountBalanceRow = Database['public']['Views']['account_balances']['Row'];
 export type TransactionDetailRow = Database['public']['Views']['transaction_details']['Row'];
+
+export type TransferRow = Database['public']['Tables']['transfers']['Row'];
+export type TransferInsert = Omit<Database['public']['Tables']['transfers']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type TransferUpdate = Omit<Database['public']['Tables']['transfers']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
+export type TransferDetailRow = Database['public']['Views']['transfer_details']['Row'];
