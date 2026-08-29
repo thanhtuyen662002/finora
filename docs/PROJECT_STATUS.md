@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 6 — Dashboard + Reports — SOURCE_COMPLETE_LIVE_SMOKE_PENDING
-- **Phase status:** PHASE_6_SOURCE_GATE_PASS_CODE_ONLY_LIVE_SMOKE_PENDING
+- **Current phase:** Phase 7 — Budget + Goals + Recurring — AUTHORIZED
+- **Phase status:** PHASE_6_COMPLETE_PHASE_7_AUTHORIZED
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -29,6 +29,11 @@
 - **Phase 5 runtime RLS receipt SHA:** `cfb352460dfc05fc2ea79815eabf6664580d15fc`
 - **Phase 5 closure receipt SHA:** `2794812af0367487247ce30520e62bcd9a29353b`
 - **Phase 5 closure receipt:** `docs/receipts/PHASE_5_CLOSURE.md`
+- **Accepted Phase 6 exact-head source SHA:** `4c5df491256d07550ee8d2bd2d92eb8b6c7f3056`
+- **Phase 6 source receipt SHA:** `2eb63266e2a8210db940410aceea339536172da0`
+- **Phase 6 source receipt:** `docs/receipts/PHASE_6_SOURCE_GATE.md`
+- **Phase 6 closure receipt SHA:** `d10b541e66c5dd950d1dde3e84d8922c07d695fe`
+- **Phase 6 closure receipt:** `docs/receipts/PHASE_6_CLOSURE.md`
 
 ## Phase 2 Accepted Baseline
 
@@ -382,25 +387,96 @@ Phase 5 is CLOSED. Reopen it only if a concrete regression is found.
 - **Phase 3 — Accounts + Categories:** PASS
 - **Phase 4 — Transactions:** PASS
 - **Phase 5 — Same-Currency Transfers:** PASS
-- **Phase 6 — Dashboard + Reports:** SOURCE_COMPLETE_LIVE_SMOKE_PENDING
+- **Phase 6 — Dashboard + Reports:** PASS
+- **Phase 7 — Budget + Goals + Recurring:** AUTHORIZED
 
-## Phase 6 — Dashboard + Reports Implementation & Corrective Hardening
+## Phase 6 — Dashboard + Reports — Final Receipt
 
-### Scope Completed:
-- Complete removal of mock financial fixtures and static date labels from Dashboard (`src/app/dashboard/page.tsx`) and Reports (`src/app/reports/page.tsx`).
-- Created pure deterministic reports aggregation engine (`src/features/reports/engine.ts`) executing exact decimal string and BigInt arithmetic (`addExactDecimals`, `subExactDecimals`, `compareExactDecimals`, `computeSavingRatePercent`, `computeBasisPoints`).
-- Integrated real Supabase data layer (`src/features/reports/reports.ts`) querying `transaction_details`, `account_balances`, `accounts`, and `user_settings`.
-- Fail-closed on `account_balances`: never fallback to `opening_balance`; missing balance rows throw an explicit error.
-- Timezone validation & date resolution: reads `user_settings.timezone` (with fail-closed error handling on settings query and strict fail-closed validation on invalid configured timezones) and resolves calendar dates deterministically via `Intl.DateTimeFormat`.
-- `ALL` period history: derives month sequence from the earliest active transaction for the selected currency through the current month, including all intermediate zero-value months.
-- Exact monetary comparison: uses `compareExactDecimals` for series scaling instead of relational string comparisons (`>` / `<`).
-- Currency discovery & base currency selection: prioritizes `base_currency` only if present in real account/transaction data, otherwise deterministically selects the first available currency without injecting an absent base currency into non-empty sets.
-- Fail-closed reload & error state: clears previous data immediately when a new period/currency request begins, handles request sequencing, and renders visible error states on failure.
-- Implemented real RFC 4180 CSV export with UTF-8 BOM (`\uFEFF`) and timezone-aware filenames.
-- Refactored `CashFlowChart` and `CategoryDonutChart` for exact-money formatting and presentation-only integer basis points.
-- Hardened source verifier `scripts/verify-phase6-source.mjs` verifying all contract invariants and unit test cases.
-- Recorded architecture decisions in ADR-011.
+Phase 6 is accepted COMPLETE. Full closure evidence is preserved in `docs/receipts/PHASE_6_CLOSURE.md`.
+
+### Source gate
+
+Accepted exact-head source SHA: `4c5df491256d07550ee8d2bd2d92eb8b6c7f3056`.
+
+Exact-head verification established:
+
+- local HEAD = remote main: PASS;
+- worktree clean: PASS;
+- TypeScript: PASS;
+- lint: PASS;
+- production build: PASS;
+- Phase 6 verifier syntax: PASS;
+- Phase 6 source verifier: 71/71 PASS;
+- git diff check: PASS;
+- verification code changes: NONE;
+- migration created: false;
+- remote database modified: false.
+
+Accepted implementation behavior includes:
+
+- real user-isolated Dashboard and Reports data;
+- authoritative `transaction_details` exact-money reads;
+- authoritative fail-closed `account_balances` current balances;
+- exact decimal / BigInt finance aggregation;
+- timezone-aware calendar semantics with invalid configured timezone rejected;
+- dynamic 1M/3M/6M/1Y/ALL reporting;
+- ALL-history zero-month bucket continuity;
+- deterministic pre-FX multi-currency isolation;
+- transfer-neutral income/expense reporting;
+- synchronous stale-report invalidation during period/currency transitions;
+- real selected-period/selected-currency CSV export.
+
+**PHASE_6_SOURCE_GATE = PASS_CODE_ONLY**
+
+### Live Dashboard / Reports smoke
+
+Owner-attested live verification returned PASS for all required Phase 6 behaviors:
+
+- real Dashboard balances: PASS;
+- monthly income: PASS;
+- monthly expense: PASS;
+- monthly savings: PASS;
+- no fake cross-currency total: PASS;
+- transfer report neutrality: PASS;
+- transaction create refresh: PASS;
+- transaction edit refresh: PASS;
+- transaction void refresh: PASS;
+- transaction restore refresh: PASS;
+- report 1M: PASS;
+- report 3M: PASS;
+- report 6M: PASS;
+- report 1Y: PASS;
+- report ALL: PASS;
+- ALL zero-month buckets: PASS;
+- currency switching: PASS;
+- no stale report data: PASS;
+- CSV export: PASS;
+- CSV period/currency scope: PASS;
+- CSV exact decimals: PASS;
+- refresh persistence: PASS;
+- logout/login persistence: PASS;
+- unexpected live errors: NONE.
+
+**PHASE_6_LIVE_PERSISTENCE_SMOKE = PASS**
+
+### Phase 6 final authorization receipt
+
+```text
+PHASE_0=PASS
+PHASE_1=PASS
+PHASE_2=PASS
+PHASE_3=PASS
+PHASE_4=PASS
+PHASE_5=PASS
+PHASE_6_SOURCE_GATE=PASS_CODE_ONLY
+PHASE_6_LIVE_PERSISTENCE_SMOKE=PASS
+PHASE_6_OVERALL=PASS
+FINORA_PHASE_6=PASS
+PHASE_7_AUTHORIZED=true
+```
+
+Phase 6 is CLOSED. Reopen it only if a concrete regression is found.
 
 ## Next Recommended Action
 
-Phase 6 source implementation and corrective hardening are PASS (CODE-ONLY). Proceed with owner live persistence/report smoke verification before Phase 6 closure and Phase 7 authorization.
+Define and audit the Phase 7 — Budget + Goals + Recurring contract before implementation. Phase 7 implementation has not started yet.
