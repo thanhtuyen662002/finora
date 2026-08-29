@@ -505,6 +505,8 @@ Phase 7 implementation contract was executed in full:
 - `/src/app/budgets/page.tsx`: Connects to `getBudgets`, category breakdown, overall monthly budget card, progress bars, month period selector with previous/next navigation, `AddBudgetModal` with active expense category selection.
 - `/src/app/goals/page.tsx`: Connects to `getGoals`, saving progress cards, target deadlines, `AddGoalModal` with dynamic currency detection from user settings.
 - `/src/app/recurring/page.tsx`: Connects to `getRecurringItems`, pause/resume toggle, days-until-due badges, `AddRecurringModal` with active accounts/categories selection and timezone-aware default anchor date.
+- **Mobile Navigation Corrective**: Replaced desktop-only bottom tab navigation with a fully accessible global Mobile Navigation Drawer (`Sheet` component) inside `AppShell`, opening on `Menu` click, providing mobile users access to Budgets, Goals, Recurring, and Settings.
+- **Money Input Form UX Corrective**: Migrated all 11 monetary form inputs (Transactions, Transfers, Accounts, Budgets, Goals, Recurring) to the unified `MoneyInput` component which prevents mobile keyboard locale issues (e.g., Vietnam localized numeric keypad emitting commas), provides deterministic string-based decimal parsing for BigInt safety, and standardizes visual display formatting (thousand separators).
 - Completely eradicated all mock data imports across all Phase 7 views and components.
 
 ### 4. Verification Suite

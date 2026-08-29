@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlusCircle, AlertCircle } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { ExtendedGoal } from '@/features/goals';
 import { toExactDecimal, isPositiveExactDecimal, addExactDecimals } from '@/lib/money';
 import { formatExactMoney } from '@/lib/money/format';
@@ -120,13 +121,12 @@ export const ContributeGoalModal: React.FC<ContributeGoalModalProps> = ({
 
           <div className="space-y-1.5">
             <Label htmlFor="contribAmount">Số tiền nạp thêm ({goal.currency_code})</Label>
-            <Input
+            <MoneyInput
               id="contribAmount"
-              type="text"
-              inputMode="decimal"
-              placeholder="1000000"
+              currencyCode={goal.currency_code}
+              placeholder={goal.currency_code === 'VND' ? '1.000.000' : '100.00'}
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(val) => setAmount(val)}
               required
               autoFocus
             />

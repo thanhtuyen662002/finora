@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Target, AlertCircle } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { ExtendedGoal, GoalUpdateInput } from '@/features/goals';
 import { toExactDecimal, isPositiveExactDecimal, isNonNegativeExactDecimal } from '@/lib/money';
 
@@ -148,23 +149,21 @@ export const EditGoalModal: React.FC<EditGoalModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="editTargetAmount">Số tiền mục tiêu ({goal.currency_code})</Label>
-              <Input
+              <MoneyInput
                 id="editTargetAmount"
-                type="text"
-                inputMode="decimal"
+                currencyCode={goal.currency_code}
                 value={targetAmount}
-                onChange={(e) => setTargetAmount(e.target.value)}
+                onChange={(val) => setTargetAmount(val)}
                 required
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="editCurrentAmount">Đã tích lũy ({goal.currency_code})</Label>
-              <Input
+              <MoneyInput
                 id="editCurrentAmount"
-                type="text"
-                inputMode="decimal"
+                currencyCode={goal.currency_code}
                 value={currentAmount}
-                onChange={(e) => setCurrentAmount(e.target.value)}
+                onChange={(val) => setCurrentAmount(val)}
               />
             </div>
           </div>
@@ -181,12 +180,11 @@ export const EditGoalModal: React.FC<EditGoalModalProps> = ({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="editMonthlyContrib">Góp mỗi tháng ({goal.currency_code})</Label>
-              <Input
+              <MoneyInput
                 id="editMonthlyContrib"
-                type="text"
-                inputMode="decimal"
+                currencyCode={goal.currency_code}
                 value={monthlyContribution}
-                onChange={(e) => setMonthlyContribution(e.target.value)}
+                onChange={(val) => setMonthlyContribution(val)}
               />
             </div>
           </div>

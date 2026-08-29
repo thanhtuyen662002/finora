@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Edit2, AlertCircle } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { AccountRow, CategoryRow } from '@/types/database';
 import type {
   ExtendedRecurringItem,
@@ -198,12 +199,11 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="editRecAmount">Số tiền ({item.currency_code})</Label>
-              <Input
+              <MoneyInput
                 id="editRecAmount"
-                type="text"
-                inputMode="decimal"
+                currencyCode={item.currency_code}
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(val) => setAmount(val)}
                 required
               />
             </div>

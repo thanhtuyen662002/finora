@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, CheckCircle2 } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import { AccountRow, CategoryRow } from '@/types/database';
 import {
   createTransaction,
@@ -277,15 +278,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           </Tabs>
 
           <div className="space-y-1.5">
-            <Label htmlFor="amount">Số tiền</Label>
+            <Label htmlFor="amount">Số tiền ({currency})</Label>
             <div className="flex gap-2">
-              <Input
+              <MoneyInput
                 id="amount"
-                type="text"
-                inputMode="decimal"
-                placeholder={currency === 'VND' ? '50000' : '50.00'}
+                currencyCode={currency}
+                placeholder={currency === 'VND' ? '50.000' : '50.00'}
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(val) => setAmount(val)}
                 required
                 className="text-lg font-semibold"
                 autoFocus

@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PlusCircle, Check } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { AccountRow, AccountInsert, AccountUpdate, AccountType } from '@/types/database';
 
 interface AddAccountModalProps {
@@ -168,14 +169,13 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="accBalance">Số dư khởi tạo</Label>
-            <Input
+            <Label htmlFor="accBalance">Số dư khởi tạo ({currencyCode || 'VND'})</Label>
+            <MoneyInput
               id="accBalance"
-              type="text"
-              inputMode="decimal"
+              currencyCode={currencyCode || 'VND'}
               placeholder="0"
               value={balance}
-              onChange={(e) => setBalance(e.target.value)}
+              onChange={(val) => setBalance(val)}
             />
           </div>
           <div className="space-y-1.5">

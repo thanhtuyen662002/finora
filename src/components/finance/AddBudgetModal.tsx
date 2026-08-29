@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Target, AlertCircle } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { CategoryRow } from '@/types/database';
 import { toExactDecimal, isPositiveExactDecimal } from '@/lib/money';
 
@@ -110,13 +111,12 @@ export const AddBudgetModal: React.FC<AddBudgetModalProps> = ({
 
           <div className="space-y-1.5">
             <Label htmlFor="bgtLimit">Hạn mức chi tiêu tháng ({currencyCode})</Label>
-            <Input
+            <MoneyInput
               id="bgtLimit"
-              type="text"
-              inputMode="decimal"
-              placeholder="5000000"
+              currencyCode={currencyCode}
+              placeholder={currencyCode === 'VND' ? '5.000.000' : '500.00'}
               value={limit}
-              onChange={(e) => setLimit(e.target.value)}
+              onChange={(val) => setLimit(val)}
               required
               autoFocus
             />

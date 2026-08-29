@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Repeat, AlertCircle } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { AccountRow, CategoryRow } from '@/types/database';
 import type { RecurringItemInsertInput, RecurringFrequency } from '@/features/recurring';
 import { toExactDecimal, isPositiveExactDecimal } from '@/lib/money';
@@ -192,13 +193,12 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="recAmount">Số tiền ({currencyCode})</Label>
-              <Input
+              <MoneyInput
                 id="recAmount"
-                type="text"
-                inputMode="decimal"
-                placeholder="5000000"
+                currencyCode={currencyCode}
+                placeholder={currencyCode === 'VND' ? '5.000.000' : '500.00'}
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(val) => setAmount(val)}
                 required
               />
             </div>

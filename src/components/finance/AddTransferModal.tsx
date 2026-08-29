@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { ArrowRightLeft, AlertCircle, CheckCircle2, RotateCcw, Ban } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import { AccountRow } from '@/types/database';
 import {
   createTransfer,
@@ -394,13 +395,12 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
                 )}
               </div>
               <div className="relative">
-                <Input
+                <MoneyInput
                   id="transfer-amount"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
+                  currencyCode={selectedFromAccount ? selectedFromAccount.currency_code : 'VND'}
+                  placeholder={selectedFromAccount?.currency_code === 'VND' ? '50.000' : '0.00'}
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(val) => setAmount(val)}
                   disabled={loading}
                   className="pr-16 text-lg font-bold"
                 />

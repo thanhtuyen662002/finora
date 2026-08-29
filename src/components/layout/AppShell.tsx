@@ -14,9 +14,11 @@ import {
   TrendingUp,
   Settings,
   LogOut,
+  Menu,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, getCurrentProfile, getCurrentUserSettings, signOut } from '@/lib/auth';
@@ -131,8 +133,10 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     { href: '/transactions', label: 'Giao dịch', icon: ReceiptText },
     { href: 'ADD_ACTION', label: 'Thêm', icon: Plus, isAction: true },
     { href: '/reports', label: 'Báo cáo', icon: PieChart },
-    { href: '/settings', label: 'Cài đặt', icon: Settings },
+    { href: 'MENU_ACTION', label: 'Menu', icon: Menu, isMenu: true },
   ];
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
@@ -270,7 +274,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-md border-t border-border px-3 py-1.5">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-md border-t border-border px-3 py-1.5 pb-safe">
         <div className="flex items-center justify-around">
           {mobileNavItems.map((item) => {
             if (item.isAction) {
@@ -288,6 +292,103 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                     Thêm
                   </span>
                 </button>
+              );
+            }
+
+            if (item.isMenu) {
+              return (
+                <Sheet key="menu-action" open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+                  <SheetTrigger asChild>
+                    <button
+                      className={cn(
+                        'flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <Menu className="h-5 w-5 mb-0.5 text-muted-foreground" />
+                      <span>{item.label}</span>
+                    </button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-[85%] max-w-sm p-0 flex flex-col h-full">
+                    <SheetHeader className="p-5 border-b text-left shrink-0">
+                      <SheetTitle className="flex items-center space-x-2.5">
+                        <div className="h-8 w-8 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 flex items-center justify-center font-bold tracking-wider text-sm shadow-xs">
+                          F
+                        </div>
+                        <span className="font-bold text-lg tracking-tight">Finora</span>
+                      </SheetTitle>
+                    </SheetHeader>
+                    
+                    <div className="flex-1 overflow-y-auto">
+                      <nav className="px-3 py-4 space-y-6">
+                        {navGroups.map((group) => (
+                          <div key={group.group} className="space-y-2">
+                            <span className="px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                              {group.group}
+                            </span>
+                            <div className="space-y-1">
+                              {group.items.map((navItem) => {
+                                const isActive =
+                                  pathname === navItem.href ||
+                                  (navItem.href !== '/dashboard' && pathname?.startsWith(navItem.href));
+                                const Icon = navItem.icon;
+                                return (
+                                  <Link
+                                    key={navItem.href}
+                                    href={navItem.href}
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className={cn(
+                                      'flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                                      isActive
+                                        ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs font-semibold'
+                                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                    )}
+                                  >
+                                    <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-inherit' : 'text-muted-foreground')} />
+                                    <span>{navItem.label}</span>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </nav>
+                    </div>
+
+                    <div className="p-4 border-t bg-muted/30 shrink-0">
+                      <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                        <Link 
+                          href="/settings" 
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="flex items-center space-x-3 min-w-0 flex-1 hover:opacity-80 transition-opacity"
+                        >
+                          <Avatar className="h-9 w-9 shrink-0">
+                            {avatarUrl && <AvatarImage src={avatarUrl} />}
+                            <AvatarFallback>{initials}</AvatarFallback>
+                          </Avatar>
+                          <div className="truncate">
+                            <p className="text-sm font-semibold text-foreground truncate">
+                              {displayName}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                              {userEmail || `${baseCurrency} · ${locale}`}
+                            </p>
+                          </div>
+                        </Link>
+                        <button
+                          onClick={() => {
+                            setMobileMenuOpen(false);
+                            handleSignOut();
+                          }}
+                          title="Đăng xuất"
+                          type="button"
+                          className="text-muted-foreground hover:text-destructive p-2 rounded-md hover:bg-muted transition-colors shrink-0 ml-2"
+                        >
+                          <LogOut className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </SheetContent>
+                </Sheet>
               );
             }
 

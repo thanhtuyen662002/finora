@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Target, AlertCircle } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { ExtendedBudget } from '@/features/budgets';
 import { toExactDecimal, isPositiveExactDecimal } from '@/lib/money';
 
@@ -90,13 +91,12 @@ export const EditBudgetModal: React.FC<EditBudgetModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="editBgtLimit">Hạn mức chi tiêu mới ({budget.currency_code})</Label>
-            <Input
+            <MoneyInput
               id="editBgtLimit"
-              type="text"
-              inputMode="decimal"
-              placeholder="5000000"
+              currencyCode={budget.currency_code}
+              placeholder={budget.currency_code === 'VND' ? '5.000.000' : '500.00'}
               value={limit}
-              onChange={(e) => setLimit(e.target.value)}
+              onChange={(val) => setLimit(val)}
               required
               autoFocus
             />

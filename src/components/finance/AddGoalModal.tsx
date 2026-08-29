@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Sparkles, AlertCircle } from 'lucide-react';
+import { MoneyInput } from './MoneyInput';
 import type { GoalInsertInput } from '@/features/goals';
 import { toExactDecimal, isPositiveExactDecimal, isNonNegativeExactDecimal } from '@/lib/money';
 import { isValidISODateString } from '@/features/recurring/engine';
@@ -146,25 +147,23 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="targetAmount">Số tiền mục tiêu ({currencyCode})</Label>
-              <Input
+              <MoneyInput
                 id="targetAmount"
-                type="text"
-                inputMode="decimal"
-                placeholder="100000000"
+                currencyCode={currencyCode}
+                placeholder={currencyCode === 'VND' ? '100.000.000' : '5000.00'}
                 value={targetAmount}
-                onChange={(e) => setTargetAmount(e.target.value)}
+                onChange={(val) => setTargetAmount(val)}
                 required
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="initialAmount">Đã tích lũy ban đầu</Label>
-              <Input
+              <MoneyInput
                 id="initialAmount"
-                type="text"
-                inputMode="decimal"
+                currencyCode={currencyCode}
                 placeholder="0"
                 value={initialAmount}
-                onChange={(e) => setInitialAmount(e.target.value)}
+                onChange={(val) => setInitialAmount(val)}
               />
             </div>
           </div>
@@ -181,13 +180,12 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="monthlyContrib">Đóng góp hàng tháng</Label>
-              <Input
+              <MoneyInput
                 id="monthlyContrib"
-                type="text"
-                inputMode="decimal"
+                currencyCode={currencyCode}
                 placeholder="0"
                 value={monthlyContribution}
-                onChange={(e) => setMonthlyContribution(e.target.value)}
+                onChange={(val) => setMonthlyContribution(val)}
               />
             </div>
           </div>
