@@ -16,7 +16,9 @@ if (
   !USER_B_PASSWORD
 ) {
   console.error('FAIL: Missing required live Supabase credentials for Phase 7 RLS runtime verification.');
-  console.error('Environment requires: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, FINORA_TEST_USER_A_EMAIL, FINORA_TEST_USER_A_PASSWORD, FINORA_TEST_USER_B_EMAIL, FINORA_TEST_USER_B_PASSWORD');
+  console.error(
+    'Environment requires: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, FINORA_TEST_USER_A_EMAIL, FINORA_TEST_USER_A_PASSWORD, FINORA_TEST_USER_B_EMAIL, FINORA_TEST_USER_B_PASSWORD'
+  );
   process.exit(1);
 }
 
@@ -90,8 +92,10 @@ async function runPhase7LiveRLSTests() {
 
   // Track created resources for deterministic fail-closed cleanup
   const cleanupResources = {
-    transactions: [],
-    transfers: [],
+    transactionsA: [],
+    transactionsB: [],
+    transfersA: [],
+    transfersB: [],
     budgetsA: [],
     budgetsB: [],
     goalsA: [],
@@ -106,7 +110,7 @@ async function runPhase7LiveRLSTests() {
 
   // 4. Setup reference data for User A and User B
   console.log('Setting up reference accounts and categories...');
-  // User A Account 1 (Bank)
+  // User A Account 1 (Bank VND)
   const { data: accA1, error: accA1Err } = await clientA
     .from('accounts')
     .insert({
@@ -121,7 +125,7 @@ async function runPhase7LiveRLSTests() {
   assert(!accA1Err && accA1, `User A account 1 setup failed: ${accA1Err?.message}`);
   cleanupResources.accountsA.push(accA1.id);
 
-  // User A Account 2 (Savings for transfer regression)
+  // User A Account 2 (Savings VND for transfer regression)
   const { data: accA2, error: accA2Err } = await clientA
     .from('accounts')
     .insert({
@@ -151,7 +155,22 @@ async function runPhase7LiveRLSTests() {
   assert(!catAErr && catAExp, `User A expense category setup failed: ${catAErr?.message}`);
   cleanupResources.categoriesA.push(catAExp.id);
 
-  // User B Account 1 (Bank)
+  // User A Income Category
+  const { data: catAInc, error: catAIncErr } = await clientA
+    .from('categories')
+    .insert({
+      user_id: userAId,
+      name: 'User A Salary Income',
+      type: 'INCOME',
+      icon: 'Briefcase',
+      color: '#10b981',
+    })
+    .select()
+    .single();
+  assert(!catAIncErr && catAInc, `User A income category setup failed: ${catAIncErr?.message}`);
+  cleanupResources.categoriesA.push(catAInc.id);
+
+  // User B Account 1 (Bank VND)
   const { data: accB1, error: accB1Err } = await clientB
     .from('accounts')
     .insert({
@@ -166,7 +185,7 @@ async function runPhase7LiveRLSTests() {
   assert(!accB1Err && accB1, `User B account 1 setup failed: ${accB1Err?.message}`);
   cleanupResources.accountsB.push(accB1.id);
 
-  // User B Account 2 (Savings)
+  // User B Account 2 (Savings VND)
   const { data: accB2, error: accB2Err } = await clientB
     .from('accounts')
     .insert({
@@ -224,6 +243,15 @@ async function runPhase7LiveRLSTests() {
   assert(bgtProgInit.spent_amount === '0.0000', `Initial spent must be 0.0000, got ${bgtProgInit.spent_amount}`);
   assert(bgtProgInit.limit_amount === '5000000.0000', `Initial limit must match exact decimal`);
 
+  // Edit budget limit
+  const { data: bgtAEdited, error: bgtAEditErr } = await clientA
+    .from('budgets')
+    .update({ limit_amount: '6000000.0000' })
+    .eq('id', budgetA.id)
+    .select()
+    .single();
+  assert(!bgtAEditErr && bgtAEdited?.limit_amount === '6000000.0000', 'Budget limit edit failed');
+
   // Create active Expense transaction in month using authoritative Phase 4 schema (occurred_on, merchant)
   const { data: txA, error: txAErr } = await clientA
     .from('transactions')
@@ -241,7 +269,7 @@ async function runPhase7LiveRLSTests() {
     .select()
     .single();
   assert(!txAErr && txA, `User A transaction insert failed: ${txAErr?.message}`);
-  cleanupResources.transactions.push(txA.id);
+  cleanupResources.transactionsA.push(txA.id);
 
   // Read budget_progress view -> spent_amount must reflect exact transaction
   const { data: bgtProgAfterTx } = await clientA
@@ -297,13 +325,25 @@ async function runPhase7LiveRLSTests() {
   assert(goalViewA?.target_amount === '20000000.0000', 'Goal target amount exact mismatch');
   assert(goalViewA?.current_amount === '5000000.0000', 'Goal current amount exact mismatch');
 
-  // Overfunded goal update test
+  // Edit goal fields
+  const { data: goalEdited } = await clientA
+    .from('goals')
+    .update({ name: 'Emergency Fund A Renamed', monthly_contribution: '1500000.0000' })
+    .eq('id', goalA.id)
+    .select()
+    .single();
+  assert(goalEdited?.name === 'Emergency Fund A Renamed', 'Goal name update failed');
+
+  // Overfunded goal update test (current_amount > target_amount allowed)
   await clientA.from('goals').update({ current_amount: '25000000.0000' }).eq('id', goalA.id);
   const { data: goalOverfunded } = await clientA.from('goals').select('current_amount').eq('id', goalA.id).single();
   assert(goalOverfunded?.current_amount === '25000000.0000', 'Overfunded goal update failed');
 
   // Archive and unarchive goal
   await clientA.from('goals').update({ is_archived: true }).eq('id', goalA.id);
+  const { data: goalArchived } = await clientA.from('goals').select('is_archived').eq('id', goalA.id).single();
+  assert(goalArchived?.is_archived === true, 'Goal archive failed');
+
   await clientA.from('goals').update({ is_archived: false }).eq('id', goalA.id);
   pass('USER_A_GOAL_LIFECYCLE');
 
@@ -333,6 +373,15 @@ async function runPhase7LiveRLSTests() {
   assert(recViewA?.account_name === accA1.name, 'Recurring account join mismatch');
   assert(recViewA?.category_name === catAExp.name, 'Recurring category join mismatch');
 
+  // Edit recurring item
+  const { data: recEdited } = await clientA
+    .from('recurring_items')
+    .update({ amount: '380000.0000', name: 'Fiber Internet A' })
+    .eq('id', recA.id)
+    .select()
+    .single();
+  assert(recEdited?.amount === '380000.0000', 'Recurring edit failed');
+
   // Pause and resume
   await clientA.from('recurring_items').update({ is_paused: true }).eq('id', recA.id);
   const { data: recPaused } = await clientA.from('recurring_items').select('is_paused').eq('id', recA.id).single();
@@ -342,6 +391,9 @@ async function runPhase7LiveRLSTests() {
 
   // Archive and unarchive
   await clientA.from('recurring_items').update({ is_archived: true }).eq('id', recA.id);
+  const { data: recArchived } = await clientA.from('recurring_items').select('is_archived').eq('id', recA.id).single();
+  assert(recArchived?.is_archived === true, 'Archive recurring failed');
+
   await clientA.from('recurring_items').update({ is_archived: false }).eq('id', recA.id);
   pass('USER_A_RECURRING_LIFECYCLE');
 
@@ -363,8 +415,19 @@ async function runPhase7LiveRLSTests() {
   assert(!bgtBErr && budgetB, `User B budget creation failed: ${bgtBErr?.message}`);
   cleanupResources.budgetsB.push(budgetB.id);
 
+  // User B exact budget read
   const { data: bgtProgBInit } = await clientB.from('budget_progress').select('*').eq('id', budgetB.id).single();
   assert(bgtProgBInit?.spent_amount === '0.0000', 'User B initial budget spent must be 0');
+  assert(bgtProgBInit?.limit_amount === '4000000.0000', 'User B initial budget limit mismatch');
+
+  // User B edit budget limit
+  const { data: bgtBEdited } = await clientB
+    .from('budgets')
+    .update({ limit_amount: '4500000.0000' })
+    .eq('id', budgetB.id)
+    .select()
+    .single();
+  assert(bgtBEdited?.limit_amount === '4500000.0000', 'User B budget limit update failed');
 
   // User B Transaction
   const { data: txB, error: txBErr } = await clientB
@@ -382,7 +445,7 @@ async function runPhase7LiveRLSTests() {
     .select()
     .single();
   assert(!txBErr && txB, `User B transaction insert failed: ${txBErr?.message}`);
-  cleanupResources.transactions.push(txB.id);
+  cleanupResources.transactionsB.push(txB.id);
 
   const { data: bgtProgBAfterTx } = await clientB.from('budget_progress').select('*').eq('id', budgetB.id).single();
   assert(bgtProgBAfterTx?.spent_amount === '800000.0000', 'User B budget spent mismatch');
@@ -392,6 +455,12 @@ async function runPhase7LiveRLSTests() {
   const { data: bgtProgBAfterVoid } = await clientB.from('budget_progress').select('*').eq('id', budgetB.id).single();
   assert(bgtProgBAfterVoid?.spent_amount === '0.0000', 'User B voided tx must not contribute to budget spent');
   await clientB.from('transactions').update({ is_voided: false }).eq('id', txB.id);
+
+  // User B archive and unarchive budget
+  await clientB.from('budgets').update({ is_archived: true }).eq('id', budgetB.id);
+  const { data: bgtBArchived } = await clientB.from('budgets').select('is_archived').eq('id', budgetB.id).single();
+  assert(bgtBArchived?.is_archived === true, 'User B budget archive failed');
+  await clientB.from('budgets').update({ is_archived: false }).eq('id', budgetB.id);
 
   // User B Goal
   const { data: goalB, error: goalBErr } = await clientB
@@ -404,14 +473,38 @@ async function runPhase7LiveRLSTests() {
       monthly_contribution: '500000.0000',
       currency_code: 'VND',
       category: 'Du lịch',
+      icon: 'Plane',
+      color: '#3b82f6',
+      target_date: '2027-06-30',
     })
     .select()
     .single();
   assert(!goalBErr && goalB, `User B goal creation failed: ${goalBErr?.message}`);
   cleanupResources.goalsB.push(goalB.id);
 
+  // User B exact goal read
   const { data: goalViewB } = await clientB.from('goal_details').select('*').eq('id', goalB.id).single();
   assert(goalViewB?.target_amount === '15000000.0000', 'User B goal target amount mismatch');
+
+  // User B edit goal
+  const { data: goalBEdited } = await clientB
+    .from('goals')
+    .update({ name: 'Vacation Fund B Updated', monthly_contribution: '750000.0000' })
+    .eq('id', goalB.id)
+    .select()
+    .single();
+  assert(goalBEdited?.name === 'Vacation Fund B Updated', 'User B goal edit failed');
+
+  // User B overfunded goal update
+  await clientB.from('goals').update({ current_amount: '20000000.0000' }).eq('id', goalB.id);
+  const { data: goalBOverfunded } = await clientB.from('goals').select('current_amount').eq('id', goalB.id).single();
+  assert(goalBOverfunded?.current_amount === '20000000.0000', 'User B overfunded goal failed');
+
+  // User B archive and unarchive goal
+  await clientB.from('goals').update({ is_archived: true }).eq('id', goalB.id);
+  const { data: goalBArchived } = await clientB.from('goals').select('is_archived').eq('id', goalB.id).single();
+  assert(goalBArchived?.is_archived === true, 'User B goal archive failed');
+  await clientB.from('goals').update({ is_archived: false }).eq('id', goalB.id);
 
   // User B Recurring
   const { data: recB, error: recBErr } = await clientB
@@ -432,11 +525,34 @@ async function runPhase7LiveRLSTests() {
   assert(!recBErr && recB, `User B recurring creation failed: ${recBErr?.message}`);
   cleanupResources.recurringB.push(recB.id);
 
+  // User B exact recurring read
   const { data: recViewB } = await clientB.from('recurring_details').select('*').eq('id', recB.id).single();
   assert(recViewB?.amount === '200000.0000', 'User B recurring amount mismatch');
+
+  // User B edit recurring
+  const { data: recBEdited } = await clientB
+    .from('recurring_items')
+    .update({ amount: '220000.0000', name: 'Phone Bill B 5G' })
+    .eq('id', recB.id)
+    .select()
+    .single();
+  assert(recBEdited?.amount === '220000.0000', 'User B recurring edit failed');
+
+  // User B pause and resume
+  await clientB.from('recurring_items').update({ is_paused: true }).eq('id', recB.id);
+  const { data: recBPaused } = await clientB.from('recurring_items').select('is_paused').eq('id', recB.id).single();
+  assert(recBPaused?.is_paused === true, 'User B recurring pause failed');
+  await clientB.from('recurring_items').update({ is_paused: false }).eq('id', recB.id);
+
+  // User B archive and unarchive
+  await clientB.from('recurring_items').update({ is_archived: true }).eq('id', recB.id);
+  const { data: recBArchived } = await clientB.from('recurring_items').select('is_archived').eq('id', recB.id).single();
+  assert(recBArchived?.is_archived === true, 'User B recurring archive failed');
+  await clientB.from('recurring_items').update({ is_archived: false }).eq('id', recB.id);
+
   pass('USER_B_FULL_LIFECYCLE');
 
-  // 9. Bidirectional Cross-User Isolation (A -> B and B -> A)
+  // 9. Bidirectional Cross-User Isolation (A -> B and B -> A across Budgets, Goals, Recurring)
   console.log('Testing bidirectional cross-user isolation...');
 
   // User B cannot select User A budget / budget_progress
@@ -475,11 +591,21 @@ async function runPhase7LiveRLSTests() {
   const { data: aSelectRecViewB } = await clientA.from('recurring_details').select('*').eq('id', recB.id);
   assert(Array.isArray(aSelectRecViewB) && aSelectRecViewB.length === 0, 'RLS VIOLATION: User A selected User B recurring_details');
 
-  // Cross-user updates return empty
+  // Cross-user updates return empty (Budgets, Goals, Recurring)
   const { data: bUpdateBgtA } = await clientB.from('budgets').update({ limit_amount: '999.0000' }).eq('id', budgetA.id).select();
   assert(!bUpdateBgtA || bUpdateBgtA.length === 0, 'RLS VIOLATION: User B updated User A budget');
   const { data: aUpdateBgtB } = await clientA.from('budgets').update({ limit_amount: '999.0000' }).eq('id', budgetB.id).select();
   assert(!aUpdateBgtB || aUpdateBgtB.length === 0, 'RLS VIOLATION: User A updated User B budget');
+
+  const { data: bUpdateGoalA } = await clientB.from('goals').update({ target_amount: '999.0000' }).eq('id', goalA.id).select();
+  assert(!bUpdateGoalA || bUpdateGoalA.length === 0, 'RLS VIOLATION: User B updated User A goal');
+  const { data: aUpdateGoalB } = await clientA.from('goals').update({ target_amount: '999.0000' }).eq('id', goalB.id).select();
+  assert(!aUpdateGoalB || aUpdateGoalB.length === 0, 'RLS VIOLATION: User A updated User B goal');
+
+  const { data: bUpdateRecA } = await clientB.from('recurring_items').update({ amount: '999.0000' }).eq('id', recA.id).select();
+  assert(!bUpdateRecA || bUpdateRecA.length === 0, 'RLS VIOLATION: User B updated User A recurring');
+  const { data: aUpdateRecB } = await clientA.from('recurring_items').update({ amount: '999.0000' }).eq('id', recB.id).select();
+  assert(!aUpdateRecB || aUpdateRecB.length === 0, 'RLS VIOLATION: User A updated User B recurring');
 
   // Cross-user spoofed inserts rejected
   const { error: bSpoofBgtA } = await clientB.from('budgets').insert({
@@ -502,6 +628,48 @@ async function runPhase7LiveRLSTests() {
   });
   assert(aSpoofBgtB, 'RLS VIOLATION: User A inserted budget with User B user_id');
 
+  const { error: bSpoofGoalA } = await clientB.from('goals').insert({
+    user_id: userAId,
+    name: 'Spoofed Goal',
+    target_amount: '1000000.0000',
+    currency_code: 'VND',
+  });
+  assert(bSpoofGoalA, 'RLS VIOLATION: User B inserted goal with User A user_id');
+
+  const { error: aSpoofGoalB } = await clientA.from('goals').insert({
+    user_id: userBId,
+    name: 'Spoofed Goal B',
+    target_amount: '1000000.0000',
+    currency_code: 'VND',
+  });
+  assert(aSpoofGoalB, 'RLS VIOLATION: User A inserted goal with User B user_id');
+
+  const { error: bSpoofRecA } = await clientB.from('recurring_items').insert({
+    user_id: userAId,
+    account_id: accB1.id,
+    category_id: catBExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Spoofed Recurring',
+    amount: '100000.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(bSpoofRecA, 'RLS VIOLATION: User B inserted recurring with User A user_id');
+
+  const { error: aSpoofRecB } = await clientA.from('recurring_items').insert({
+    user_id: userBId,
+    account_id: accA1.id,
+    category_id: catAExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Spoofed Recurring B',
+    amount: '100000.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(aSpoofRecB, 'RLS VIOLATION: User A inserted recurring with User B user_id');
+
   // Cross-user foreign references rejected
   const { error: bRefCatA } = await clientB.from('budgets').insert({
     user_id: userBId,
@@ -513,24 +681,105 @@ async function runPhase7LiveRLSTests() {
   });
   assert(bRefCatA, 'FK/RLS VIOLATION: User B referenced User A category in budget');
 
+  const { error: aRefCatB } = await clientA.from('budgets').insert({
+    user_id: userAId,
+    category_id: catBExp.id,
+    category_type: 'EXPENSE',
+    limit_amount: '1000000.0000',
+    currency_code: 'VND',
+    period_month: '2026-09-01',
+  });
+  assert(aRefCatB, 'FK/RLS VIOLATION: User A referenced User B category in budget');
+
+  const { error: bRefAccA } = await clientB.from('recurring_items').insert({
+    user_id: userBId,
+    account_id: accA1.id,
+    category_id: catBExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Cross Account Test B',
+    amount: '100000.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(bRefAccA, 'FK/RLS VIOLATION: User B referenced User A account in recurring item');
+
   const { error: aRefAccB } = await clientA.from('recurring_items').insert({
     user_id: userAId,
     account_id: accB1.id,
     category_id: catAExp.id,
     transaction_type: 'EXPENSE',
-    name: 'Cross Account Test',
+    name: 'Cross Account Test A',
     amount: '100000.0000',
     currency_code: 'VND',
     frequency: 'MONTHLY',
     anchor_date: '2026-08-01',
   });
   assert(aRefAccB, 'FK/RLS VIOLATION: User A referenced User B account in recurring item');
+
+  const { error: bRefRecCatA } = await clientB.from('recurring_items').insert({
+    user_id: userBId,
+    account_id: accB1.id,
+    category_id: catAExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Cross Category Test B',
+    amount: '100000.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(bRefRecCatA, 'FK/RLS VIOLATION: User B referenced User A category in recurring item');
+
   pass('BIDIRECTIONAL_CROSS_USER_ISOLATION');
 
   // 10. Complete Domain Rejection Matrix
   console.log('Testing domain constraints & rejection matrix...');
 
-  // Budget invalid period_month (non-first-day)
+  // Budgets: zero limit
+  const { error: bgtZeroErr } = await clientA.from('budgets').insert({
+    user_id: userAId,
+    category_id: catAExp.id,
+    category_type: 'EXPENSE',
+    limit_amount: '0.0000',
+    currency_code: 'VND',
+    period_month: '2026-09-01',
+  });
+  assert(bgtZeroErr, 'CONSTRAINT VIOLATION: Budget accepted 0.0000 limit');
+
+  // Budgets: negative limit
+  const { error: bgtNegErr } = await clientA.from('budgets').insert({
+    user_id: userAId,
+    category_id: catAExp.id,
+    category_type: 'EXPENSE',
+    limit_amount: '-1000.0000',
+    currency_code: 'VND',
+    period_month: '2026-09-01',
+  });
+  assert(bgtNegErr, 'CONSTRAINT VIOLATION: Budget accepted negative limit');
+
+  // Budgets: non-EXPENSE category type
+  const { error: bgtTypeErr } = await clientA.from('budgets').insert({
+    user_id: userAId,
+    category_id: catAInc.id,
+    category_type: 'INCOME',
+    limit_amount: '1000000.0000',
+    currency_code: 'VND',
+    period_month: '2026-09-01',
+  });
+  assert(bgtTypeErr, 'CONSTRAINT VIOLATION: Budget accepted INCOME category');
+
+  // Budgets: invalid/lowercase currency
+  const { error: bgtCurrErr } = await clientA.from('budgets').insert({
+    user_id: userAId,
+    category_id: catAExp.id,
+    category_type: 'EXPENSE',
+    limit_amount: '1000000.0000',
+    currency_code: 'vnd',
+    period_month: '2026-09-01',
+  });
+  assert(bgtCurrErr, 'CONSTRAINT VIOLATION: Budget accepted lowercase currency');
+
+  // Budgets: non-first-day period_month
   const { error: bgtDayErr } = await clientA.from('budgets').insert({
     user_id: userAId,
     category_id: catAExp.id,
@@ -541,18 +790,7 @@ async function runPhase7LiveRLSTests() {
   });
   assert(bgtDayErr, 'CONSTRAINT VIOLATION: Budget accepted non-first-day period_month');
 
-  // Budget non-positive limit_amount
-  const { error: bgtLimitErr } = await clientA.from('budgets').insert({
-    user_id: userAId,
-    category_id: catAExp.id,
-    category_type: 'EXPENSE',
-    limit_amount: '0.0000',
-    currency_code: 'VND',
-    period_month: '2026-09-01',
-  });
-  assert(bgtLimitErr, 'CONSTRAINT VIOLATION: Budget accepted 0.0000 limit');
-
-  // Budget duplicate period_month for same category
+  // Budgets: duplicate (user, category, currency, month)
   const { error: bgtDupErr } = await clientA.from('budgets').insert({
     user_id: userAId,
     category_id: catAExp.id,
@@ -563,26 +801,147 @@ async function runPhase7LiveRLSTests() {
   });
   assert(bgtDupErr, 'CONSTRAINT VIOLATION: Budget accepted duplicate month for same category');
 
-  // Goal non-positive target_amount
-  const { error: goalTgtErr } = await clientA.from('goals').insert({
+  // Goals: zero target
+  const { error: goalTgtZeroErr } = await clientA.from('goals').insert({
     user_id: userAId,
     name: 'Zero Target Goal',
     target_amount: '0.0000',
     currency_code: 'VND',
   });
-  assert(goalTgtErr, 'CONSTRAINT VIOLATION: Goal accepted 0.0000 target_amount');
+  assert(goalTgtZeroErr, 'CONSTRAINT VIOLATION: Goal accepted 0.0000 target_amount');
 
-  // Goal negative current_amount
-  const { error: goalNegErr } = await clientA.from('goals').insert({
+  // Goals: negative target
+  const { error: goalTgtNegErr } = await clientA.from('goals').insert({
     user_id: userAId,
-    name: 'Negative Goal',
-    target_amount: '1000000.0000',
-    current_amount: '-5000.0000',
+    name: 'Negative Target Goal',
+    target_amount: '-5000.0000',
     currency_code: 'VND',
   });
-  assert(goalNegErr, 'CONSTRAINT VIOLATION: Goal accepted negative current_amount');
+  assert(goalTgtNegErr, 'CONSTRAINT VIOLATION: Goal accepted negative target_amount');
 
-  // Recurring end_date before anchor_date
+  // Goals: negative current amount
+  const { error: goalNegCurrErr } = await clientA.from('goals').insert({
+    user_id: userAId,
+    name: 'Negative Current Goal',
+    target_amount: '1000000.0000',
+    current_amount: '-500.0000',
+    currency_code: 'VND',
+  });
+  assert(goalNegCurrErr, 'CONSTRAINT VIOLATION: Goal accepted negative current_amount');
+
+  // Goals: negative monthly contribution
+  const { error: goalNegContribErr } = await clientA.from('goals').insert({
+    user_id: userAId,
+    name: 'Negative Contrib Goal',
+    target_amount: '1000000.0000',
+    monthly_contribution: '-100.0000',
+    currency_code: 'VND',
+  });
+  assert(goalNegContribErr, 'CONSTRAINT VIOLATION: Goal accepted negative monthly_contribution');
+
+  // Goals: invalid/lowercase currency
+  const { error: goalCurrErr } = await clientA.from('goals').insert({
+    user_id: userAId,
+    name: 'Lowercase Currency Goal',
+    target_amount: '1000000.0000',
+    currency_code: 'usd',
+  });
+  assert(goalCurrErr, 'CONSTRAINT VIOLATION: Goal accepted lowercase currency');
+
+  // Goals: blank name
+  const { error: goalBlankNameErr } = await clientA.from('goals').insert({
+    user_id: userAId,
+    name: '   ',
+    target_amount: '1000000.0000',
+    currency_code: 'VND',
+  });
+  assert(goalBlankNameErr, 'CONSTRAINT VIOLATION: Goal accepted blank name');
+
+  // Recurring: zero amount
+  const { error: recZeroAmtErr } = await clientA.from('recurring_items').insert({
+    user_id: userAId,
+    account_id: accA1.id,
+    category_id: catAExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Zero Amount Recurring',
+    amount: '0.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(recZeroAmtErr, 'CONSTRAINT VIOLATION: Recurring accepted 0.0000 amount');
+
+  // Recurring: negative amount
+  const { error: recNegAmtErr } = await clientA.from('recurring_items').insert({
+    user_id: userAId,
+    account_id: accA1.id,
+    category_id: catAExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Negative Amount Recurring',
+    amount: '-200.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(recNegAmtErr, 'CONSTRAINT VIOLATION: Recurring accepted negative amount');
+
+  // Recurring: invalid transaction type
+  const { error: recBadTypeErr } = await clientA.from('recurring_items').insert({
+    user_id: userAId,
+    account_id: accA1.id,
+    category_id: catAExp.id,
+    transaction_type: 'TRANSFER',
+    name: 'Invalid Type Recurring',
+    amount: '100000.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(recBadTypeErr, 'CONSTRAINT VIOLATION: Recurring accepted TRANSFER type');
+
+  // Recurring: invalid frequency
+  const { error: recBadFreqErr } = await clientA.from('recurring_items').insert({
+    user_id: userAId,
+    account_id: accA1.id,
+    category_id: catAExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Invalid Freq Recurring',
+    amount: '100000.0000',
+    currency_code: 'VND',
+    frequency: 'DAILY',
+    anchor_date: '2026-08-01',
+  });
+  assert(recBadFreqErr, 'CONSTRAINT VIOLATION: Recurring accepted DAILY frequency');
+
+  // Recurring: invalid currency code
+  const { error: recBadCurrErr } = await clientA.from('recurring_items').insert({
+    user_id: userAId,
+    account_id: accA1.id,
+    category_id: catAExp.id,
+    transaction_type: 'EXPENSE',
+    name: 'Invalid Curr Recurring',
+    amount: '100000.0000',
+    currency_code: 'vnd',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(recBadCurrErr, 'CONSTRAINT VIOLATION: Recurring accepted lowercase currency');
+
+  // Recurring: blank name
+  const { error: recBlankNameErr } = await clientA.from('recurring_items').insert({
+    user_id: userAId,
+    account_id: accA1.id,
+    category_id: catAExp.id,
+    transaction_type: 'EXPENSE',
+    name: '  ',
+    amount: '100000.0000',
+    currency_code: 'VND',
+    frequency: 'MONTHLY',
+    anchor_date: '2026-08-01',
+  });
+  assert(recBlankNameErr, 'CONSTRAINT VIOLATION: Recurring accepted blank name');
+
+  // Recurring: end_date before anchor_date
   const { error: recDateErr } = await clientA.from('recurring_items').insert({
     user_id: userAId,
     account_id: accA1.id,
@@ -597,9 +956,16 @@ async function runPhase7LiveRLSTests() {
   });
   assert(recDateErr, 'CONSTRAINT VIOLATION: Recurring accepted end_date before anchor_date');
 
-  // Direct DELETE rejection (no DELETE policies)
+  // Direct DELETE rejection across budgets, goals, recurring_items
   const { data: deleteBgtAttempt } = await clientA.from('budgets').delete().eq('id', budgetA.id).select();
   assert(!deleteBgtAttempt || deleteBgtAttempt.length === 0, 'DELETE POLICY VIOLATION: Direct delete succeeded on budgets');
+
+  const { data: deleteGoalAttempt } = await clientA.from('goals').delete().eq('id', goalA.id).select();
+  assert(!deleteGoalAttempt || deleteGoalAttempt.length === 0, 'DELETE POLICY VIOLATION: Direct delete succeeded on goals');
+
+  const { data: deleteRecAttempt } = await clientA.from('recurring_items').delete().eq('id', recA.id).select();
+  assert(!deleteRecAttempt || deleteRecAttempt.length === 0, 'DELETE POLICY VIOLATION: Direct delete succeeded on recurring_items');
+
   pass('DOMAIN_REJECTION_MATRIX');
 
   // 11. Phase 4 exact transaction read & account-balance effect regression
@@ -630,7 +996,7 @@ async function runPhase7LiveRLSTests() {
     .select()
     .single();
   assert(!trfAErr && trfA, `User A transfer insert failed: ${trfAErr?.message}`);
-  cleanupResources.transfers.push(trfA.id);
+  cleanupResources.transfersA.push(trfA.id);
 
   // Check transfer_details view
   const { data: trfDetailA } = await clientA.from('transfer_details').select('*').eq('id', trfA.id).single();
@@ -660,60 +1026,100 @@ async function runPhase7LiveRLSTests() {
   assert(nonExistentTableErr, 'Expected error when querying nonexistent table');
   pass('DELIBERATE_NON_RLS_ERROR_DISTINCTION');
 
-  // 14. Deterministic fail-closed cleanup using allowed archive/void mutations
-  console.log('Performing deterministic fail-closed cleanup...');
-  // Void transfers
-  for (const trfId of cleanupResources.transfers) {
-    const { error: vErr } = await clientA.from('transfers').update({ is_voided: true }).eq('id', trfId);
-    assert(!vErr, `Failed to void transfer ${trfId}: ${vErr?.message}`);
+  // 14. Deterministic fail-closed cleanup using allowed archive/void mutations with ownership verification
+  console.log('Performing deterministic fail-closed cleanup with ownership assertions...');
+  // Void User A transfers
+  for (const trfId of cleanupResources.transfersA) {
+    const { data, error: vErr } = await clientA.from('transfers').update({ is_voided: true }).eq('id', trfId).select();
+    assert(!vErr && data?.length === 1 && data[0].is_voided === true, `Failed to void transferA ${trfId}`);
+    const { data: readback } = await clientA.from('transfers').select('is_voided').eq('id', trfId).single();
+    assert(readback?.is_voided === true, `TransferA ${trfId} readback void assertion failed`);
   }
-  // Void transactions
-  for (const txId of cleanupResources.transactions) {
-    const { error: vErr } = await clientA.from('transactions').update({ is_voided: true }).eq('id', txId);
-    assert(!vErr, `Failed to void transaction ${txId}: ${vErr?.message}`);
+  // Void User B transfers
+  for (const trfId of cleanupResources.transfersB) {
+    const { data, error: vErr } = await clientB.from('transfers').update({ is_voided: true }).eq('id', trfId).select();
+    assert(!vErr && data?.length === 1 && data[0].is_voided === true, `Failed to void transferB ${trfId}`);
+    const { data: readback } = await clientB.from('transfers').select('is_voided').eq('id', trfId).single();
+    assert(readback?.is_voided === true, `TransferB ${trfId} readback void assertion failed`);
   }
+
+  // Void User A transactions
+  for (const txId of cleanupResources.transactionsA) {
+    const { data, error: vErr } = await clientA.from('transactions').update({ is_voided: true }).eq('id', txId).select();
+    assert(!vErr && data?.length === 1 && data[0].is_voided === true, `Failed to void transactionA ${txId}`);
+    const { data: readback } = await clientA.from('transactions').select('is_voided').eq('id', txId).single();
+    assert(readback?.is_voided === true, `TransactionA ${txId} readback void assertion failed`);
+  }
+  // Void User B transactions
+  for (const txId of cleanupResources.transactionsB) {
+    const { data, error: vErr } = await clientB.from('transactions').update({ is_voided: true }).eq('id', txId).select();
+    assert(!vErr && data?.length === 1 && data[0].is_voided === true, `Failed to void transactionB ${txId}`);
+    const { data: readback } = await clientB.from('transactions').select('is_voided').eq('id', txId).single();
+    assert(readback?.is_voided === true, `TransactionB ${txId} readback void assertion failed`);
+  }
+
   // Archive User A budgets, goals, recurring, accounts, categories
   for (const id of cleanupResources.budgetsA) {
-    const { error: aErr } = await clientA.from('budgets').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive budgetA ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientA.from('budgets').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive budgetA ${id}`);
+    const { data: rb } = await clientA.from('budgets').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `BudgetA ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.goalsA) {
-    const { error: aErr } = await clientA.from('goals').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive goalA ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientA.from('goals').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive goalA ${id}`);
+    const { data: rb } = await clientA.from('goals').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `GoalA ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.recurringA) {
-    const { error: aErr } = await clientA.from('recurring_items').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive recurringA ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientA.from('recurring_items').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive recurringA ${id}`);
+    const { data: rb } = await clientA.from('recurring_items').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `RecurringA ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.accountsA) {
-    const { error: aErr } = await clientA.from('accounts').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive accountA ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientA.from('accounts').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive accountA ${id}`);
+    const { data: rb } = await clientA.from('accounts').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `AccountA ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.categoriesA) {
-    const { error: aErr } = await clientA.from('categories').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive categoryA ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientA.from('categories').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive categoryA ${id}`);
+    const { data: rb } = await clientA.from('categories').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `CategoryA ${id} readback archive assertion failed`);
   }
 
   // Archive User B budgets, goals, recurring, accounts, categories
   for (const id of cleanupResources.budgetsB) {
-    const { error: aErr } = await clientB.from('budgets').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive budgetB ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientB.from('budgets').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive budgetB ${id}`);
+    const { data: rb } = await clientB.from('budgets').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `BudgetB ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.goalsB) {
-    const { error: aErr } = await clientB.from('goals').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive goalB ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientB.from('goals').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive goalB ${id}`);
+    const { data: rb } = await clientB.from('goals').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `GoalB ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.recurringB) {
-    const { error: aErr } = await clientB.from('recurring_items').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive recurringB ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientB.from('recurring_items').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive recurringB ${id}`);
+    const { data: rb } = await clientB.from('recurring_items').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `RecurringB ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.accountsB) {
-    const { error: aErr } = await clientB.from('accounts').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive accountB ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientB.from('accounts').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive accountB ${id}`);
+    const { data: rb } = await clientB.from('accounts').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `AccountB ${id} readback archive assertion failed`);
   }
   for (const id of cleanupResources.categoriesB) {
-    const { error: aErr } = await clientB.from('categories').update({ is_archived: true }).eq('id', id);
-    assert(!aErr, `Failed to archive categoryB ${id}: ${aErr?.message}`);
+    const { data, error: aErr } = await clientB.from('categories').update({ is_archived: true }).eq('id', id).select();
+    assert(!aErr && data?.length === 1 && data[0].is_archived === true, `Failed to archive categoryB ${id}`);
+    const { data: rb } = await clientB.from('categories').select('is_archived').eq('id', id).single();
+    assert(rb?.is_archived === true, `CategoryB ${id} readback archive assertion failed`);
   }
   pass('DETERMINISTIC_CLEANUP_ASSERTIONS');
 
