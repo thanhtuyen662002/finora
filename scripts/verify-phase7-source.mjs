@@ -724,7 +724,8 @@ const statusContent = fs.readFileSync(statusPath, 'utf8');
 
 if (
   statusContent.includes('PHASE_7_SOURCE_GATE=PASS_CODE_ONLY') &&
-  statusContent.includes('PHASE_7_MIGRATION_APPLY=PENDING_USER') &&
+  statusContent.includes('PHASE_7_REMOTE_DATABASE=PASS') &&
+  statusContent.includes('PHASE_7_OVERALL=PARTIAL') &&
   statusContent.includes('PHASE_8_AUTHORIZED=false')
 ) {
   pass('docs/PROJECT_STATUS.md maintains truthful Phase 7 status & unauthorized Phase 8');

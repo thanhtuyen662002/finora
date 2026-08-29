@@ -523,13 +523,15 @@ PHASE_4=PASS
 PHASE_5=PASS
 PHASE_6=PASS
 PHASE_7_SOURCE_GATE=PASS_CODE_ONLY
-PHASE_7_MIGRATION_APPLY=PENDING_USER
-PHASE_7_OVERALL=IN_PROGRESS
+PHASE_7_REMOTE_DATABASE=PASS
+PHASE_7_STRUCTURAL_GATE=PASS
+PHASE_7_TWO_USER_RLS=PASS
+PHASE_7_LIVE_PERSISTENCE_SMOKE=PASS_CORE_PENDING_FINAL_MOBILE_MONEY_UX
+PHASE_7_OVERALL=PARTIAL
 PHASE_8_AUTHORIZED=false
 ```
 
 ## Next Recommended Action
 
-1. Apply migration `supabase/migrations/20260829000000_phase_7_budgets_goals_recurring.sql` to the target Supabase project.
-2. Run database structural verification (`scripts/verify-phase7-db.sql`) and two-user live RLS smoke (`scripts/verify-phase7-rls.mjs`).
-3. Complete owner-attested live persistence verification for Budgets, Goals, and Recurring.
+1. Complete owner-attested live mobile UX and persistence verification for Phase 7.
+2. Await explicit authorization from owner to begin Phase 8 (Multi-Currency + FX).

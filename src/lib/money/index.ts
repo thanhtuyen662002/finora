@@ -131,9 +131,7 @@ export function formatExactMoney(
 
   let formattedNumber: string;
   if (normalizedCurrency === 'VND' || normalizedCurrency === 'JPY' || normalizedCurrency === 'KRW') {
-    formattedNumber = trimmedFraction.length > 0
-      ? `${groupedInteger}${decimalSeparator}${trimmedFraction}`
-      : groupedInteger;
+    formattedNumber = groupedInteger;
   } else {
     const firstTwo = fractionalPart.slice(0, 2);
     const remaining = fractionalPart.slice(2).replace(/0+$/, '');

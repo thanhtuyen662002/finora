@@ -2,7 +2,7 @@
  * Money Input & Formatting Utilities
  *
  * Provides string-based, BigInt-safe parsing and formatting for user monetary inputs.
- * Strictly avoids Number(), parseFloat(), parseInt(), unary +, and floating-point math.
+ * Strictly avoids floating-point math.
  */
 
 import { groupThousands } from './index';
@@ -99,28 +99,45 @@ export function parseMoneyInputValue(
     return isNegative ? `-${cleaned}` : cleaned;
   }
 
-  // Decimal currencies: strip thousand separators (commas), allow at most one dot
-  const stripped = unsigned.replace(/,/g, '');
-  const dotIndex = stripped.indexOf('.');
+  // Find the last separator (dot or comma) to determine the decimal point
+  const lastDot = unsigned.lastIndexOf('.');
+  const lastComma = unsigned.lastIndexOf(',');
+
+  let decimalIndex = -1;
+
+  if (lastDot !== -1 && lastComma !== -1) {
+    decimalIndex = Math.max(lastDot, lastComma);
+  } else if (lastDot !== -1) {
+    decimalIndex = lastDot;
+  } else if (lastComma !== -1) {
+    const digitsAfterLastComma = unsigned.length - 1 - lastComma;
+    if (digitsAfterLastComma === 3) {
+      decimalIndex = -1;
+    } else {
+      decimalIndex = lastComma;
+    }
+  }
 
   let intPart = '';
   let fracPart = '';
 
-  if (dotIndex === -1) {
-    intPart = stripped.replace(/\D/g, '').slice(0, 16);
+  if (decimalIndex !== -1) {
+    const rawInt = unsigned.slice(0, decimalIndex);
+    const rawFrac = unsigned.slice(decimalIndex + 1);
+    intPart = rawInt.replace(/\D/g, '').slice(0, 16);
+    fracPart = rawFrac.replace(/\D/g, '').slice(0, 4);
   } else {
-    intPart = stripped.slice(0, dotIndex).replace(/\D/g, '').slice(0, 16);
-    fracPart = stripped.slice(dotIndex + 1).replace(/\D/g, '').slice(0, 4);
+    intPart = unsigned.replace(/\D/g, '').slice(0, 16);
   }
 
   const cleanInt = intPart.replace(/^0+(?=\d)/, '');
-  const effectiveInt = cleanInt || (intPart === '0' ? '0' : '');
+  const effectiveInt = cleanInt || (intPart === '0' || unsigned.startsWith('0') ? '0' : '');
 
-  if (!effectiveInt && !fracPart && dotIndex === -1) {
+  if (!effectiveInt && !fracPart && decimalIndex === -1) {
     return '';
   }
 
   const resultInt = effectiveInt || '0';
-  const result = dotIndex !== -1 ? `${resultInt}.${fracPart}` : resultInt;
+  const result = decimalIndex !== -1 ? `${resultInt}.${fracPart}` : resultInt;
   return isNegative && result !== '0' && result !== '0.0000' ? `-${result}` : result;
 }
