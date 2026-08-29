@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { defaultFxProvider, convertExactAmount } from '@/lib/exchange-rate';
+import { defaultFxProvider, convertExactAmount, matchSnapshotVersion } from '@/lib/exchange-rate';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toExactDecimal } from '@/lib/money';
@@ -90,13 +90,7 @@ export async function POST(request: Request) {
       for (const tx of missingSnapshots) {
         const exactTxAmount = toExactDecimal(tx.amount);
         
-        const match = (existingSnapshots as any[])?.find(s => 
-          s.transaction_id === tx.id &&
-          s.source_currency_code === tx.currency_code &&
-          s.target_currency_code === targetCurrency &&
-          s.source_amount === exactTxAmount &&
-          s.requested_date === tx.occurred_on
-        );
+        const match = matchSnapshotVersion(existingSnapshots as any[] || [], tx, targetCurrency);
 
         if (match) {
           snapshots.push({

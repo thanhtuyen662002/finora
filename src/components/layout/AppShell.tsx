@@ -21,7 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
 import { cn } from '@/lib/utils';
-import { getCurrentUser, getCurrentProfile, getCurrentUserSettings, signOut } from '@/lib/auth';
+import { getCurrentUserContext, signOut } from '@/lib/auth';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -33,41 +33,46 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [addTxOpen, setAddTxOpen] = useState(false);
 
   // User state
-  const [displayName, setDisplayName] = useState<string>('Người dùng');
+  const [displayName, setDisplayName] = useState<string>('');
   const [userEmail, setUserEmail] = useState<string>('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<string>('VND');
   const [locale, setLocale] = useState<string>('vi-VN');
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadUserData() {
       try {
-        const { user } = await getCurrentUser();
-        if (user && isMounted) {
-          setUserEmail(user.email || '');
-          const fallbackName =
-            user.user_metadata?.full_name ||
-            user.user_metadata?.name ||
-            user.email?.split('@')[0] ||
-            'Người dùng';
-          setDisplayName(fallbackName);
-        }
+        const { user, profile, settings } = await getCurrentUserContext();
 
-        const { data: profile } = await getCurrentProfile();
-        if (profile && isMounted) {
-          if (profile.display_name) setDisplayName(profile.display_name);
-          if (profile.avatar_url) setAvatarUrl(profile.avatar_url);
-        }
+        if (isMounted) {
+          if (user) {
+            setUserEmail(user.email || '');
 
-        const { data: settings } = await getCurrentUserSettings();
-        if (settings && isMounted) {
-          if (settings.base_currency) setBaseCurrency(settings.base_currency);
-          if (settings.locale) setLocale(settings.locale);
+            // Resolve final identity with precedence
+            const fallbackName =
+              profile?.display_name ||
+              user.user_metadata?.full_name ||
+              user.user_metadata?.name ||
+              user.email?.split('@')[0] ||
+              'Người dùng';
+
+            setDisplayName(fallbackName);
+            setAvatarUrl(profile?.avatar_url || user.user_metadata?.avatar_url || null);
+          }
+
+          if (settings) {
+            if (settings.base_currency) setBaseCurrency(settings.base_currency);
+            if (settings.locale) setLocale(settings.locale);
+          }
+
+          setIsLoaded(true);
         }
       } catch (err) {
         console.debug('Could not load user profile in AppShell', err);
+        if (isMounted) setIsLoaded(true);
       }
     }
 
@@ -83,14 +88,16 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     router.refresh();
   };
 
-  const initials = displayName
-    ? displayName
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .substring(0, 2)
-        .toUpperCase()
-    : 'FN';
+  const initials = isLoaded
+    ? (displayName
+        ? displayName
+            .split(' ')
+            .map((n) => n[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase()
+        : 'FN')
+    : '';
 
   const navGroups = [
     {
@@ -320,7 +327,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                         <span className="font-bold text-lg tracking-tight">Finora</span>
                       </SheetTitle>
                     </SheetHeader>
-                    
+
                     <div className="flex-1 overflow-y-auto">
                       <nav className="px-3 py-4 space-y-6">
                         {navGroups.map((group) => (
@@ -359,8 +366,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
                     <div className="p-4 border-t bg-muted/30 shrink-0">
                       <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                        <Link 
-                          href="/settings" 
+                        <Link
+                          href="/settings"
                           onClick={() => setMobileMenuOpen(false)}
                           className="flex items-center space-x-3 min-w-0 flex-1 hover:opacity-80 transition-opacity"
                         >

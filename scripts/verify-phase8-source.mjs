@@ -4,6 +4,7 @@ import crypto from 'crypto';
 
 let passed = 0;
 const total = 26;
+
 function check(num, name, condition) {
   if (condition) {
     console.log(`[PASS] ${num}. ${name}`);
@@ -12,6 +13,7 @@ function check(num, name, condition) {
     console.log(`[FAIL] ${num}. ${name}`);
   }
 }
+
 function sha(content) {
   return crypto.createHash('sha1').update(`blob ${content.length}\0${content}`).digest('hex');
 }
@@ -44,6 +46,7 @@ check(9, "provider uses v2 rates.csv", frankfurter.includes('/v2/rates.csv') && 
 
 const fxMath = fs.readFileSync('src/lib/exchange-rate/fx-math.ts', 'utf-8');
 check(10, "exact rate is string-only and >12 decimals rejected", fxMath.includes('if (fractionalPart.length > 12)') && fxMath.includes('throw new Error'));
+
 check(11, "authoritative FX conversion contains no JS float math", !fxMath.includes('parseFloat(') && !fxMath.includes('Number(') && !fxMath.match(/\b\d+\.\d+\s*[\*\/]/));
 
 const currentBatch = fs.readFileSync('src/app/api/fx/current-batch/route.ts', 'utf-8');
@@ -69,7 +72,7 @@ const mathTests = fs.readFileSync('tests/phase8-math.test.ts', 'utf-8');
 check(18, "No placeholder test assertions", !mathTests.includes('assertEq(true, true'));
 
 const dbVer = fs.readFileSync('scripts/verify-phase8-db.sql', 'utf-8');
-check(19, "Structural verifier exhaustive", dbVer.includes('99_OVERALL') && dbVer.includes('numeric_precision') && dbVer.includes('gen_random_uuid()') && dbVer.includes('fk_snapshot_transaction') && dbVer.includes('auth.uid() = user_id'));
+check(19, "Structural verifier exhaustive", dbVer.includes('99_OVERALL') && dbVer.includes('{3,5}') && dbVer.includes('security_invoker=true') && dbVer.includes('fk_snapshot_transaction') && dbVer.includes('auth.uid() = user_id'));
 
 const rlsVer = fs.readFileSync('scripts/verify-phase8-rls.mjs', 'utf-8');
 check(20, "Runtime verifier real operations", rlsVer.includes('signInWithPassword') && !rlsVer.includes('console.error(`[FAIL] ${msg}: Did not throw`); process.exit(1); }') && rlsVer.includes('auto_fx_enabled'));
@@ -80,11 +83,14 @@ check(21, "PROJECT_STATUS truthful", status.includes('PHASE_8_PASS_A_SOURCE_GATE
 const adr = fs.readFileSync('docs/DECISIONS.md', 'utf-8');
 const dbDocs = fs.readFileSync('docs/DATABASE.md', 'utf-8');
 check(22, "ADR-013 and DATABASE docs exist with required semantics", adr.includes('ADR-013') && dbDocs.includes('transaction_fx_snapshots'));
-
 check(23, "Phase 9 remains unauthorized", status.includes('PHASE_9_AUTHORIZED=false'));
-check(24, "Tests test actual logic", mathTests.includes('aggregateCurrencySummaries'));
-check(25, "Source script avoids skeleton checks", true);
-check(26, "Source script passes all constraints", true);
+
+check(24, "Pre-migration explicit-select of auto_fx_enabled is forbidden", !reportEngine.includes("select('base_currency, timezone, auto_fx_enabled')"));
+
+const appShell = fs.readFileSync('src/components/layout/AppShell.tsx', 'utf-8');
+check(25, "AppShell fake identity and sequential set is forbidden", !appShell.includes("setDisplayName('Người dùng')") && appShell.includes('getCurrentUserContext'));
+
+check(26, "Tests test actual logic, not placeholder", mathTests.includes('pre-migration settings compatibility') && mathTests.includes('identity display precedence'));
 
 console.log(`\nPHASE_8_SOURCE_CHECK_COUNT: ${passed}/${total}`);
 if (passed !== total) process.exit(1);

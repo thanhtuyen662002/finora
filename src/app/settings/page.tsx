@@ -56,6 +56,7 @@ export default function SettingsPage() {
   const [timezone, setTimezone] = useState('Asia/Ho_Chi_Minh');
   const [maskBalance, setMaskBalance] = useState(false);
   const [autoFx, setAutoFx] = useState(true);
+  const [hasAutoFxSchema, setHasAutoFxSchema] = useState(true);
 
   // Appearance
   const [appearanceTheme, setAppearanceTheme] = useState<'light' | 'dark' | 'system'>('system');
@@ -112,7 +113,14 @@ export default function SettingsPage() {
           if (settings.locale) setLocale(settings.locale);
           if (settings.timezone) setTimezone(settings.timezone);
           if (settings.theme) setAppearanceTheme(settings.theme);
-          if (settings.auto_fx_enabled !== undefined) setAutoFx(settings.auto_fx_enabled);
+
+          if (settings.auto_fx_enabled !== undefined) {
+            setAutoFx(settings.auto_fx_enabled);
+            setHasAutoFxSchema(true);
+          } else {
+            setAutoFx(false);
+            setHasAutoFxSchema(false);
+          }
         }
       } catch (err) {
         console.debug('Failed to load user settings', err);
@@ -139,13 +147,18 @@ export default function SettingsPage() {
       });
 
       // 2. Update user_settings
-      const { error: settingsError } = await updateCurrentUserSettings({
+      const settingsUpdates: any = {
         base_currency: baseCurrency,
         locale,
         timezone,
         theme: appearanceTheme,
-        auto_fx_enabled: autoFx,
-      });
+      };
+
+      if (hasAutoFxSchema) {
+        settingsUpdates.auto_fx_enabled = autoFx;
+      }
+
+      const { error: settingsError } = await updateCurrentUserSettings(settingsUpdates);
 
       if (profileError || settingsError) {
         const errorDetail =
@@ -415,7 +428,13 @@ export default function SettingsPage() {
                       Hiển thị giá trị quy đổi sang {baseCurrency} bên cạnh các tài khoản hoặc giao dịch ngoại tệ.
                     </p>
                   </div>
-                  <Switch checked={autoFx} onCheckedChange={setAutoFx} />
+                  {!hasAutoFxSchema ? (
+                    <div className="flex items-center space-x-2 text-sm text-amber-600 bg-amber-50 p-2 rounded-md">
+                      Tính năng này cần cập nhật cơ sở dữ liệu.
+                    </div>
+                  ) : (
+                    <Switch checked={autoFx} onCheckedChange={setAutoFx} />
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between">

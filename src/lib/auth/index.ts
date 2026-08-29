@@ -217,4 +217,31 @@ export async function updateCurrentUserSettings(
   return { data: data as UserSettings | null, error: error as Error | null };
 }
 
+/**
+ * Get current user context (auth + profile + settings) in parallel
+ */
+export async function getCurrentUserContext() {
+  const supabase = createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (!user || userError) {
+    return { user: null, profile: null, settings: null, error: userError };
+  }
+
+  const [profileResult, settingsResult] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', user.id).single(),
+    supabase.from('user_settings').select('*').eq('user_id', user.id).single()
+  ]);
+
+  return {
+    user,
+    profile: profileResult.data as Profile | null,
+    settings: settingsResult.data as UserSettings | null,
+    error: null
+  };
+}
+
 export { getSafeRedirectUrl } from './redirect';

@@ -52,7 +52,7 @@ export async function getDashboardReportData(
     getTransactions(),
     getAccounts(),
     getAccountBalances(),
-    supabase.from('user_settings').select('base_currency, timezone, auto_fx_enabled').maybeSingle(),
+    supabase.from('user_settings').select('*').maybeSingle(),
   ]);
 
   if (userSettingsResult.error) {
@@ -60,7 +60,8 @@ export async function getDashboardReportData(
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-  const autoFxEnabled = userSettingsResult.data?.auto_fx_enabled ?? true;
+  const schemaHasAutoFx = typeof userSettingsResult.data?.auto_fx_enabled === 'boolean';
+  const autoFxEnabled = schemaHasAutoFx ? userSettingsResult.data!.auto_fx_enabled : false;
   const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,
@@ -217,7 +218,7 @@ export async function getDetailedReportData(
     getTransactions(),
     getAccounts(),
     getAccountBalances(),
-    supabase.from('user_settings').select('base_currency, timezone, auto_fx_enabled').maybeSingle(),
+    supabase.from('user_settings').select('*').maybeSingle(),
   ]);
 
   if (userSettingsResult.error) {
@@ -225,7 +226,8 @@ export async function getDetailedReportData(
   }
 
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-  const autoFxEnabled = userSettingsResult.data?.auto_fx_enabled ?? true;
+  const schemaHasAutoFx = typeof userSettingsResult.data?.auto_fx_enabled === 'boolean';
+  const autoFxEnabled = schemaHasAutoFx ? userSettingsResult.data!.auto_fx_enabled : false;
   const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,

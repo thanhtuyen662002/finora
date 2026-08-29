@@ -556,6 +556,7 @@ Implemented fixes:
 - `auto_fx_enabled` is successfully persisted in `user_settings` UI.
 - UI Dashboards/Reports present `UNAVAILABLE` / `DISABLED` alerts when BASE currency conversion is requested but provider/snapshots cannot fulfill it exactly.
 - Added `ADR-013` to `docs/DECISIONS.md` to preserve this boundary.
+- **IMPORTANT**: The source codebase remains fully Phase-7-DB-compatible before the Phase 8 migration is actually applied. Settings writes and reads gracefully handle missing `auto_fx_enabled` columns.
 
 Verification:
 - `verify-phase8-source.mjs`: PASS

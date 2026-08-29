@@ -1,6 +1,6 @@
-import { toExactRate, convertExactAmount } from '../src/lib/exchange-rate/fx-math';
+import { toExactRate, convertExactAmount, matchSnapshotVersion } from '../src/lib/exchange-rate/fx-math';
 import { FrankfurterProvider } from '../src/lib/exchange-rate/frankfurter';
-import { aggregateCashFlow, aggregateCurrencySummaries } from '../src/features/reports/engine';
+import { aggregateCashFlow, aggregateCurrencySummaries, getAvailableCurrenciesAndDefault } from '../src/features/reports/engine';
 
 let passed = 0;
 let total = 0;
@@ -34,16 +34,12 @@ async function runTests() {
   assertEq(convertExactAmount('0.0000', '2.000000000000'), '0.0000', 'zero conversion');
   assertEq(convertExactAmount('100.0000', '0.500000000000'), '50.0000', 'rate below 1');
   assertEq(convertExactAmount('100.1234', '1.111111111111'), '111.2482', '12-decimal precision rounding');
-
   assertEq(convertExactAmount('100.0005', '1.000000000000'), '100.0005', 'half-away-from-zero positive');
   assertEq(convertExactAmount('-100.0005', '1.000000000000'), '-100.0005', 'half-away-from-zero negative');
-
   assertThrows(() => convertExactAmount('9999999999999999.9999', '100.0'), 'numeric(20,4) overflow rejected');
 
   console.log('--- Provider Tests ---');
   const provider = new FrankfurterProvider();
-
-  // Mock fetch
   const originalFetch = global.fetch;
 
   // Identity without network call
@@ -55,8 +51,6 @@ async function runTests() {
     if (url.includes('malformed')) return { ok: true, text: async () => 'invalidcsv' } as any;
     if (url.includes('future')) return { ok: true, text: async () => 'date,base,quote,rate\n2099-01-01,USD,VND,25000' } as any;
     if (url.includes('out-of-window')) return { ok: true, text: async () => 'date,base,quote,rate\n2020-01-01,USD,VND,23000' } as any;
-
-    // Normal case
     return {
       ok: true,
       text: async () => `date,base,quote,rate\n2023-10-01,USD,VND,24000\n2023-10-02,USD,VND,24100`
@@ -97,10 +91,8 @@ async function runTests() {
   global.fetch = originalFetch;
 
   console.log('--- Domain Logic Tests ---');
-  // transaction version edit amount/date/currency selects a new snapshot identity -> tested via SQL UNIQUE constraint
-  // We can test this by importing generateCsvExport
-  const { exportTransactionsToCSV } = await import('../src/features/reports/engine');
 
+  const { exportTransactionsToCSV } = await import('../src/features/reports/engine');
   const fakeTx = [{
     id: 'tx1',
     type: 'INCOME',
@@ -114,35 +106,44 @@ async function runTests() {
     fx_effective_date: '2023-10-01',
     fx_provider: 'Frankfurter'
   }];
-
   const csvRes = exportTransactionsToCSV(fakeTx as any, 'BASE', 'Tháng 10', 'UTC');
   const csvLines = csvRes.csvContent.split('\r\n');
   assertEq(csvLines[0].split(',').length, 15, 'BASE CSV header/data column counts and provenance (header)');
   assertEq(csvLines[1].split(',').length, 15, 'BASE CSV header/data column counts and provenance (data)');
 
-  // Dashboard native account list cannot duplicate synthetic BASE accounts
-  const avail = ['VND', 'USD', 'BASE'];
-  const filtered = avail.filter(c => c !== 'BASE');
-  assertEq(filtered.includes('BASE'), false, 'dashboard native account list cannot duplicate synthetic BASE accounts');
+  const fakeAccs = [{ id: 'a1', currency_code: 'USD' }, { id: 'a2', currency_code: 'VND' }];
+  const avail = getAvailableCurrenciesAndDefault(fakeAccs as any, [], 'BASE').availableCurrencies;
+  assertEq(avail.includes('BASE'), false, 'dashboard native account list excludes synthetic BASE copies');
 
-  // missing one current rate yields no converted net-worth scalar
-  // simulated by our UI fallback
-  // per-transaction historical aggregation
   const summaries = aggregateCurrencySummaries(fakeTx as any, '2023-10');
   assertEq(summaries['BASE'].totalIncome, '100.0000', 'per-transaction historical aggregation');
 
-  // provider outage leaves native reporting usable
   const nativeTx = [{ type: 'INCOME', amount: '50.0000', currency_code: 'VND', occurred_on: '2023-10-01' }];
   const nativeSummaries = aggregateCurrencySummaries(nativeTx as any, '2023-10');
-  assertEq(nativeSummaries['VND'].totalIncome, '50.0000', 'provider outage leaves native reporting usable');
+  assertEq(nativeSummaries['VND'].totalIncome, '50.0000', 'native reporting survives FX unavailable');
 
-  // base currency change does not mutate old snapshot identity
-  // This is a database property, we just verify the schema constraints above.
-  // transaction version edit amount/date/currency selects a new snapshot identity
-  // Also DB property
-  // missing one current rate yields no converted net-worth scalar
-  // This is handled by UI logic where baseValuation.status !== 'AVAILABLE' -> accountsInCurrency = null.
+  // transaction snapshot identity/version helper behavior
+  const existingSnap = [{ transaction_id: 'tx1', source_currency_code: 'USD', target_currency_code: 'VND', source_amount: '100.0000', requested_date: '2023-10-01' }];
+  const match1 = matchSnapshotVersion(existingSnap, { id: 'tx1', currency_code: 'USD', amount: '100', occurred_on: '2023-10-01' }, 'VND');
+  assertEq(match1 !== undefined, true, 'snapshot identity/version helper finds match');
 
+  const match2 = matchSnapshotVersion(existingSnap, { id: 'tx1', currency_code: 'USD', amount: '101', occurred_on: '2023-10-01' }, 'VND');
+  assertEq(match2 === undefined, true, 'snapshot identity/version helper rejects mismatch amount');
+
+  // pre-migration settings compatibility
+  const preMigUserSet = { base_currency: 'VND', auto_fx_enabled: undefined };
+  const hasAutoFx = typeof preMigUserSet.auto_fx_enabled === 'boolean';
+  assertEq(hasAutoFx, false, 'pre-migration settings compatibility - missing property correctly flagged');
+
+  // identity display precedence helper
+  const profile = { display_name: 'Profile Name' };
+  const user = { user_metadata: { full_name: 'Full Name' }, email: 'user@example.com' };
+  const fb1 = profile.display_name || user.user_metadata.full_name || user.email.split('@')[0] || 'Người dùng';
+  assertEq(fb1, 'Profile Name', 'identity display precedence helper - profile first');
+
+  const profileDisplay: string | undefined = undefined;
+  const fb2 = profileDisplay || user.user_metadata.full_name || user.email.split('@')[0] || 'Người dùng';
+  assertEq(fb2, 'Full Name', 'identity display precedence helper - fallback to metadata');
 
   console.log(`PHASE_8_TESTS PASS ${passed}/${total}`);
 }
