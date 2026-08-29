@@ -275,29 +275,32 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Mobile Bottom Navigation Bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-md border-t border-border px-3 py-1.5 pb-safe">
-        <div className="flex items-center justify-around">
+        <div className="grid grid-cols-5 items-end w-full">
           {mobileNavItems.map((item) => {
             if (item.isAction) {
               return (
-                <button
-                  key="add-action"
-                  onClick={() => setAddTxOpen(true)}
-                  className="flex flex-col items-center justify-center -mt-5"
-                  aria-label="Thêm giao dịch"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-lg active:scale-95 transition-transform">
-                    <Plus className="h-6 w-6" />
-                  </div>
-                  <span className="text-[10px] font-medium text-foreground mt-1">
-                    Thêm
-                  </span>
-                </button>
+                <div key="add-action-wrapper" className="flex w-full items-center justify-center">
+                  <button
+                    key="add-action"
+                    onClick={() => setAddTxOpen(true)}
+                    className="flex flex-col items-center justify-center -mt-5"
+                    aria-label="Thêm giao dịch"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-lg active:scale-95 transition-transform">
+                      <Plus className="h-6 w-6" />
+                    </div>
+                    <span className="text-[10px] font-medium text-foreground mt-1">
+                      Thêm
+                    </span>
+                  </button>
+                </div>
               );
             }
 
             if (item.isMenu) {
               return (
-                <Sheet key="menu-action" open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+                <div key="menu-action-wrapper" className="flex w-full items-center justify-center">
+                  <Sheet key="menu-action" open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                   <SheetTrigger asChild>
                     <button
                       className={cn(
@@ -388,7 +391,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                       </div>
                     </div>
                   </SheetContent>
-                </Sheet>
+                  </Sheet>
+                </div>
               );
             }
 
@@ -398,19 +402,20 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             const Icon = item.icon;
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors',
-                  isActive
-                    ? 'text-slate-900 dark:text-slate-100 font-bold'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <Icon className={cn('h-5 w-5 mb-0.5', isActive ? 'text-inherit' : 'text-muted-foreground')} />
-                <span>{item.label}</span>
-              </Link>
+              <div key={item.href} className="flex w-full items-center justify-center">
+                <Link
+                  href={item.href}
+                  className={cn(
+                    'flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors',
+                    isActive
+                      ? 'text-slate-900 dark:text-slate-100 font-bold'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Icon className={cn('h-5 w-5 mb-0.5', isActive ? 'text-inherit' : 'text-muted-foreground')} />
+                  <span>{item.label}</span>
+                </Link>
+              </div>
             );
           })}
         </div>
