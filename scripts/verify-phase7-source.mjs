@@ -10,7 +10,7 @@
  * 4. Pre-FX multi-currency isolation in summaries and aggregations.
  * 5. Deterministic schedule engine in recurring features (weekly, monthly, yearly, end date clamping, leap years, next due dates).
  * 6. Monthly-equivalent projection arithmetic & UI labeling / ADR-012 documentation.
- * 7. Structural SQL verifier (`verify-phase7-db.sql`) audit: exact column counts (10, 14, 16), trigger function identity, RLS policies, grants, views.
+ * 7. Structural SQL verifier (`verify-phase7-db.sql`) audit: exact column counts (10, 14, 16), exact nullability & defaults, constraint definitions, per-table policy command distribution (1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with auth.uid() = user_id), trigger function identity, RLS policies, grants, views, account_balances CTE pre-aggregation formula.
  * 8. Runtime RLS verifier (`verify-phase7-rls.mjs`) audit: Phase 3-5 schema alignment (occurred_on, merchant, user_id), User B lifecycle, bidirectional isolation, transfer neutrality, domain rejection matrix, error distinction, cleanup assertions.
  * 9. Project status integrity and unauthorized Phase 8 guard.
  */
@@ -403,6 +403,86 @@ if (dbSqlContent.includes("SELECT count(*) = 16 AND bool_and(column_name IN (\n 
   fail('Structural verifier recurring_items column count', 'Must check exactly 16 columns for recurring_items');
 }
 
+// Check Phase 7 exact nullability & defaults audits
+if (
+  dbSqlContent.includes("'04a_budgets_nullability_and_defaults'") &&
+  dbSqlContent.includes("WHEN 'category_type' THEN is_nullable = 'NO' AND column_default LIKE '%EXPENSE%'") &&
+  dbSqlContent.includes("WHEN 'is_archived' THEN is_nullable = 'NO'") &&
+  dbSqlContent.includes("WHEN 'created_at' THEN is_nullable = 'NO'")
+) {
+  pass('Structural verifier checks exact nullability & defaults for budgets');
+} else {
+  fail('Structural verifier budgets nullability/defaults', 'Must audit all 10 budgets column nullability and defaults in 04a');
+}
+
+if (
+  dbSqlContent.includes("'05a_goals_nullability_and_defaults'") &&
+  dbSqlContent.includes("WHEN 'target_date' THEN is_nullable = 'YES' AND column_default IS NULL") &&
+  dbSqlContent.includes("WHEN 'current_amount' THEN is_nullable = 'NO'") &&
+  dbSqlContent.includes("WHEN 'category' THEN is_nullable = 'NO' AND column_default LIKE '%OTHER%'") &&
+  dbSqlContent.includes("WHEN 'icon' THEN is_nullable = 'NO' AND column_default LIKE '%Target%'") &&
+  dbSqlContent.includes("WHEN 'color' THEN is_nullable = 'NO' AND column_default LIKE '%#10b981%'")
+) {
+  pass('Structural verifier checks exact nullability & defaults for goals');
+} else {
+  fail('Structural verifier goals nullability/defaults', 'Must audit all 14 goals column nullability and defaults in 05a');
+}
+
+if (
+  dbSqlContent.includes("'06a_recurring_nullability_and_defaults'") &&
+  dbSqlContent.includes("WHEN 'end_date' THEN is_nullable = 'YES' AND column_default IS NULL") &&
+  dbSqlContent.includes("WHEN 'note' THEN is_nullable = 'YES' AND column_default IS NULL") &&
+  dbSqlContent.includes("WHEN 'is_paused' THEN is_nullable = 'NO'") &&
+  dbSqlContent.includes("WHEN 'is_archived' THEN is_nullable = 'NO'")
+) {
+  pass('Structural verifier checks exact nullability & defaults for recurring_items');
+} else {
+  fail('Structural verifier recurring nullability/defaults', 'Must audit all 16 recurring column nullability and defaults in 06a');
+}
+
+// Check per-table policy command distribution checks (1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with auth.uid() = user_id)
+if (
+  dbSqlContent.includes("'23_budgets_policy_command_distribution'") &&
+  dbSqlContent.includes("count(*) FILTER (WHERE p.polcmd = 'r') = 1") &&
+  dbSqlContent.includes("count(*) FILTER (WHERE p.polcmd = 'a') = 1") &&
+  dbSqlContent.includes("count(*) FILTER (WHERE p.polcmd = 'w') = 1") &&
+  dbSqlContent.includes("count(*) FILTER (WHERE p.polcmd = 'd') = 0") &&
+  dbSqlContent.includes("'24_goals_policy_command_distribution'") &&
+  dbSqlContent.includes("'25_recurring_policy_command_distribution'")
+) {
+  pass('Structural verifier proves exact policy command distribution (1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE) per table');
+} else {
+  fail('Structural verifier policy command distribution', 'Must prove exact per-table policy command distribution in checks 23, 24, 25');
+}
+
+// Reject old shallow policy checks
+if (
+  dbSqlContent.includes("'23_budgets_policies_exact_3'") ||
+  dbSqlContent.includes("'24_goals_policies_exact_3'") ||
+  dbSqlContent.includes("'25_recurring_policies_exact_3'")
+) {
+  fail('Old shallow policy checks', 'Found deprecated shallow policy checks (23_budgets_policies_exact_3, etc.)');
+} else {
+  pass('Old shallow policy checks successfully replaced with strict command distribution verifiers');
+}
+
+// Check account_balances Phase 5/6 pre-aggregation formula verification
+if (
+  dbSqlContent.includes("'49_phase6_account_balances_invoker_text_formula'") &&
+  dbSqlContent.includes("definition LIKE '%tx_totals%'") &&
+  dbSqlContent.includes("definition LIKE '%incoming_transfers%'") &&
+  dbSqlContent.includes("definition LIKE '%outgoing_transfers%'") &&
+  dbSqlContent.includes("definition LIKE '%opening_balance%'") &&
+  dbSqlContent.includes("definition LIKE '%net_transactions%'") &&
+  dbSqlContent.includes("definition LIKE '%in_transfers%'") &&
+  dbSqlContent.includes("definition LIKE '%out_transfers%'") &&
+  (dbSqlContent.includes("definition LIKE '%is_voided = false%'") || dbSqlContent.includes("definition LIKE '%is_voided = FALSE%'"))
+) {
+  pass('Structural verifier proves account_balances pre-aggregated CTEs, active-only filters, and formula');
+} else {
+  fail('Structural verifier account_balances formula check', 'Must prove account_balances CTE structure and formula in check 49');
+}
+
 // Check trigger function identity via pg_proc join rather than trigger name string matching
 if (
   dbSqlContent.includes("JOIN pg_catalog.pg_proc p ON p.oid = tg.tgfoid") &&
@@ -414,14 +494,17 @@ if (
   fail('Structural verifier trigger function check', 'Must check trigger function identity using pg_proc.proname = handle_updated_at');
 }
 
-// Check presence of mandatory structural checks
+// Check presence of all mandatory structural checks
 const mandatoryDbChecks = [
   '01_budgets_table_exists',
   '02_goals_table_exists',
   '03_recurring_items_table_exists',
   '04_budgets_columns_exact',
+  '04a_budgets_nullability_and_defaults',
   '05_goals_columns_exact',
+  '05a_goals_nullability_and_defaults',
   '06_recurring_columns_exact',
+  '06a_recurring_nullability_and_defaults',
   '07_numeric_precision_budgets',
   '08_numeric_precision_goals',
   '09_numeric_precision_recurring',
@@ -438,9 +521,9 @@ const mandatoryDbChecks = [
   '20_fk_restrict_delete_actions',
   '21_triggers_handle_updated_at',
   '22_rls_enabled_phase7_tables',
-  '23_budgets_policies_exact_3',
-  '24_goals_policies_exact_3',
-  '25_recurring_policies_exact_3',
+  '23_budgets_policy_command_distribution',
+  '24_goals_policy_command_distribution',
+  '25_recurring_policy_command_distribution',
   '26_policy_role_authenticated_only',
   '27_policy_auth_uid_ownership',
   '28_update_policies_using_and_check',

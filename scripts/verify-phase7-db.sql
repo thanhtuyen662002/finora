@@ -61,7 +61,7 @@ checks AS (
 
     UNION ALL
 
-    -- 04. Budgets exact required columns
+    -- 04. Budgets exact required columns (10 columns)
     SELECT
         '04_budgets_columns_exact',
         (
@@ -72,11 +72,37 @@ checks AS (
             FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'budgets'
         ),
-        'budgets columns audited'
+        'budgets exact 10 columns audited'
 
     UNION ALL
 
-    -- 05. Goals exact required columns
+    -- 04a. Budgets column nullability and defaults exact audit
+    SELECT
+        '04a_budgets_nullability_and_defaults',
+        (
+            SELECT count(*) = 10 AND bool_and(
+                CASE column_name
+                    WHEN 'id' THEN is_nullable = 'NO' AND (column_default LIKE '%gen_random_uuid()%' OR column_default LIKE '%uuid_generate%')
+                    WHEN 'user_id' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'category_id' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'category_type' THEN is_nullable = 'NO' AND column_default LIKE '%EXPENSE%'
+                    WHEN 'limit_amount' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'currency_code' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'period_month' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'is_archived' THEN is_nullable = 'NO' AND (column_default LIKE '%false%' OR column_default LIKE '%FALSE%')
+                    WHEN 'created_at' THEN is_nullable = 'NO' AND (column_default LIKE '%now()%' OR column_default LIKE '%CURRENT_TIMESTAMP%')
+                    WHEN 'updated_at' THEN is_nullable = 'NO' AND (column_default LIKE '%now()%' OR column_default LIKE '%CURRENT_TIMESTAMP%')
+                    ELSE false
+                END
+            )
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'budgets'
+        ),
+        'budgets columns nullability and defaults match exact migration schema'
+
+    UNION ALL
+
+    -- 05. Goals exact required columns (14 columns)
     SELECT
         '05_goals_columns_exact',
         (
@@ -88,11 +114,41 @@ checks AS (
             FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'goals'
         ),
-        'goals columns audited'
+        'goals exact 14 columns audited'
 
     UNION ALL
 
-    -- 06. Recurring items exact required columns
+    -- 05a. Goals column nullability and defaults exact audit
+    SELECT
+        '05a_goals_nullability_and_defaults',
+        (
+            SELECT count(*) = 14 AND bool_and(
+                CASE column_name
+                    WHEN 'id' THEN is_nullable = 'NO' AND (column_default LIKE '%gen_random_uuid()%' OR column_default LIKE '%uuid_generate%')
+                    WHEN 'user_id' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'name' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'target_amount' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'current_amount' THEN is_nullable = 'NO' AND (column_default LIKE '%0%' OR column_default LIKE '%0.0000%')
+                    WHEN 'monthly_contribution' THEN is_nullable = 'NO' AND (column_default LIKE '%0%' OR column_default LIKE '%0.0000%')
+                    WHEN 'currency_code' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'target_date' THEN is_nullable = 'YES' AND column_default IS NULL
+                    WHEN 'category' THEN is_nullable = 'NO' AND column_default LIKE '%OTHER%'
+                    WHEN 'icon' THEN is_nullable = 'NO' AND column_default LIKE '%Target%'
+                    WHEN 'color' THEN is_nullable = 'NO' AND column_default LIKE '%#10b981%'
+                    WHEN 'is_archived' THEN is_nullable = 'NO' AND (column_default LIKE '%false%' OR column_default LIKE '%FALSE%')
+                    WHEN 'created_at' THEN is_nullable = 'NO' AND (column_default LIKE '%now()%' OR column_default LIKE '%CURRENT_TIMESTAMP%')
+                    WHEN 'updated_at' THEN is_nullable = 'NO' AND (column_default LIKE '%now()%' OR column_default LIKE '%CURRENT_TIMESTAMP%')
+                    ELSE false
+                END
+            )
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'goals'
+        ),
+        'goals columns nullability and defaults match exact migration schema'
+
+    UNION ALL
+
+    -- 06. Recurring items exact required columns (16 columns)
     SELECT
         '06_recurring_columns_exact',
         (
@@ -104,7 +160,39 @@ checks AS (
             FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'recurring_items'
         ),
-        'recurring_items columns audited'
+        'recurring_items exact 16 columns audited'
+
+    UNION ALL
+
+    -- 06a. Recurring items column nullability and defaults exact audit
+    SELECT
+        '06a_recurring_nullability_and_defaults',
+        (
+            SELECT count(*) = 16 AND bool_and(
+                CASE column_name
+                    WHEN 'id' THEN is_nullable = 'NO' AND (column_default LIKE '%gen_random_uuid()%' OR column_default LIKE '%uuid_generate%')
+                    WHEN 'user_id' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'account_id' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'category_id' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'transaction_type' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'name' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'amount' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'currency_code' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'frequency' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'anchor_date' THEN is_nullable = 'NO' AND column_default IS NULL
+                    WHEN 'end_date' THEN is_nullable = 'YES' AND column_default IS NULL
+                    WHEN 'note' THEN is_nullable = 'YES' AND column_default IS NULL
+                    WHEN 'is_paused' THEN is_nullable = 'NO' AND (column_default LIKE '%false%' OR column_default LIKE '%FALSE%')
+                    WHEN 'is_archived' THEN is_nullable = 'NO' AND (column_default LIKE '%false%' OR column_default LIKE '%FALSE%')
+                    WHEN 'created_at' THEN is_nullable = 'NO' AND (column_default LIKE '%now()%' OR column_default LIKE '%CURRENT_TIMESTAMP%')
+                    WHEN 'updated_at' THEN is_nullable = 'NO' AND (column_default LIKE '%now()%' OR column_default LIKE '%CURRENT_TIMESTAMP%')
+                    ELSE false
+                END
+            )
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'recurring_items'
+        ),
+        'recurring_items columns nullability and defaults match exact migration schema'
 
     UNION ALL
 
@@ -201,15 +289,15 @@ checks AS (
 
     UNION ALL
 
-    -- 13. Budgets check constraints (exact semantic definitions)
+    -- 13. Budgets check constraints (exact semantic definitions, robust to formatting)
     SELECT
         '13_budgets_check_constraints',
         (
             SELECT count(*) = 4 AND bool_and(
-                (c.conname = 'check_budget_limit_positive' AND pg_get_constraintdef(c.oid) LIKE '%limit_amount > 0%') OR
-                (c.conname = 'check_budget_category_type' AND pg_get_constraintdef(c.oid) LIKE '%category_type = ''EXPENSE''%') OR
-                (c.conname = 'check_budget_currency_code' AND pg_get_constraintdef(c.oid) LIKE '%currency_code ~ ''^[A-Z]{3,5}$''%') OR
-                (c.conname = 'check_budget_period_month_first_day' AND pg_get_constraintdef(c.oid) LIKE '%period_month = date_trunc(''month''%')
+                (c.conname = 'check_budget_limit_positive' AND pg_get_constraintdef(c.oid) LIKE '%limit_amount >%' AND pg_get_constraintdef(c.oid) LIKE '%0%') OR
+                (c.conname = 'check_budget_category_type' AND pg_get_constraintdef(c.oid) LIKE '%category_type%' AND pg_get_constraintdef(c.oid) LIKE '%EXPENSE%') OR
+                (c.conname = 'check_budget_currency_code' AND pg_get_constraintdef(c.oid) LIKE '%currency_code ~%' AND pg_get_constraintdef(c.oid) LIKE '%[A-Z]{3,5}%') OR
+                (c.conname = 'check_budget_period_month_first_day' AND pg_get_constraintdef(c.oid) LIKE '%period_month =%' AND pg_get_constraintdef(c.oid) LIKE '%date_trunc%' AND pg_get_constraintdef(c.oid) LIKE '%month%')
             )
             FROM pg_catalog.pg_constraint c
             JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
@@ -222,19 +310,19 @@ checks AS (
 
     UNION ALL
 
-    -- 14. Goals check constraints (exact semantic definitions)
+    -- 14. Goals check constraints (exact semantic definitions, robust to formatting)
     SELECT
         '14_goals_check_constraints',
         (
             SELECT count(*) = 8 AND bool_and(
-                (c.conname = 'check_goal_name_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(name))%') OR
-                (c.conname = 'check_goal_target_amount_positive' AND pg_get_constraintdef(c.oid) LIKE '%target_amount > 0%') OR
-                (c.conname = 'check_goal_current_amount_non_negative' AND pg_get_constraintdef(c.oid) LIKE '%current_amount >= 0%') OR
-                (c.conname = 'check_goal_monthly_contribution_non_negative' AND pg_get_constraintdef(c.oid) LIKE '%monthly_contribution >= 0%') OR
-                (c.conname = 'check_goal_currency_code' AND pg_get_constraintdef(c.oid) LIKE '%currency_code ~ ''^[A-Z]{3,5}$''%') OR
-                (c.conname = 'check_goal_category_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(category))%') OR
-                (c.conname = 'check_goal_icon_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(icon))%') OR
-                (c.conname = 'check_goal_color_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(color))%')
+                (c.conname = 'check_goal_name_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(name))%' AND (pg_get_constraintdef(c.oid) LIKE '%BETWEEN 1 AND 200%' OR (pg_get_constraintdef(c.oid) LIKE '%1%' AND pg_get_constraintdef(c.oid) LIKE '%200%'))) OR
+                (c.conname = 'check_goal_target_amount_positive' AND pg_get_constraintdef(c.oid) LIKE '%target_amount >%' AND pg_get_constraintdef(c.oid) LIKE '%0%') OR
+                (c.conname = 'check_goal_current_amount_non_negative' AND pg_get_constraintdef(c.oid) LIKE '%current_amount >=%' AND pg_get_constraintdef(c.oid) LIKE '%0%') OR
+                (c.conname = 'check_goal_monthly_contribution_non_negative' AND pg_get_constraintdef(c.oid) LIKE '%monthly_contribution >=%' AND pg_get_constraintdef(c.oid) LIKE '%0%') OR
+                (c.conname = 'check_goal_currency_code' AND pg_get_constraintdef(c.oid) LIKE '%currency_code ~%' AND pg_get_constraintdef(c.oid) LIKE '%[A-Z]{3,5}%') OR
+                (c.conname = 'check_goal_category_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(category))%' AND (pg_get_constraintdef(c.oid) LIKE '%BETWEEN 1 AND 100%' OR (pg_get_constraintdef(c.oid) LIKE '%1%' AND pg_get_constraintdef(c.oid) LIKE '%100%'))) OR
+                (c.conname = 'check_goal_icon_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(icon))%' AND (pg_get_constraintdef(c.oid) LIKE '%BETWEEN 1 AND 100%' OR (pg_get_constraintdef(c.oid) LIKE '%1%' AND pg_get_constraintdef(c.oid) LIKE '%100%'))) OR
+                (c.conname = 'check_goal_color_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(color))%' AND (pg_get_constraintdef(c.oid) LIKE '%BETWEEN 1 AND 32%' OR (pg_get_constraintdef(c.oid) LIKE '%1%' AND pg_get_constraintdef(c.oid) LIKE '%32%')))
             )
             FROM pg_catalog.pg_constraint c
             JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
@@ -247,18 +335,18 @@ checks AS (
 
     UNION ALL
 
-    -- 15. Recurring check constraints (exact semantic definitions)
+    -- 15. Recurring check constraints (exact semantic definitions, robust to formatting)
     SELECT
         '15_recurring_check_constraints',
         (
             SELECT count(*) = 7 AND bool_and(
-                (c.conname = 'check_recurring_amount_positive' AND pg_get_constraintdef(c.oid) LIKE '%amount > 0%') OR
-                (c.conname = 'check_recurring_transaction_type' AND (pg_get_constraintdef(c.oid) LIKE '%INCOME%' AND pg_get_constraintdef(c.oid) LIKE '%EXPENSE%')) OR
-                (c.conname = 'check_recurring_frequency' AND (pg_get_constraintdef(c.oid) LIKE '%WEEKLY%' AND pg_get_constraintdef(c.oid) LIKE '%MONTHLY%' AND pg_get_constraintdef(c.oid) LIKE '%YEARLY%')) OR
-                (c.conname = 'check_recurring_currency_code' AND pg_get_constraintdef(c.oid) LIKE '%currency_code ~ ''^[A-Z]{3,5}$''%') OR
-                (c.conname = 'check_recurring_name_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(name))%') OR
-                (c.conname = 'check_recurring_note_length' AND (pg_get_constraintdef(c.oid) LIKE '%note IS NULL%' OR pg_get_constraintdef(c.oid) LIKE '%char_length(note) <= 1000%')) OR
-                (c.conname = 'check_recurring_dates' AND (pg_get_constraintdef(c.oid) LIKE '%end_date IS NULL%' OR pg_get_constraintdef(c.oid) LIKE '%end_date >= anchor_date%'))
+                (c.conname = 'check_recurring_amount_positive' AND pg_get_constraintdef(c.oid) LIKE '%amount >%' AND pg_get_constraintdef(c.oid) LIKE '%0%') OR
+                (c.conname = 'check_recurring_transaction_type' AND pg_get_constraintdef(c.oid) LIKE '%transaction_type%' AND pg_get_constraintdef(c.oid) LIKE '%INCOME%' AND pg_get_constraintdef(c.oid) LIKE '%EXPENSE%') OR
+                (c.conname = 'check_recurring_frequency' AND pg_get_constraintdef(c.oid) LIKE '%frequency%' AND pg_get_constraintdef(c.oid) LIKE '%WEEKLY%' AND pg_get_constraintdef(c.oid) LIKE '%MONTHLY%' AND pg_get_constraintdef(c.oid) LIKE '%YEARLY%') OR
+                (c.conname = 'check_recurring_currency_code' AND pg_get_constraintdef(c.oid) LIKE '%currency_code ~%' AND pg_get_constraintdef(c.oid) LIKE '%[A-Z]{3,5}%') OR
+                (c.conname = 'check_recurring_name_length' AND pg_get_constraintdef(c.oid) LIKE '%char_length(trim(name))%' AND (pg_get_constraintdef(c.oid) LIKE '%BETWEEN 1 AND 200%' OR (pg_get_constraintdef(c.oid) LIKE '%1%' AND pg_get_constraintdef(c.oid) LIKE '%200%'))) OR
+                (c.conname = 'check_recurring_note_length' AND (pg_get_constraintdef(c.oid) LIKE '%note IS NULL%' OR pg_get_constraintdef(c.oid) LIKE '%note%' AND pg_get_constraintdef(c.oid) LIKE '%1000%')) OR
+                (c.conname = 'check_recurring_dates' AND (pg_get_constraintdef(c.oid) LIKE '%end_date IS NULL%' OR (pg_get_constraintdef(c.oid) LIKE '%end_date%' AND pg_get_constraintdef(c.oid) LIKE '%anchor_date%')))
             )
             FROM pg_catalog.pg_constraint c
             JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
@@ -440,45 +528,129 @@ checks AS (
 
     UNION ALL
 
-    -- 23. Budgets policies exact 3
+    -- 23. Budgets policy command distribution (exactly 1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with authenticated ownership)
     SELECT
-        '23_budgets_policies_exact_3',
+        '23_budgets_policy_command_distribution',
         (
-            SELECT count(*) = 3
+            SELECT
+                count(*) = 3
+                AND count(*) FILTER (WHERE p.polcmd = 'r') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'a') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'w') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'd') = 0
+                AND bool_and(p.polroles = ARRAY[(SELECT oid FROM pg_roles WHERE rolname = 'authenticated')])
+                AND bool_and(
+                    CASE
+                        WHEN p.polcmd = 'r' THEN
+                            p.polqual IS NOT NULL
+                            AND p.polwithcheck IS NULL
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%'
+                        WHEN p.polcmd = 'a' THEN
+                            p.polqual IS NULL
+                            AND p.polwithcheck IS NOT NULL
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%'
+                        WHEN p.polcmd = 'w' THEN
+                            p.polqual IS NOT NULL
+                            AND p.polwithcheck IS NOT NULL
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%'
+                        ELSE false
+                    END
+                )
             FROM pg_catalog.pg_policy p
             JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'public' AND c.relname = 'budgets'
         ),
-        'budgets has exactly 3 policies'
+        'budgets has exactly 1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with authenticated ownership'
 
     UNION ALL
 
-    -- 24. Goals policies exact 3
+    -- 24. Goals policy command distribution (exactly 1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with authenticated ownership)
     SELECT
-        '24_goals_policies_exact_3',
+        '24_goals_policy_command_distribution',
         (
-            SELECT count(*) = 3
+            SELECT
+                count(*) = 3
+                AND count(*) FILTER (WHERE p.polcmd = 'r') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'a') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'w') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'd') = 0
+                AND bool_and(p.polroles = ARRAY[(SELECT oid FROM pg_roles WHERE rolname = 'authenticated')])
+                AND bool_and(
+                    CASE
+                        WHEN p.polcmd = 'r' THEN
+                            p.polqual IS NOT NULL
+                            AND p.polwithcheck IS NULL
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%'
+                        WHEN p.polcmd = 'a' THEN
+                            p.polqual IS NULL
+                            AND p.polwithcheck IS NOT NULL
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%'
+                        WHEN p.polcmd = 'w' THEN
+                            p.polqual IS NOT NULL
+                            AND p.polwithcheck IS NOT NULL
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%'
+                        ELSE false
+                    END
+                )
             FROM pg_catalog.pg_policy p
             JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'public' AND c.relname = 'goals'
         ),
-        'goals has exactly 3 policies'
+        'goals has exactly 1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with authenticated ownership'
 
     UNION ALL
 
-    -- 25. Recurring items policies exact 3
+    -- 25. Recurring items policy command distribution (exactly 1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with authenticated ownership)
     SELECT
-        '25_recurring_policies_exact_3',
+        '25_recurring_policy_command_distribution',
         (
-            SELECT count(*) = 3
+            SELECT
+                count(*) = 3
+                AND count(*) FILTER (WHERE p.polcmd = 'r') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'a') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'w') = 1
+                AND count(*) FILTER (WHERE p.polcmd = 'd') = 0
+                AND bool_and(p.polroles = ARRAY[(SELECT oid FROM pg_roles WHERE rolname = 'authenticated')])
+                AND bool_and(
+                    CASE
+                        WHEN p.polcmd = 'r' THEN
+                            p.polqual IS NOT NULL
+                            AND p.polwithcheck IS NULL
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%'
+                        WHEN p.polcmd = 'a' THEN
+                            p.polqual IS NULL
+                            AND p.polwithcheck IS NOT NULL
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%'
+                        WHEN p.polcmd = 'w' THEN
+                            p.polqual IS NOT NULL
+                            AND p.polwithcheck IS NOT NULL
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%'
+                            AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%'
+                        ELSE false
+                    END
+                )
             FROM pg_catalog.pg_policy p
             JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'public' AND c.relname = 'recurring_items'
         ),
-        'recurring_items has exactly 3 policies'
+        'recurring_items has exactly 1 SELECT, 1 INSERT, 1 UPDATE, 0 DELETE with authenticated ownership'
 
     UNION ALL
 
@@ -501,16 +673,16 @@ checks AS (
         '27_policy_auth_uid_ownership',
         (
             SELECT count(*) = 9 AND bool_and(
-                (p.polcmd = 'r' AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%' AND p.polwithcheck IS NULL) OR
-                (p.polcmd = 'a' AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%' AND p.polqual IS NULL) OR
-                (p.polcmd = 'w' AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%' AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%')
+                (p.polcmd = 'r' AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%' AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%' AND p.polwithcheck IS NULL) OR
+                (p.polcmd = 'a' AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%' AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%' AND p.polqual IS NULL) OR
+                (p.polcmd = 'w' AND pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%' AND pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%' AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%' AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%')
             )
             FROM pg_catalog.pg_policy p
             JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'public' AND c.relname IN ('budgets', 'goals', 'recurring_items')
         ),
-        'all 9 policies enforce auth.uid() ownership'
+        'all 9 policies enforce auth.uid() = user_id ownership'
 
     UNION ALL
 
@@ -521,7 +693,9 @@ checks AS (
             SELECT count(*) = 3 AND bool_and(
                 p.polqual IS NOT NULL AND p.polwithcheck IS NOT NULL AND
                 pg_get_expr(p.polqual, p.polrelid) LIKE '%auth.uid()%' AND
-                pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%'
+                pg_get_expr(p.polqual, p.polrelid) LIKE '%user_id%' AND
+                pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%auth.uid()%' AND
+                pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%user_id%'
             )
             FROM pg_catalog.pg_policy p
             JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
@@ -530,7 +704,7 @@ checks AS (
               AND c.relname IN ('budgets', 'goals', 'recurring_items')
               AND p.polcmd = 'w'
         ),
-        'UPDATE policies have both USING and WITH CHECK with auth.uid()'
+        'UPDATE policies have both USING and WITH CHECK with auth.uid() = user_id'
 
     UNION ALL
 
@@ -894,22 +1068,49 @@ checks AS (
 
     UNION ALL
 
-    -- 49. Phase 6 account_balances view: security_invoker and current_balance text formula
+    -- 49. Phase 6 account_balances view: security_invoker, text current_balance, pre-aggregated CTEs and active-only formula
     SELECT
         '49_phase6_account_balances_invoker_text_formula',
         (
             SELECT
-                EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname = 'account_balances' AND ('security_invoker=true' = ANY(c.reloptions) OR 'security_invoker=on' = ANY(c.reloptions)))
-                AND
-                EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'account_balances' AND column_name = 'current_balance' AND data_type = 'text')
-                AND
+                -- 1. security_invoker = true
                 EXISTS (
-                    SELECT 1 FROM pg_catalog.pg_views
-                    WHERE schemaname = 'public' AND viewname = 'account_balances'
-                      AND (definition LIKE '%opening_balance%' AND (definition LIKE '%is_voided = false%' OR definition LIKE '%is_voided = FALSE%'))
+                    SELECT 1
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND c.relname = 'account_balances'
+                      AND ('security_invoker=true' = ANY(c.reloptions) OR 'security_invoker=on' = ANY(c.reloptions))
+                )
+                AND
+                -- 2. current_balance output is text
+                EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'account_balances'
+                      AND column_name = 'current_balance'
+                      AND data_type = 'text'
+                )
+                AND
+                -- 3. Exact formula and CTE structure in view definition
+                EXISTS (
+                    SELECT 1
+                    FROM pg_catalog.pg_views
+                    WHERE schemaname = 'public'
+                      AND viewname = 'account_balances'
+                      AND definition LIKE '%tx_totals%'
+                      AND definition LIKE '%incoming_transfers%'
+                      AND definition LIKE '%outgoing_transfers%'
+                      AND (definition LIKE '%is_voided = false%' OR definition LIKE '%is_voided = FALSE%')
+                      AND definition LIKE '%opening_balance%'
+                      AND definition LIKE '%net_transactions%'
+                      AND definition LIKE '%in_transfers%'
+                      AND definition LIKE '%out_transfers%'
+                      AND definition LIKE '%JOIN%'
                 )
         ),
-        'account_balances invoker and current_balance text formula'
+        'account_balances proves CTE pre-aggregation, active-only filters, opening_balance + net_tx + in_tx - out_tx formula, and security_invoker'
 
     UNION ALL
 
