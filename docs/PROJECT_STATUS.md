@@ -256,30 +256,37 @@ Phase 4 is CLOSED. Reopen it only if a regression is found.
 
 ## Phase 5 — Transfers — Implementation Receipt
 
-The Phase 5 Transfers feature has been fully implemented in accordance with `prompts/PHASE_5_TRANSFERS.md` and project governance standards:
+The Phase 5 Transfers feature has been fully implemented in accordance with `prompts/PHASE_5_TRANSFERS.md`, `prompts/PHASE_5_CORRECTIVE.md`, and project governance standards:
 
 ### 1. Database Schema & Migration
-- Created migration `supabase/migrations/20260828000003_phase_5_transfers.sql` defining:
-  - `public.transfers` table with exact numeric(20,4) amount, constraints (`from_account_id <> to_account_id`, amount > 0, currency code uppercase 3-5 chars, note length <= 1000).
-  - Composite foreign keys on `(from_account_id, user_id, currency_code)` and `(to_account_id, user_id, currency_code)` referencing `accounts(id, user_id, currency_code)`.
+- Authored migration `supabase/migrations/20260828000003_phase_5_transfers.sql` (deferred from remote execution until audit authorization):
+  - `public.transfers` table with exact `numeric(20,4)` amount, check constraints (`check_transfer_accounts_distinct`: `from_account_id <> to_account_id`, `check_transfer_amount_positive`: `amount > 0`, `check_transfer_currency_code_format`: uppercase 3-5 chars, `check_transfer_note_length`: <= 1000 chars).
+  - Composite foreign keys `(from_account_id, user_id, currency_code)` and `(to_account_id, user_id, currency_code)` referencing `accounts(id, user_id, currency_code)` with `ON DELETE RESTRICT`.
   - Trigger `set_transfers_updated_at` calling `public.handle_updated_at()`.
-  - Updated `public.account_balances` view with `security_invoker = true` using Cartesian-safe pre-aggregated subqueries (`tx_totals`, `incoming_transfers`, `outgoing_transfers`).
-  - Created `public.transfer_details` view with `security_invoker = true` providing exact string reads for `amount`.
-  - Least-privilege column grants for `authenticated` role (SELECT on views/table, explicit column-level INSERT/UPDATE, no DELETE grant, no anon/PUBLIC access).
+  - Updated `public.account_balances` view with `security_invoker = true` using Cartesian-safe pre-aggregated subqueries (`tx_totals`, `incoming_transfers`, `outgoing_transfers`) with active-only (`is_voided = false`) semantics.
+  - Created `public.transfer_details` view with `security_invoker = true` exposing `amount` as exact text.
+  - Least-privilege column grants for `authenticated` role (SELECT on views and table, explicit column-level INSERT/UPDATE allowlists, no DELETE grant, no anon/PUBLIC access).
 
 ### 2. TypeScript Feature Layer
-- Created `src/features/transfers/transfers.ts` and `src/features/transfers/index.ts` with strict decimal safety, accepting string amounts, reading exclusively through `transfer_details`, and rejecting invalid precision.
-- Updated `src/types/database.ts` with complete type definitions for `transfers` table and `transfer_details` view.
+- Implemented `src/features/transfers/transfers.ts` and `src/features/transfers/index.ts`:
+  - Strict decimal safety: rejects non-positive values, rejects >4 fractional digits, and canonicalizes amounts before mutation.
+  - Pure string-only input contracts for `TransferInsertInput` and `TransferUpdateInput` without floating-point casts or `as any`.
+  - Reads exclusively through `transfer_details` view, failing closed if unavailable.
+- Updated `src/types/database.ts` with strict string-only types for `transfers` table Insert/Update and `transfer_details` Row.
 
 ### 3. User Interface Layer
-- Created `src/components/finance/AddTransferModal.tsx` for creating and editing transfers with same-currency validation, active accounts selector, and clean error states.
-- Created `src/components/finance/TransferItem.tsx` and `src/components/finance/TransferList.tsx` for rich transfer inspection, filtering, and void/restore management.
-- Integrated unified tabbed interface in `src/app/transactions/page.tsx` for seamless switching between Transactions and Transfers.
+- Implemented `src/components/finance/AddTransferModal.tsx` for creating and editing transfers with same-currency validation, active accounts selector (preserving historical archived account selection when editing), and clean error handling.
+- Implemented `src/components/finance/TransferItem.tsx` and `src/components/finance/TransferList.tsx` for transfer inspection, filtering, and void/restore management.
+- Integrated unified tabbed interface in `src/app/transactions/page.tsx` for switching between Transactions and Transfers.
 - Added quick "Chuyển tiền" action in `src/app/accounts/page.tsx`.
 
 ### 4. Verification Suites
-- `scripts/verify-phase5-db.sql`: Strict read-only structural SQL verifier testing all 28 constraints, composite foreign keys, RLS policies, column privilege grants, and Phase 2/3/4 non-regression.
-- `scripts/verify-phase5-rls.mjs`: Hardened two-user runtime test suite verifying authentication, transfer lifecycle, balance derivation, cross-user insert/update/select/foreign-key blocking, delete prevention, view isolation, and test record cleanup.
+- `scripts/verify-phase5-db.sql`: Strict read-only structural SQL verifier testing all 38 checks: transfer schema, constraints, composite FKs, RLS policies, column privilege grants, derived `account_balances` pre-aggregated composition, active-only semantics, and complete Phase 4 transaction non-regression checks.
+- `scripts/verify-phase5-rls.mjs`: Hardened two-user runtime test suite verifying schema-readiness detection, authentication, transfer lifecycle, BigInt-scaled net-worth neutrality assertions, cross-user insert/update/select/FK blocking, delete prevention, view isolation, Phase 4 non-regression co-derivation, and deterministic cleanup.
+
+### 5. Governance & Invariants
+- Remote database migration deferred to subsequent repository audit gate per instructions.
+- Zero Phase 2, Phase 3, or Phase 4 contracts, policies, or receipts regressed or broken.
 
 ## Phase Authorization
 
@@ -288,9 +295,9 @@ The Phase 5 Transfers feature has been fully implemented in accordance with `pro
 - **Phase 2:** PASS
 - **Phase 3:** PASS
 - **Phase 4 — Transactions:** PASS
-- **Phase 5 — Transfers:** IN_PROGRESS (Code complete, verification ready)
+- **Phase 5 — Transfers:** IN_PROGRESS (Code complete, verifiers hardened, remote migration deferred to audit gate)
 - **Phase 6 — Dashboard + Reports:** NOT AUTHORIZED
 
 ## Next Recommended Action
 
-Execute the Phase 5 verification suite (`typecheck`, `lint`, `build`, `node --check scripts/verify-phase5-rls.mjs`), prepare commit, and present full report.
+Execute local verification suite (`typecheck`, `lint`, `build`, `node --check scripts/verify-phase5-rls.mjs`, `git diff --check`), prepare commit, and present full report.

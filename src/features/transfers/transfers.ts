@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { compareExactDecimals, toExactDecimal } from '@/lib/money';
 import type { TransferDetailRow, TransferRow } from '@/types/database';
 
 export type ExtendedTransfer = TransferRow & {
@@ -27,6 +28,17 @@ export type TransferUpdateInput = Partial<{
   note: string | null;
   occurred_on: string;
 }>;
+
+function validateAndNormalizeTransferAmount(amount: string): string {
+  if (typeof amount !== 'string' || !amount.trim()) {
+    throw new Error('Transfer amount must be a non-empty string');
+  }
+  const normalized = toExactDecimal(amount);
+  if (compareExactDecimals(normalized, '0.0000') <= 0) {
+    throw new Error('Transfer amount must be strictly greater than zero');
+  }
+  return normalized;
+}
 
 function mapDetailRow(row: TransferDetailRow): ExtendedTransfer {
   return {
@@ -81,9 +93,19 @@ export async function createTransfer(
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) throw new Error('Unauthorized');
 
+  if (transfer.from_account_id === transfer.to_account_id) {
+    throw new Error('Source and destination accounts must be different');
+  }
+
+  const normalizedAmount = validateAndNormalizeTransferAmount(transfer.amount);
+
   const { data, error } = await supabase
     .from('transfers')
-    .insert({ ...transfer, user_id: userData.user.id })
+    .insert({
+      ...transfer,
+      amount: normalizedAmount,
+      user_id: userData.user.id,
+    })
     .select('id')
     .single();
 
@@ -96,9 +118,23 @@ export async function updateTransfer(
   updates: TransferUpdateInput
 ): Promise<ExtendedTransfer> {
   const supabase = createClient();
+
+  if (
+    updates.from_account_id &&
+    updates.to_account_id &&
+    updates.from_account_id === updates.to_account_id
+  ) {
+    throw new Error('Source and destination accounts must be different');
+  }
+
+  const payload: TransferUpdateInput = { ...updates };
+  if (updates.amount !== undefined) {
+    payload.amount = validateAndNormalizeTransferAmount(updates.amount);
+  }
+
   const { data, error } = await supabase
     .from('transfers')
-    .update(updates)
+    .update(payload)
     .eq('id', id)
     .select('id')
     .single();

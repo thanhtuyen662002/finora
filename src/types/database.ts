@@ -211,7 +211,7 @@ export interface Database {
           user_id?: string;
           from_account_id: string;
           to_account_id: string;
-          amount: number | string;
+          amount: string;
           currency_code: string;
           note?: string | null;
           occurred_on?: string;
@@ -224,7 +224,7 @@ export interface Database {
           user_id?: string;
           from_account_id?: string;
           to_account_id?: string;
-          amount?: number | string;
+          amount?: string;
           currency_code?: string;
           note?: string | null;
           occurred_on?: string;
