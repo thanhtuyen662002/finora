@@ -8,6 +8,7 @@
 import {
   addExactDecimals,
   subExactDecimals,
+  compareExactDecimals,
   toExactDecimal,
   computeBasisPoints,
   computeSavingRatePercent,
@@ -23,17 +24,63 @@ import type {
   CurrencyAccountGroup,
 } from './types';
 
-export function getTodayDateString(now: Date = new Date()): string {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+export interface CalendarDateInfo {
+  year: number;
+  month: number; // 1-12
+  day: number; // 1-31
+  dateString: string; // "YYYY-MM-DD"
+  monthPrefix: string; // "YYYY-MM"
 }
 
-export function getCurrentMonthPrefix(now: Date = new Date()): string {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
+/**
+ * Resolves the calendar date and month in a specific IANA timezone (e.g. 'Asia/Ho_Chi_Minh').
+ * Uses standard ECMAScript Intl.DateTimeFormat without heavy date libraries.
+ */
+export function getCalendarDateInTimezone(
+  timezone: string = 'Asia/Ho_Chi_Minh',
+  now: Date = new Date()
+): CalendarDateInfo {
+  let validTz = timezone;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: validTz });
+  } catch {
+    validTz = 'Asia/Ho_Chi_Minh';
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: validTz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const formatted = formatter.format(now); // "YYYY-MM-DD"
+  const [yyyy, mm, dd] = formatted.split('-');
+  const year = parseInt(yyyy, 10);
+  const month = parseInt(mm, 10);
+  const day = parseInt(dd, 10);
+
+  return {
+    year,
+    month,
+    day,
+    dateString: `${yyyy}-${mm}-${dd}`,
+    monthPrefix: `${yyyy}-${mm}`,
+  };
+}
+
+export function getTodayDateString(
+  timezone: string = 'Asia/Ho_Chi_Minh',
+  now: Date = new Date()
+): string {
+  return getCalendarDateInTimezone(timezone, now).dateString;
+}
+
+export function getCurrentMonthPrefix(
+  timezone: string = 'Asia/Ho_Chi_Minh',
+  now: Date = new Date()
+): string {
+  return getCalendarDateInTimezone(timezone, now).monthPrefix;
 }
 
 export function formatMonthLabel(monthKey: string): string {
@@ -49,91 +96,165 @@ export function formatFullMonthLabel(monthKey: string): string {
 }
 
 /**
+ * Discovers real financial currencies from accounts and transactions.
+ * Follows strict Phase 6 rule:
+ * - base_currency is prioritized if present in real financial data.
+ * - If base_currency is absent from real financial data, it is NOT injected; the first deterministic currency is used.
+ * - base_currency is only used as a fallback if no financial currencies exist at all.
+ */
+export function getAvailableCurrenciesAndDefault(
+  accounts: AccountRow[],
+  transactions: (TransactionDetailRow | ExtendedTransaction)[],
+  baseCurrency: string
+): { availableCurrencies: string[]; defaultCurrency: string } {
+  const realCurrencySet = new Set<string>();
+  for (const a of accounts) {
+    if (a.currency_code) realCurrencySet.add(a.currency_code.toUpperCase());
+  }
+  for (const t of transactions) {
+    if (t.currency_code) realCurrencySet.add(t.currency_code.toUpperCase());
+  }
+
+  const normalizedBase = (baseCurrency || '').toUpperCase();
+
+  if (realCurrencySet.size === 0) {
+    const fallback = normalizedBase || 'VND';
+    return {
+      availableCurrencies: [fallback],
+      defaultCurrency: fallback,
+    };
+  }
+
+  const sorted = Array.from(realCurrencySet).sort();
+  if (normalizedBase && sorted.includes(normalizedBase)) {
+    const available = [normalizedBase, ...sorted.filter((c) => c !== normalizedBase)];
+    return {
+      availableCurrencies: available,
+      defaultCurrency: normalizedBase,
+    };
+  }
+
+  return {
+    availableCurrencies: sorted,
+    defaultCurrency: sorted[0],
+  };
+}
+
+/**
  * Computes calendar range and chronological month keys for the selected period.
+ * Respects user timezone and generates all-history months from earliest transaction to current month.
  */
 export function getDateRangeForPeriod(
   period: ReportPeriod,
-  now: Date = new Date()
+  timezone: string = 'Asia/Ho_Chi_Minh',
+  now: Date = new Date(),
+  allTransactions?: (TransactionDetailRow | ExtendedTransaction)[],
+  targetCurrency?: string
 ): {
   startDate: string | null;
   endDate: string;
   label: string;
   monthKeys: string[];
 } {
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0-indexed
-  const endDate = getTodayDateString(now);
+  const cal = getCalendarDateInTimezone(timezone, now);
+  const currentYear = cal.year;
+  const currentMonth = cal.month; // 1-indexed (1..12)
+  const endDate = cal.dateString;
+  const currentMonthKey = cal.monthPrefix;
 
-  const generateMonthKeys = (numMonths: number): { keys: string[]; startMonth: number; startYear: number } => {
+  const generateNRecentMonthKeys = (numMonths: number): string[] => {
     const keys: string[] = [];
-    let startYear = currentYear;
-    let startMonth = currentMonth + 1; // 1-indexed
-
+    let curY = currentYear;
+    let curM = currentMonth;
     for (let i = numMonths - 1; i >= 0; i--) {
-      const d = new Date(currentYear, currentMonth - i, 1);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      if (i === numMonths - 1) {
-        startYear = y;
-        startMonth = d.getMonth() + 1;
+      let targetM = curM - i;
+      let targetY = curY;
+      while (targetM <= 0) {
+        targetM += 12;
+        targetY -= 1;
       }
-      keys.push(`${y}-${m}`);
+      keys.push(`${targetY}-${String(targetM).padStart(2, '0')}`);
     }
-    return { keys, startMonth, startYear };
+    return keys;
   };
 
   switch (period) {
     case '1M': {
-      const monthStr = String(currentMonth + 1).padStart(2, '0');
-      const monthKey = `${currentYear}-${monthStr}`;
+      const monthStr = String(currentMonth).padStart(2, '0');
       return {
-        startDate: `${monthKey}-01`,
+        startDate: `${currentMonthKey}-01`,
         endDate,
         label: `Tháng ${monthStr}/${currentYear}`,
-        monthKeys: [monthKey],
+        monthKeys: [currentMonthKey],
       };
     }
     case '3M': {
-      const { keys, startMonth, startYear } = generateMonthKeys(3);
-      const startMonthStr = String(startMonth).padStart(2, '0');
-      const curMonthStr = String(currentMonth + 1).padStart(2, '0');
+      const keys = generateNRecentMonthKeys(3);
+      const startParts = keys[0].split('-');
       return {
         startDate: `${keys[0]}-01`,
         endDate,
-        label: `3 tháng (Th${startMonthStr}/${startYear} – Th${curMonthStr}/${currentYear})`,
+        label: `3 tháng (Th${startParts[1]}/${startParts[0]} – Th${String(currentMonth).padStart(2, '0')}/${currentYear})`,
         monthKeys: keys,
       };
     }
     case '6M': {
-      const { keys, startMonth, startYear } = generateMonthKeys(6);
-      const startMonthStr = String(startMonth).padStart(2, '0');
-      const curMonthStr = String(currentMonth + 1).padStart(2, '0');
+      const keys = generateNRecentMonthKeys(6);
+      const startParts = keys[0].split('-');
       return {
         startDate: `${keys[0]}-01`,
         endDate,
-        label: `6 tháng (Th${startMonthStr}/${startYear} – Th${curMonthStr}/${currentYear})`,
+        label: `6 tháng (Th${startParts[1]}/${startParts[0]} – Th${String(currentMonth).padStart(2, '0')}/${currentYear})`,
         monthKeys: keys,
       };
     }
     case '1Y': {
-      const { keys, startMonth, startYear } = generateMonthKeys(12);
-      const startMonthStr = String(startMonth).padStart(2, '0');
-      const curMonthStr = String(currentMonth + 1).padStart(2, '0');
+      const keys = generateNRecentMonthKeys(12);
+      const startParts = keys[0].split('-');
       return {
         startDate: `${keys[0]}-01`,
         endDate,
-        label: `12 tháng (Th${startMonthStr}/${startYear} – Th${curMonthStr}/${currentYear})`,
+        label: `12 tháng (Th${startParts[1]}/${startParts[0]} – Th${String(currentMonth).padStart(2, '0')}/${currentYear})`,
         monthKeys: keys,
       };
     }
     case 'ALL': {
-      // Default to 12 months for the chart buckets if no range bound
-      const { keys } = generateMonthKeys(12);
+      // Find earliest matching transaction in targetCurrency
+      let earliestMonthKey = currentMonthKey;
+      if (allTransactions && targetCurrency) {
+        const normCurrency = targetCurrency.toUpperCase();
+        for (const tx of allTransactions) {
+          if (tx.is_voided) continue;
+          if ((tx.currency_code || '').toUpperCase() !== normCurrency) continue;
+          const txMonth = tx.occurred_on.slice(0, 7);
+          if (txMonth < earliestMonthKey) {
+            earliestMonthKey = txMonth;
+          }
+        }
+      }
+
+      // Generate all chronological month keys from earliestMonthKey to currentMonthKey
+      const [eYearStr, eMonthStr] = earliestMonthKey.split('-');
+      const eYear = parseInt(eYearStr, 10);
+      const eMonth = parseInt(eMonthStr, 10);
+
+      const keys: string[] = [];
+      let y = eYear;
+      let m = eMonth;
+      while (y < currentYear || (y === currentYear && m <= currentMonth)) {
+        keys.push(`${y}-${String(m).padStart(2, '0')}`);
+        m++;
+        if (m > 12) {
+          m = 1;
+          y++;
+        }
+      }
+
       return {
         startDate: null,
         endDate,
         label: 'Toàn bộ thời gian',
-        monthKeys: keys,
+        monthKeys: keys.length > 0 ? keys : [currentMonthKey],
       };
     }
   }
@@ -204,6 +325,7 @@ export function aggregateCurrencySummaries(
 
 /**
  * Groups accounts and exact balances by currency code.
+ * Fails closed if any account balance is missing from account_balances (never substitutes opening balance).
  */
 export function aggregateAccountBalancesByCurrency(
   accounts: AccountRow[],
@@ -221,9 +343,13 @@ export function aggregateAccountBalancesByCurrency(
       };
     }
 
-    const currentBalance = balances[account.id] !== undefined
-      ? toExactDecimal(balances[account.id])
-      : toExactDecimal(account.opening_balance);
+    if (balances[account.id] === undefined) {
+      throw new Error(
+        `Không tìm thấy số dư cho tài khoản "${account.name}" (${account.id}) trong account_balances`
+      );
+    }
+
+    const currentBalance = toExactDecimal(balances[account.id]);
 
     const snapshot: AccountBalanceSnapshot = {
       accountId: account.id,
@@ -252,6 +378,7 @@ export function aggregateAccountBalancesByCurrency(
 
 /**
  * Generates monthly cash flow series for a target currency and month keys.
+ * Uses exact decimal comparison (compareExactDecimals) for scale determination.
  */
 export function aggregateCashFlow(
   transactions: (TransactionDetailRow | ExtendedTransaction)[],
@@ -280,7 +407,7 @@ export function aggregateCashFlow(
     }
   }
 
-  // Find max value in series for presentation geometry scaling
+  // Find max value in series for presentation geometry scaling using exact decimal comparisons
   let maxSeriesDecimal = '0.0000';
   const intermediatePoints: {
     monthKey: string;
@@ -299,8 +426,12 @@ export function aggregateCashFlow(
       savings,
     });
 
-    if (bucket.income > maxSeriesDecimal) maxSeriesDecimal = bucket.income;
-    if (bucket.expense > maxSeriesDecimal) maxSeriesDecimal = bucket.expense;
+    if (compareExactDecimals(bucket.income, maxSeriesDecimal) > 0) {
+      maxSeriesDecimal = bucket.income;
+    }
+    if (compareExactDecimals(bucket.expense, maxSeriesDecimal) > 0) {
+      maxSeriesDecimal = bucket.expense;
+    }
   }
 
   return intermediatePoints.map((p) => {
@@ -392,7 +523,7 @@ export function aggregateCategoryExpenses(
     });
   }
 
-  // Sort descending by amount
+  // Sort descending by basis points
   return result.sort((a, b) => b.basisPoints - a.basisPoints);
 }
 
@@ -402,7 +533,8 @@ export function aggregateCategoryExpenses(
 export function exportTransactionsToCSV(
   transactions: (TransactionDetailRow | ExtendedTransaction)[],
   currency: string,
-  periodLabel: string
+  periodLabel: string,
+  timezone: string = 'Asia/Ho_Chi_Minh'
 ): { filename: string; csvContent: string } {
   const normCurrency = (currency || 'VND').toUpperCase();
   const escapeCell = (val: string | number | null | undefined): string => {
@@ -450,7 +582,7 @@ export function exportTransactionsToCSV(
   // Prepend UTF-8 BOM for Microsoft Excel compatibility
   const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
   const safePeriod = periodLabel.replace(/[/\\?%*:|"<>]/g, '_').replace(/\s+/g, '_');
-  const today = getTodayDateString();
+  const today = getTodayDateString(timezone);
   const filename = `finora_bao_cao_${normCurrency}_${safePeriod}_${today}.csv`;
 
   return { filename, csvContent };

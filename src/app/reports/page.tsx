@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/finance/PageHeader';
 import { PeriodSelector } from '@/components/finance/PeriodSelector';
@@ -30,50 +30,57 @@ import {
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState<ReportPeriod>('6M');
-  const [selectedCurrency, setSelectedCurrency] = useState<string>('VND');
+  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
   const [data, setData] = useState<DetailedReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestSeqRef = useRef(0);
 
   const loadReport = useCallback(async () => {
+    const reqId = ++requestSeqRef.current;
     try {
       setLoading(true);
       setError(null);
-      const res = await getDetailedReportData(period, selectedCurrency);
-      setData(res);
-      setSelectedCurrency(res.selectedCurrency);
+      const res = await getDetailedReportData(period, selectedCurrency || undefined);
+      if (reqId === requestSeqRef.current) {
+        setData(res);
+        setSelectedCurrency(res.selectedCurrency);
+      }
     } catch (err: any) {
-      setError(err?.message || 'Không thể tải báo cáo tài chính');
+      if (reqId === requestSeqRef.current) {
+        setError(err?.message || 'Không thể tải báo cáo tài chính');
+        setData(null);
+      }
     } finally {
-      setLoading(false);
+      if (reqId === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [period, selectedCurrency]);
 
   useEffect(() => {
-    let ignore = false;
+    const reqId = ++requestSeqRef.current;
     async function init() {
       try {
         setLoading(true);
         setError(null);
-        const res = await getDetailedReportData(period, selectedCurrency);
-        if (!ignore) {
+        const res = await getDetailedReportData(period, selectedCurrency || undefined);
+        if (reqId === requestSeqRef.current) {
           setData(res);
           setSelectedCurrency(res.selectedCurrency);
         }
       } catch (err: any) {
-        if (!ignore) {
+        if (reqId === requestSeqRef.current) {
           setError(err?.message || 'Không thể tải báo cáo tài chính');
+          setData(null);
         }
       } finally {
-        if (!ignore) {
+        if (reqId === requestSeqRef.current) {
           setLoading(false);
         }
       }
     }
     init();
-    return () => {
-      ignore = true;
-    };
   }, [period, selectedCurrency]);
 
   const handleExportCSV = () => {
@@ -82,7 +89,8 @@ export default function ReportsPage() {
       const { filename, csvContent } = exportTransactionsToCSV(
         data.transactions,
         data.selectedCurrency,
-        data.dateRangeLabel
+        data.dateRangeLabel,
+        data.timezone
       );
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -119,14 +127,14 @@ export default function ReportsPage() {
     );
   }
 
-  if (error && !data) {
+  if (error || !data) {
     return (
       <AppShell>
         <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-destructive/20 bg-destructive/5 text-center space-y-4 max-w-md mx-auto my-12">
           <AlertCircle className="h-10 w-10 text-destructive" />
           <div>
             <h3 className="font-semibold text-foreground">Không thể tải báo cáo tài chính</h3>
-            <p className="text-xs text-muted-foreground mt-1">{error}</p>
+            <p className="text-xs text-muted-foreground mt-1">{error || 'Lỗi không xác định'}</p>
           </div>
           <Button size="sm" variant="outline" onClick={loadReport}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
@@ -137,22 +145,14 @@ export default function ReportsPage() {
     );
   }
 
-  const currency = data?.selectedCurrency || 'VND';
-  const summary = data?.summary || {
-    currency,
-    totalIncome: '0.0000',
-    totalExpense: '0.0000',
-    netSavings: '0.0000',
-    savingRateBasisPoints: null,
-    savingRatePercent: null,
-    transactionCount: 0,
-  };
+  const currency = data.selectedCurrency;
+  const summary = data.summary;
 
   return (
     <AppShell>
       <PageHeader
         title="Báo cáo tài chính"
-        subtitle={`Phân tích dòng tiền, cơ cấu chi tiêu và lịch sử tài chính (${data?.dateRangeLabel || ''}).`}
+        subtitle={`Phân tích dòng tiền, cơ cấu chi tiêu và lịch sử tài chính (${data.dateRangeLabel}).`}
       >
         <div className="flex flex-wrap items-center gap-2">
           <PeriodSelector selected={period} onChange={setPeriod} />
@@ -161,7 +161,7 @@ export default function ReportsPage() {
             variant="outline"
             size="sm"
             onClick={handleExportCSV}
-            disabled={!data || data.transactions.length === 0}
+            disabled={data.transactions.length === 0}
             className="whitespace-nowrap"
             title="Xuất dữ liệu giao dịch ra file CSV UTF-8"
           >
@@ -172,7 +172,7 @@ export default function ReportsPage() {
       </PageHeader>
 
       {/* Currency Selector if multiple currencies available */}
-      {data && data.availableCurrencies.length > 1 && (
+      {data.availableCurrencies.length > 1 && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border bg-muted/30">
           <div className="flex items-center space-x-2 text-xs text-muted-foreground">
             <Layers className="h-4 w-4 text-primary" />
@@ -211,7 +211,7 @@ export default function ReportsPage() {
               {formatExactMoney(summary.totalIncome, currency)}
             </p>
             <span className="text-xs text-muted-foreground block">
-              {data?.dateRangeLabel} ({summary.transactionCount} giao dịch)
+              {data.dateRangeLabel} ({summary.transactionCount} giao dịch)
             </span>
           </CardContent>
         </Card>
@@ -228,7 +228,7 @@ export default function ReportsPage() {
               {formatExactMoney(summary.totalExpense, currency)}
             </p>
             <span className="text-xs text-muted-foreground block">
-              {data?.dateRangeLabel}
+              {data.dateRangeLabel}
             </span>
           </CardContent>
         </Card>
@@ -266,12 +266,12 @@ export default function ReportsPage() {
               </CardDescription>
             </div>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-muted text-foreground">
-              {data?.dateRangeLabel}
+              {data.dateRangeLabel}
             </span>
           </div>
         </CardHeader>
         <CardContent>
-          <CashFlowChart data={data?.cashFlow || []} currency={currency} />
+          <CashFlowChart data={data.cashFlow} currency={currency} />
         </CardContent>
       </Card>
 
@@ -290,7 +290,7 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <CategoryDonutChart
-                data={data?.categoryBreakdown || []}
+                data={data.categoryBreakdown}
                 currency={currency}
                 totalExpense={summary.totalExpense}
               />
@@ -314,11 +314,11 @@ export default function ReportsPage() {
               <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">Tổng số dư {currency}:</span>
                 <span className="text-base font-bold text-foreground">
-                  {formatExactMoney(data?.totalAccountBalance || '0.0000', currency)}
+                  {formatExactMoney(data.totalAccountBalance, currency)}
                 </span>
               </div>
 
-              {data?.accountsInCurrency && data.accountsInCurrency.length > 0 ? (
+              {data.accountsInCurrency && data.accountsInCurrency.length > 0 ? (
                 <div className="space-y-2 pt-1">
                   {data.accountsInCurrency.map((acc) => (
                     <div
@@ -356,13 +356,13 @@ export default function ReportsPage() {
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base font-semibold">
-              Chi tiết giao dịch trong kỳ ({data?.transactions.length || 0})
+              Chi tiết giao dịch trong kỳ ({data.transactions.length})
             </CardTitle>
             <CardDescription>
-              Các khoản thu/chi thực tế {currency} thuộc {data?.dateRangeLabel}.
+              Các khoản thu/chi thực tế {currency} thuộc {data.dateRangeLabel}.
             </CardDescription>
           </div>
-          {data && data.transactions.length > 0 && (
+          {data.transactions.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
@@ -376,7 +376,7 @@ export default function ReportsPage() {
         </CardHeader>
         <CardContent>
           <TransactionList
-            transactions={data?.transactions || []}
+            transactions={data.transactions}
             showFilters={true}
           />
         </CardContent>

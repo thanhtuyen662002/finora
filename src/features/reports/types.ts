@@ -55,6 +55,8 @@ export interface CurrencyAccountGroup {
 
 export interface DashboardReportData {
   baseCurrency: string;
+  defaultCurrency: string;
+  timezone: string;
   availableCurrencies: string[];
   // Current month active summaries grouped by currency
   currentMonthSummaries: Record<string, CurrencySummary>;
@@ -72,6 +74,7 @@ export interface DetailedReportData {
   period: ReportPeriod;
   selectedCurrency: string;
   availableCurrencies: string[];
+  timezone: string;
   dateRangeLabel: string;
   summary: CurrencySummary;
   cashFlow: MonthlyCashFlowPoint[];

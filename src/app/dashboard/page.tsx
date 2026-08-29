@@ -38,7 +38,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeCurrency, setActiveCurrency] = useState<string>('VND');
+  const [activeCurrency, setActiveCurrency] = useState<string | null>(null);
 
   const [selectedAccount, setSelectedAccount] = useState<AccountBalanceSnapshot | null>(null);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
@@ -52,11 +52,12 @@ export default function DashboardPage() {
       const res = await getDashboardReportData();
       setData(res);
       setActiveCurrency((prev) => {
-        if (res.availableCurrencies.includes(prev)) return prev;
-        return res.baseCurrency || res.availableCurrencies[0] || 'VND';
+        if (prev && res.availableCurrencies.includes(prev)) return prev;
+        return res.defaultCurrency || res.availableCurrencies[0];
       });
     } catch (err: any) {
       setError(err?.message || 'Không thể tải dữ liệu tổng quan tài chính');
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -72,13 +73,14 @@ export default function DashboardPage() {
         if (!ignore) {
           setData(res);
           setActiveCurrency((prev) => {
-            if (res.availableCurrencies.includes(prev)) return prev;
-            return res.baseCurrency || res.availableCurrencies[0] || 'VND';
+            if (prev && res.availableCurrencies.includes(prev)) return prev;
+            return res.defaultCurrency || res.availableCurrencies[0];
           });
         }
       } catch (err: any) {
         if (!ignore) {
           setError(err?.message || 'Không thể tải dữ liệu tổng quan tài chính');
+          setData(null);
         }
       } finally {
         if (!ignore) {
@@ -142,8 +144,13 @@ export default function DashboardPage() {
     );
   }
 
-  const activeSummary = data.currentMonthSummaries[activeCurrency] || {
-    currency: activeCurrency,
+  const effectiveCurrency =
+    activeCurrency && data.availableCurrencies.includes(activeCurrency)
+      ? activeCurrency
+      : data.defaultCurrency || data.availableCurrencies[0] || 'VND';
+
+  const activeSummary = data.currentMonthSummaries[effectiveCurrency] || {
+    currency: effectiveCurrency,
     totalIncome: '0.0000',
     totalExpense: '0.0000',
     netSavings: '0.0000',
@@ -152,8 +159,8 @@ export default function DashboardPage() {
     transactionCount: 0,
   };
 
-  const activeAccountGroup = data.accountBalancesByCurrency[activeCurrency] || {
-    currency: activeCurrency,
+  const activeAccountGroup = data.accountBalancesByCurrency[effectiveCurrency] || {
+    currency: effectiveCurrency,
     totalBalance: '0.0000',
     accounts: [],
   };
@@ -199,7 +206,7 @@ export default function DashboardPage() {
                 type="button"
                 onClick={() => setActiveCurrency(c)}
                 className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
-                  activeCurrency === c
+                  effectiveCurrency === c
                     ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'bg-card text-muted-foreground hover:bg-muted border'
                 }`}
@@ -214,27 +221,27 @@ export default function DashboardPage() {
       {/* 4 Core Financial Summary Cards for active currency */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         <SummaryCard
-          title={`Tài sản (${activeCurrency})`}
-          value={formatExactMoney(activeAccountGroup.totalBalance, activeCurrency)}
+          title={`Tài sản (${effectiveCurrency})`}
+          value={formatExactMoney(activeAccountGroup.totalBalance, effectiveCurrency)}
           icon={Wallet}
           highlight={true}
-          subtext={`${activeAccountGroup.accounts.length} tài khoản ${activeCurrency}`}
+          subtext={`${activeAccountGroup.accounts.length} tài khoản ${effectiveCurrency}`}
         />
         <SummaryCard
           title="Thu nhập tháng này"
-          value={formatExactMoney(activeSummary.totalIncome, activeCurrency)}
+          value={formatExactMoney(activeSummary.totalIncome, effectiveCurrency)}
           icon={ArrowDownLeft}
           subtext={data.currentMonthLabel}
         />
         <SummaryCard
           title="Chi tiêu tháng này"
-          value={formatExactMoney(activeSummary.totalExpense, activeCurrency)}
+          value={formatExactMoney(activeSummary.totalExpense, effectiveCurrency)}
           icon={ArrowUpRight}
           subtext={data.currentMonthLabel}
         />
         <SummaryCard
           title="Tiết kiệm & Tỷ lệ"
-          value={formatExactMoney(activeSummary.netSavings, activeCurrency, { showSign: true })}
+          value={formatExactMoney(activeSummary.netSavings, effectiveCurrency, { showSign: true })}
           icon={PiggyBank}
           subtext={
             activeSummary.savingRatePercent
@@ -285,11 +292,11 @@ export default function DashboardPage() {
                     Xu hướng dòng tiền 6 tháng
                   </CardTitle>
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded-sm bg-muted text-muted-foreground">
-                    {activeCurrency}
+                    {effectiveCurrency}
                   </span>
                 </div>
                 <CardDescription>
-                  So sánh thu nhập, chi tiêu và số dư tích lũy hàng tháng ({activeCurrency}).
+                  So sánh thu nhập, chi tiêu và số dư tích lũy hàng tháng ({effectiveCurrency}).
                 </CardDescription>
               </div>
               <Link
@@ -302,8 +309,8 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <CashFlowChart
-                data={data.sixMonthCashFlowByCurrency[activeCurrency] || []}
-                currency={activeCurrency}
+                data={data.sixMonthCashFlowByCurrency[effectiveCurrency] || []}
+                currency={effectiveCurrency}
               />
             </CardContent>
           </Card>

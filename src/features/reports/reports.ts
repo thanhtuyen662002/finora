@@ -1,11 +1,11 @@
 import { createClient } from '@/lib/supabase/client';
 import { getTransactions, type ExtendedTransaction } from '@/features/transactions';
 import { getAccounts, getAccountBalances } from '@/features/accounts';
-import type { AccountRow } from '@/types/database';
 import {
   getDateRangeForPeriod,
   getCurrentMonthPrefix,
   formatFullMonthLabel,
+  getAvailableCurrenciesAndDefault,
   aggregateCurrencySummaries,
   aggregateAccountBalancesByCurrency,
   aggregateCashFlow,
@@ -20,6 +20,7 @@ import type {
 
 /**
  * Loads real Supabase data and derives the dashboard state.
+ * Fails closed on any data load or balance retrieval failure.
  */
 export async function getDashboardReportData(): Promise<DashboardReportData> {
   const supabase = createClient();
@@ -28,29 +29,23 @@ export async function getDashboardReportData(): Promise<DashboardReportData> {
     getTransactions(),
     getAccounts(),
     getAccountBalances(),
-    supabase.from('user_settings').select('base_currency').maybeSingle(),
+    supabase.from('user_settings').select('base_currency, timezone').maybeSingle(),
   ]);
 
-  const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-
-  // Discover all currencies in accounts or transactions
-  const currencySet = new Set<string>();
-  if (baseCurrency) currencySet.add(baseCurrency);
-  accounts.forEach((a: AccountRow) => currencySet.add((a.currency_code || 'VND').toUpperCase()));
-  transactions.forEach((t: ExtendedTransaction) => currencySet.add((t.currency_code || 'VND').toUpperCase()));
-  if (currencySet.size === 0) currencySet.add('VND');
-
-  const availableCurrencies = Array.from(currencySet);
-  // Ensure baseCurrency is first
-  if (availableCurrencies.includes(baseCurrency)) {
-    const idx = availableCurrencies.indexOf(baseCurrency);
-    if (idx > 0) {
-      availableCurrencies.splice(idx, 1);
-      availableCurrencies.unshift(baseCurrency);
-    }
+  if (userSettingsResult.error) {
+    throw new Error(`Lỗi tải cấu hình người dùng: ${userSettingsResult.error.message}`);
   }
 
-  const currentMonthPrefix = getCurrentMonthPrefix();
+  const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
+  const timezone = userSettingsResult.data?.timezone || 'Asia/Ho_Chi_Minh';
+
+  const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
+    accounts,
+    transactions,
+    baseCurrency
+  );
+
+  const currentMonthPrefix = getCurrentMonthPrefix(timezone);
   const currentMonthSummaries = aggregateCurrencySummaries(transactions, currentMonthPrefix);
 
   // Guarantee every available currency has an exact summary object
@@ -79,8 +74,8 @@ export async function getDashboardReportData(): Promise<DashboardReportData> {
     }
   }
 
-  // 6-month cash flow per currency
-  const dateRange6M = getDateRangeForPeriod('6M');
+  // 6-month cash flow per currency respecting configured timezone
+  const dateRange6M = getDateRangeForPeriod('6M', timezone);
   const sixMonthCashFlowByCurrency: Record<string, ReturnType<typeof aggregateCashFlow>> = {};
   for (const c of availableCurrencies) {
     sixMonthCashFlowByCurrency[c] = aggregateCashFlow(transactions, c, dateRange6M.monthKeys);
@@ -91,6 +86,8 @@ export async function getDashboardReportData(): Promise<DashboardReportData> {
 
   return {
     baseCurrency,
+    defaultCurrency,
+    timezone,
     availableCurrencies,
     currentMonthSummaries,
     accountBalancesByCurrency,
@@ -102,6 +99,7 @@ export async function getDashboardReportData(): Promise<DashboardReportData> {
 
 /**
  * Loads real Supabase data and derives detailed financial report state for the selected period & currency.
+ * Fails closed on any data load or balance retrieval failure.
  */
 export async function getDetailedReportData(
   period: ReportPeriod,
@@ -113,31 +111,34 @@ export async function getDetailedReportData(
     getTransactions(),
     getAccounts(),
     getAccountBalances(),
-    supabase.from('user_settings').select('base_currency').maybeSingle(),
+    supabase.from('user_settings').select('base_currency, timezone').maybeSingle(),
   ]);
 
-  const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
-
-  const currencySet = new Set<string>();
-  if (baseCurrency) currencySet.add(baseCurrency);
-  accounts.forEach((a: AccountRow) => currencySet.add((a.currency_code || 'VND').toUpperCase()));
-  transactions.forEach((t: ExtendedTransaction) => currencySet.add((t.currency_code || 'VND').toUpperCase()));
-  if (currencySet.size === 0) currencySet.add('VND');
-
-  const availableCurrencies = Array.from(currencySet);
-  if (availableCurrencies.includes(baseCurrency)) {
-    const idx = availableCurrencies.indexOf(baseCurrency);
-    if (idx > 0) {
-      availableCurrencies.splice(idx, 1);
-      availableCurrencies.unshift(baseCurrency);
-    }
+  if (userSettingsResult.error) {
+    throw new Error(`Lỗi tải cấu hình người dùng: ${userSettingsResult.error.message}`);
   }
 
-  const selectedCurrency = (preferredCurrency && availableCurrencies.includes(preferredCurrency.toUpperCase()))
-    ? preferredCurrency.toUpperCase()
-    : availableCurrencies[0] || 'VND';
+  const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
+  const timezone = userSettingsResult.data?.timezone || 'Asia/Ho_Chi_Minh';
 
-  const dateRange = getDateRangeForPeriod(period);
+  const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
+    accounts,
+    transactions,
+    baseCurrency
+  );
+
+  const selectedCurrency =
+    preferredCurrency && availableCurrencies.includes(preferredCurrency.toUpperCase())
+      ? preferredCurrency.toUpperCase()
+      : defaultCurrency;
+
+  const dateRange = getDateRangeForPeriod(
+    period,
+    timezone,
+    new Date(),
+    transactions,
+    selectedCurrency
+  );
 
   const currencySummaries = aggregateCurrencySummaries(
     transactions,
@@ -181,6 +182,7 @@ export async function getDetailedReportData(
     period,
     selectedCurrency,
     availableCurrencies,
+    timezone,
     dateRangeLabel: dateRange.label,
     summary,
     cashFlow,

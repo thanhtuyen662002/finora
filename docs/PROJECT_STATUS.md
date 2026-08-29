@@ -378,20 +378,25 @@ Phase 5 is CLOSED. Reopen it only if a concrete regression is found.
 - **Phase 3 — Accounts + Categories:** PASS
 - **Phase 4 — Transactions:** PASS
 - **Phase 5 — Same-Currency Transfers:** PASS
-- **Phase 6 — Dashboard + Reports:** IN_PROGRESS (Implementation Complete, Source Verification in Progress)
+- **Phase 6 — Dashboard + Reports:** COMPLETE (Corrective Verification Passed)
 
-## Phase 6 — Dashboard + Reports Implementation
+## Phase 6 — Dashboard + Reports Implementation & Corrective Hardening
 
 ### Scope Completed:
 - Complete removal of mock financial fixtures and static date labels from Dashboard (`src/app/dashboard/page.tsx`) and Reports (`src/app/reports/page.tsx`).
-- Created pure deterministic reports aggregation engine (`src/features/reports/engine.ts`) executing exact decimal string and BigInt arithmetic (`addExactDecimals`, `subExactDecimals`, `computeSavingRatePercent`, `computeBasisPoints`).
+- Created pure deterministic reports aggregation engine (`src/features/reports/engine.ts`) executing exact decimal string and BigInt arithmetic (`addExactDecimals`, `subExactDecimals`, `compareExactDecimals`, `computeSavingRatePercent`, `computeBasisPoints`).
 - Integrated real Supabase data layer (`src/features/reports/reports.ts`) querying `transaction_details`, `account_balances`, `accounts`, and `user_settings`.
-- Enforced strict pre-FX multi-currency isolation: currency-specific grouping across scalar summary cards, account positions, cash flow series, and category expense donuts.
-- Implemented dynamic calendar period engine (`1M`, `3M`, `6M`, `1Y`, `ALL`) with real chronological month key aggregation.
-- Implemented real RFC 4180 CSV export with UTF-8 BOM (`\uFEFF`).
+- Fail-closed on `account_balances`: never fallback to `opening_balance`; missing balance rows throw an explicit error.
+- Timezone-aware date resolution: reads `user_settings.timezone` (with fail-closed error handling on settings query) and resolves calendar dates deterministically via `Intl.DateTimeFormat`.
+- `ALL` period history: derives month sequence from the earliest active transaction for the selected currency through the current month, including all intermediate zero-value months.
+- Exact monetary comparison: uses `compareExactDecimals` for series scaling instead of relational string comparisons (`>` / `<`).
+- Currency discovery & base currency selection: prioritizes `base_currency` only if present in real account/transaction data, otherwise deterministically selects the first available currency without injecting an absent base currency into non-empty sets.
+- Fail-closed reload & error state: clears stale data on reload errors and renders visible error states with retry buttons.
+- Implemented real RFC 4180 CSV export with UTF-8 BOM (`\uFEFF`) and timezone-aware filenames.
 - Refactored `CashFlowChart` and `CategoryDonutChart` for exact-money formatting and presentation-only integer basis points.
+- Hardened source verifier `scripts/verify-phase6-source.mjs` verifying all 54 contract invariants and unit test cases.
 - Recorded architecture decisions in ADR-011.
 
 ## Next Recommended Action
 
-Run full Phase 6 verification suite: `npm run typecheck`, `npm run lint`, `npm run build`, `node --check scripts/verify-phase6-source.mjs`, `node scripts/verify-phase6-source.mjs`, and `git diff --check`.
+Phase 6 source implementation and corrective hardening are complete and verified. Ready for Phase 6 review / closure.
