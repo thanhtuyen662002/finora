@@ -9,6 +9,7 @@ import {
   isPositiveExactDecimal,
   isNonNegativeExactDecimal,
 } from '@/lib/money';
+import { isValidISODateString } from '@/features/recurring/engine';
 import type {
   ExtendedGoal,
   GoalInsertInput,
@@ -54,6 +55,7 @@ export function computeGoalSummary(
 ): GoalSummary {
   let totalTarget = '0.0000';
   let totalCurrent = '0.0000';
+  let totalMonthlyContribution = '0.0000';
   let completedCount = 0;
   let activeCount = 0;
 
@@ -63,6 +65,7 @@ export function computeGoalSummary(
 
     totalTarget = addExactDecimals(totalTarget, g.target_amount);
     totalCurrent = addExactDecimals(totalCurrent, g.current_amount);
+    totalMonthlyContribution = addExactDecimals(totalMonthlyContribution, g.monthly_contribution);
     activeCount += 1;
     if (g.isCompleted) {
       completedCount += 1;
@@ -81,6 +84,8 @@ export function computeGoalSummary(
     totalTarget,
     totalCurrent,
     remaining,
+    totalRemaining: remaining,
+    totalMonthlyContribution,
     basisPoints,
     percentStr,
     completedCount,
@@ -158,6 +163,36 @@ export async function createGoal(input: GoalInsertInput): Promise<ExtendedGoal> 
     throw new Error('Invalid currency code format');
   }
 
+  let validTargetDate: string | null = null;
+  if (input.target_date !== undefined && input.target_date !== null && input.target_date.trim() !== '') {
+    const trimmedDate = input.target_date.trim();
+    if (!isValidISODateString(trimmedDate)) {
+      throw new Error(`Invalid goal target_date: "${trimmedDate}" is not a valid calendar ISO date`);
+    }
+    validTargetDate = trimmedDate;
+  }
+
+  const category = input.category !== undefined && input.category.trim() !== ''
+    ? input.category.trim()
+    : 'OTHER';
+  if (category.length < 1 || category.length > 100) {
+    throw new Error('Goal category must be between 1 and 100 characters');
+  }
+
+  const icon = input.icon !== undefined && input.icon.trim() !== ''
+    ? input.icon.trim()
+    : 'Target';
+  if (icon.length < 1 || icon.length > 100) {
+    throw new Error('Goal icon must be between 1 and 100 characters');
+  }
+
+  const color = input.color !== undefined && input.color.trim() !== ''
+    ? input.color.trim()
+    : '#10b981';
+  if (color.length < 1 || color.length > 32) {
+    throw new Error('Goal color must be between 1 and 32 characters');
+  }
+
   const { data, error } = await supabase
     .from('goals')
     .insert({
@@ -167,10 +202,10 @@ export async function createGoal(input: GoalInsertInput): Promise<ExtendedGoal> 
       current_amount: normalizedCurrent,
       monthly_contribution: normalizedMonthly,
       currency_code: normalizedCurrency,
-      target_date: input.target_date || null,
-      category: input.category?.trim() || 'OTHER',
-      icon: input.icon?.trim() || 'Target',
-      color: input.color?.trim() || '#10b981',
+      target_date: validTargetDate,
+      category,
+      icon,
+      color,
     })
     .select('id')
     .single();
@@ -238,19 +273,39 @@ export async function updateGoal(
   }
 
   if (input.target_date !== undefined) {
-    updatePayload.target_date = input.target_date;
+    if (input.target_date === null || input.target_date.trim() === '') {
+      updatePayload.target_date = null;
+    } else {
+      const trimmedDate = input.target_date.trim();
+      if (!isValidISODateString(trimmedDate)) {
+        throw new Error(`Invalid goal target_date: "${trimmedDate}" is not a valid calendar ISO date`);
+      }
+      updatePayload.target_date = trimmedDate;
+    }
   }
 
   if (input.category !== undefined) {
-    updatePayload.category = input.category.trim();
+    const trimmed = input.category.trim();
+    if (trimmed.length < 1 || trimmed.length > 100) {
+      throw new Error('Goal category must be between 1 and 100 characters');
+    }
+    updatePayload.category = trimmed;
   }
 
   if (input.icon !== undefined) {
-    updatePayload.icon = input.icon.trim();
+    const trimmed = input.icon.trim();
+    if (trimmed.length < 1 || trimmed.length > 100) {
+      throw new Error('Goal icon must be between 1 and 100 characters');
+    }
+    updatePayload.icon = trimmed;
   }
 
   if (input.color !== undefined) {
-    updatePayload.color = input.color.trim();
+    const trimmed = input.color.trim();
+    if (trimmed.length < 1 || trimmed.length > 32) {
+      throw new Error('Goal color must be between 1 and 32 characters');
+    }
+    updatePayload.color = trimmed;
   }
 
   if (input.is_archived !== undefined) {

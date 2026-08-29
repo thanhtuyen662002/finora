@@ -43,11 +43,9 @@ import { getCurrentUserSettings } from '@/lib/auth';
 import { getCalendarDateInTimezone, validateAndResolveTimezone } from '@/features/reports/engine';
 import type { AccountRow, CategoryRow } from '@/types/database';
 
-const COMMON_CURRENCIES = ['VND', 'USD', 'EUR', 'JPY', 'CNY', 'KRW'];
-
 export default function RecurringPage() {
-  const [selectedCurrency, setSelectedCurrency] = useState('VND');
-  const [availableCurrencies, setAvailableCurrencies] = useState<string[]>(COMMON_CURRENCIES);
+  const [selectedCurrency, setSelectedCurrency] = useState('');
+  const [availableCurrencies, setAvailableCurrencies] = useState<string[]>([]);
   const [timezone, setTimezone] = useState('Asia/Ho_Chi_Minh');
   const [showArchived, setShowArchived] = useState(false);
   const [recurringList, setRecurringList] = useState<ExtendedRecurringItem[]>([]);
@@ -62,24 +60,40 @@ export default function RecurringPage() {
   useEffect(() => {
     async function initSettings() {
       try {
+        setLoading(true);
+        setError('');
         const { data: settings, error: sErr } = await getCurrentUserSettings();
         if (sErr) throw sErr;
-        const baseCurr = settings?.base_currency?.toUpperCase() || 'VND';
+
         const tz = validateAndResolveTimezone(settings?.timezone || 'Asia/Ho_Chi_Minh');
-        setSelectedCurrency(baseCurr);
         setTimezone(tz);
 
         const [accs, cats] = await Promise.all([
-          getAccounts().catch(() => []),
-          getCategories().catch(() => []),
+          getAccounts(),
+          getCategories(),
         ]);
         setAccounts(accs);
         setCategories(cats);
 
-        const currs = Array.from(
-          new Set([baseCurr, ...COMMON_CURRENCIES, ...accs.map((a) => a.currency_code)])
-        );
-        setAvailableCurrencies(currs);
+        const realCurrencies = Array.from(
+          new Set(accs.map((a) => a.currency_code).filter(Boolean))
+        ).sort();
+
+        const baseCurr = settings?.base_currency?.toUpperCase() || 'VND';
+        let initialCurrency = baseCurr;
+
+        if (realCurrencies.length > 0) {
+          if (realCurrencies.includes(baseCurr)) {
+            initialCurrency = baseCurr;
+          } else {
+            initialCurrency = realCurrencies[0];
+          }
+          setAvailableCurrencies(realCurrencies);
+        } else {
+          setAvailableCurrencies([baseCurr]);
+        }
+
+        setSelectedCurrency(initialCurrency);
         setInitialized(true);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Không thể tải cài đặt');
@@ -90,7 +104,7 @@ export default function RecurringPage() {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!initialized) return;
+    if (!initialized || !selectedCurrency) return;
     try {
       setLoading(true);
       setError('');
@@ -101,8 +115,8 @@ export default function RecurringPage() {
           asOfDate,
           includeArchived: showArchived,
         }),
-        getAccounts().catch(() => []),
-        getCategories().catch(() => []),
+        getAccounts(),
+        getCategories(),
       ]);
       setRecurringList(items);
       setAccounts(accs);
@@ -116,15 +130,28 @@ export default function RecurringPage() {
   }, [initialized, selectedCurrency, timezone, showArchived]);
 
   useEffect(() => {
-    if (initialized) {
+    if (initialized && selectedCurrency) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       loadData();
     }
-  }, [initialized, loadData]);
+  }, [initialized, selectedCurrency, timezone, showArchived, loadData]);
 
   const summary = useMemo(() => {
     return computeRecurringSummary(recurringList, selectedCurrency);
   }, [recurringList, selectedCurrency]);
+
+  const handleCurrencyChange = (newCurrency: string) => {
+    if (newCurrency === selectedCurrency) return;
+    setRecurringList([]);
+    setLoading(true);
+    setSelectedCurrency(newCurrency);
+  };
+
+  const handleToggleArchived = () => {
+    setRecurringList([]);
+    setLoading(true);
+    setShowArchived((prev) => !prev);
+  };
 
   const handleToggleStatus = async (item: ExtendedRecurringItem) => {
     try {
@@ -159,48 +186,56 @@ export default function RecurringPage() {
     }
   };
 
-  const handleAddRecurring = async (newItem: RecurringItemInsertInput) => {
-    await createRecurringItem(newItem);
+  const handleAddSubmit = async (data: RecurringItemInsertInput) => {
+    await createRecurringItem(data);
     await loadData();
   };
 
-  const handleEditRecurring = async (id: string, updates: RecurringItemUpdateInput) => {
+  const handleEditSubmit = async (id: string, updates: RecurringItemUpdateInput) => {
     await updateRecurringItem(id, updates);
     await loadData();
   };
 
-  const formatFrequencyLabel = (freq: string) => {
+  const getFrequencyLabel = (freq: string) => {
     switch (freq) {
       case 'WEEKLY':
         return 'Hàng tuần';
+      case 'MONTHLY':
+        return 'Hàng tháng';
       case 'YEARLY':
         return 'Hàng năm';
       default:
-        return 'Hàng tháng';
+        return freq;
     }
   };
+
+  const defaultAnchorDate = useMemo(() => {
+    return getCalendarDateInTimezone(timezone).dateString;
+  }, [timezone]);
 
   return (
     <AppShell>
       <PageHeader
-        title="Định kỳ & Hóa đơn"
-        subtitle={`Quản lý các gói đăng ký, hóa đơn dịch vụ và thu nhập lặp lại (${selectedCurrency}).`}
+        title="Giao dịch định kỳ"
+        subtitle={`Quản lý và dự báo các khoản thu chi lặp lại theo chu kỳ (${selectedCurrency || 'Đang tải'}, ${timezone}).`}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <div className="w-28">
-            <Select
-              id="recCurrencySelect"
-              value={selectedCurrency}
-              onChange={(e) => setSelectedCurrency(e.target.value)}
-              options={availableCurrencies.map((c) => ({ value: c, label: c }))}
-            />
-          </div>
+          {availableCurrencies.length > 0 && (
+            <div className="w-28">
+              <Select
+                id="recurringCurrencySelect"
+                value={selectedCurrency}
+                onChange={(e) => handleCurrencyChange(e.target.value)}
+                options={availableCurrencies.map((c) => ({ value: c, label: c }))}
+              />
+            </div>
+          )}
 
           <Button
             size="sm"
             variant={showArchived ? 'secondary' : 'outline'}
-            onClick={() => setShowArchived(!showArchived)}
-            title="Hiện/ẩn các khoản đã lưu trữ"
+            onClick={handleToggleArchived}
+            title="Hiện/ẩn các mục đã lưu trữ"
           >
             <Archive className="h-4 w-4 mr-1.5" />
             {showArchived ? 'Đang hiện lưu trữ' : 'Đã lưu trữ'}
@@ -210,7 +245,7 @@ export default function RecurringPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
 
-          <Button size="sm" onClick={() => setAddModalOpen(true)}>
+          <Button size="sm" onClick={() => setAddModalOpen(true)} disabled={!initialized}>
             <Plus className="h-4 w-4 mr-1.5" />
             Thêm khoản định kỳ
           </Button>
@@ -226,210 +261,253 @@ export default function RecurringPage() {
         </div>
       )}
 
-      {/* Summary Cards (hidden on error) */}
-      {!error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="bg-card border">
-            <CardContent className="p-4 sm:p-5 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tổng hóa đơn cố định hàng tháng
-                </span>
-                <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                  -{formatExactMoney(summary.monthlyExpenseProjected, selectedCurrency)}
-                </p>
-                <span className="text-xs text-muted-foreground">
-                  {summary.activeCount} khoản đang kích hoạt ({summary.pausedCount} tạm ngưng)
-                </span>
+      {/* Monthly Projections Summary Card */}
+      {!error && !loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card className="border">
+            <CardContent className="p-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Thu định kỳ dự tính (Tháng)
+              </span>
+              <div className="text-xl font-bold mt-2 text-emerald-600 dark:text-emerald-400">
+                +{formatExactMoney(summary.monthlyIncomeProjected, selectedCurrency)}
               </div>
-              <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center text-slate-600 dark:text-slate-400">
-                <Repeat className="h-5 w-5" />
-              </div>
+              <span className="text-[11px] text-muted-foreground mt-1 block">
+                {summary.activeCount} khoản đang hoạt động
+              </span>
             </CardContent>
           </Card>
 
-          <Card className="bg-card border">
-            <CardContent className="p-4 sm:p-5 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Thu nhập định kỳ hàng tháng
-                </span>
-                <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  +{formatExactMoney(summary.monthlyIncomeProjected, selectedCurrency)}
-                </p>
-                <span className="text-xs text-muted-foreground">
-                  Dòng tiền ròng định kỳ: {formatExactMoney(summary.netMonthlyProjected, selectedCurrency)}/tháng
-                </span>
+          <Card className="border">
+            <CardContent className="p-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Chi định kỳ dự tính (Tháng)
+              </span>
+              <div className="text-xl font-bold mt-2 text-red-600 dark:text-red-400">
+                -{formatExactMoney(summary.monthlyExpenseProjected, selectedCurrency)}
               </div>
-              <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <Calendar className="h-5 w-5" />
+              <span className="text-[11px] text-muted-foreground mt-1 block">
+                {summary.pausedCount} khoản đang tạm dừng
+              </span>
+            </CardContent>
+          </Card>
+
+          <Card className="border">
+            <CardContent className="p-5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Dòng tiền ròng dự tính (Tháng)
+              </span>
+              <div
+                className={cn(
+                  'text-xl font-bold mt-2',
+                  summary.netMonthlyProjected.startsWith('-')
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-foreground'
+                )}
+              >
+                {formatExactMoney(summary.netMonthlyProjected, selectedCurrency)}
               </div>
+              <span className="text-[11px] text-muted-foreground mt-1 block">
+                Dự báo dòng tiền tháng quy đổi
+              </span>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Recurring Items List */}
-      {loading && recurringList.length === 0 ? (
+      {/* Recurring Items List or Empty State */}
+      {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           Đang tải danh sách định kỳ...
         </div>
       ) : recurringList.length === 0 && !error ? (
         <EmptyState
-          title="Chưa có khoản định kỳ"
-          description="Thiết lập các khoản thu hoặc chi lặp lại (Netflix, Spotify, tiền nhà, lương...) để quản lý dự báo."
+          title="Chưa có khoản định kỳ nào"
+          description={`Tạo các khoản thu nhập hoặc chi phí định kỳ (tiền thuê, lương, hóa đơn...) để theo dõi (${selectedCurrency}).`}
           actionLabel="+ Thêm khoản định kỳ"
           onAction={() => setAddModalOpen(true)}
         />
       ) : (
         <div className="space-y-3">
-          <h3 className="text-base font-semibold text-foreground">
-            Danh sách dịch vụ & hóa đơn ({recurringList.length})
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">
+              Danh sách khoản định kỳ ({recurringList.length})
+            </h3>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {recurringList.map((item) => {
-              const isIncome = item.transaction_type === 'INCOME';
-              const isActive = !item.is_paused && !item.is_archived;
-
-              return (
-                <Card
-                  key={item.id}
-                  className={cn(
-                    'transition-all duration-200 border',
-                    item.is_archived
-                      ? 'opacity-50 bg-muted/30 border-dashed'
-                      : !isActive
-                      ? 'opacity-60 bg-muted/20'
-                      : 'bg-card hover:shadow-xs'
-                  )}
-                >
-                  <CardContent className="p-4 sm:p-5 flex items-center justify-between">
-                    <div className="flex items-center space-x-3 min-w-0 pr-2">
-                      <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-2xs"
-                        style={{ backgroundColor: item.categoryColor || '#64748b' }}
-                      >
-                        <Layers className="h-4 w-4" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {recurringList.map((item) => (
+              <Card
+                key={item.id}
+                className={cn(
+                  'border transition-all duration-200 hover:shadow-xs',
+                  item.is_archived
+                    ? 'opacity-60 bg-muted/20 border-dashed'
+                    : item.is_paused
+                    ? 'opacity-75 bg-muted/10'
+                    : ''
+                )}
+              >
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <h4 className="font-semibold text-base text-foreground">
+                          {item.name}
+                        </h4>
+                        {item.is_archived && (
+                          <Badge variant="secondary" className="text-[10px] uppercase font-mono px-1 py-0">
+                            Lưu trữ
+                          </Badge>
+                        )}
+                        {item.is_paused && !item.is_archived && (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
+                            Tạm dừng
+                          </Badge>
+                        )}
                       </div>
-                      <div className="truncate">
-                        <div className="flex items-center space-x-2">
-                          <h4 className="text-sm font-semibold text-foreground truncate">
-                            {item.name}
-                          </h4>
-                          {item.is_archived ? (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] uppercase font-mono px-1.5 py-0"
-                            >
-                              Lưu trữ
-                            </Badge>
+
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {getFrequencyLabel(item.frequency)}
+                        </Badge>
+                        <span>•</span>
+                        <span>{item.categoryName}</span>
+                        <span>•</span>
+                        <span>{item.accountName}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div
+                        className={cn(
+                          'text-base font-bold',
+                          item.transaction_type === 'INCOME'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-foreground'
+                        )}
+                      >
+                        {item.transaction_type === 'INCOME' ? '+' : '-'}
+                        {formatExactMoney(item.amount, item.currency_code)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Due Date Indicator */}
+                  {!item.is_archived && (
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+                      <div className="flex items-center space-x-1.5 text-muted-foreground">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>
+                          Kỳ tiếp theo:{' '}
+                          {item.nextDueDate
+                            ? formatDateVN(item.nextDueDate)
+                            : item.is_paused
+                            ? 'Đang tạm dừng'
+                            : 'Đã hết hạn'}
+                        </span>
+                      </div>
+
+                      {item.nextDueDate && (
+                        <div>
+                          {item.isOverdue ? (
+                            <span className="font-semibold text-red-600 dark:text-red-400">
+                              Quá hạn {Math.abs(item.daysUntilDue || 0)} ngày
+                            </span>
+                          ) : item.daysUntilDue === 0 ? (
+                            <span className="font-semibold text-amber-600 dark:text-amber-400">
+                              Đến hạn hôm nay
+                            </span>
                           ) : (
-                            <Badge
-                              variant={isActive ? 'default' : 'secondary'}
-                              className="text-[10px] uppercase font-mono px-1.5 py-0"
-                            >
-                              {isActive ? 'Đang chạy' : 'Tạm dừng'}
-                            </Badge>
+                            <span className="text-muted-foreground">
+                              Còn {item.daysUntilDue} ngày
+                            </span>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {item.accountName} · {formatFrequencyLabel(item.frequency)} · {item.categoryName}
-                        </p>
-                        {item.nextDueDate && (
-                          <div className="flex items-center space-x-1 text-[11px] text-muted-foreground mt-1">
-                            <Calendar className="h-3 w-3" />
-                            <span>
-                              Kỳ tới: {formatDateVN(item.nextDueDate)}
-                              {item.daysUntilDue !== null && item.daysUntilDue >= 0
-                                ? ` (sau ${item.daysUntilDue} ngày)`
-                                : item.daysUntilDue !== null && item.daysUntilDue < 0
-                                ? ` (đã qua hạn ${Math.abs(item.daysUntilDue)} ngày)`
-                                : ''}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
+                  )}
 
-                    <div className="text-right shrink-0 flex flex-col items-end space-y-1.5">
-                      <span
-                        className={cn(
-                          'text-sm sm:text-base font-bold',
-                          isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
-                        )}
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-end space-x-1 pt-1">
+                    {!item.is_archived && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => handleToggleStatus(item)}
+                          title={item.is_paused ? 'Tiếp tục chu kỳ' : 'Tạm dừng chu kỳ'}
+                        >
+                          {item.is_paused ? (
+                            <>
+                              <Play className="h-3.5 w-3.5 mr-1 text-emerald-600" />
+                              Tiếp tục
+                            </>
+                          ) : (
+                            <>
+                              <Pause className="h-3.5 w-3.5 mr-1 text-amber-600" />
+                              Tạm dừng
+                            </>
+                          )}
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditingItem(item)}
+                          title="Chỉnh sửa"
+                        >
+                          <Edit2 className="h-3.5 w-3.5 mr-1" />
+                          Sửa
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-muted-foreground hover:text-amber-600"
+                          onClick={() => handleArchive(item)}
+                          title="Lưu trữ"
+                        >
+                          <Archive className="h-3.5 w-3.5 mr-1" />
+                          Lưu trữ
+                        </Button>
+                      </>
+                    )}
+
+                    {item.is_archived && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-xs text-muted-foreground hover:text-emerald-600"
+                        onClick={() => handleUnarchive(item)}
+                        title="Khôi phục"
                       >
-                        {isIncome ? '+' : '-'}
-                        {formatExactMoney(item.amount, item.currency_code)}
-                      </span>
-
-                      <div className="flex items-center space-x-1">
-                        {!item.is_archived && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleStatus(item)}
-                              className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
-                              title={isActive ? 'Tạm ngưng' : 'Kích hoạt'}
-                            >
-                              {isActive ? (
-                                <Pause className="h-3.5 w-3.5 text-amber-500" />
-                              ) : (
-                                <Play className="h-3.5 w-3.5 text-emerald-500" />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditingItem(item)}
-                              className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
-                              title="Chỉnh sửa"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleArchive(item)}
-                              className="h-7 text-xs px-2 text-muted-foreground hover:text-amber-600"
-                              title="Lưu trữ"
-                            >
-                              <Archive className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
-                        )}
-                        {item.is_archived && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleUnarchive(item)}
-                            className="h-7 text-xs px-2 text-muted-foreground hover:text-emerald-600"
-                            title="Khôi phục"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                            Khôi phục
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                        <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                        Khôi phục
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       )}
 
       {/* Add Recurring Modal */}
-      <AddRecurringModal
-        open={addModalOpen}
-        onOpenChange={setAddModalOpen}
-        accounts={accounts}
-        categories={categories}
-        currencyCode={selectedCurrency}
-        onSuccess={handleAddRecurring}
-      />
+      {selectedCurrency && (
+        <AddRecurringModal
+          open={addModalOpen}
+          onOpenChange={setAddModalOpen}
+          accounts={accounts}
+          categories={categories}
+          currencyCode={selectedCurrency}
+          defaultAnchorDate={defaultAnchorDate}
+          onSuccess={handleAddSubmit}
+        />
+      )}
 
       {/* Edit Recurring Modal */}
       <EditRecurringModal
@@ -440,7 +518,7 @@ export default function RecurringPage() {
         item={editingItem}
         accounts={accounts}
         categories={categories}
-        onSuccess={handleEditRecurring}
+        onSuccess={handleEditSubmit}
       />
     </AppShell>
   );

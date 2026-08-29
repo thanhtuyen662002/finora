@@ -36,6 +36,8 @@ export type GoalSummary = {
   totalTarget: string;
   totalCurrent: string;
   remaining: string;
+  totalRemaining: string;
+  totalMonthlyContribution: string;
   basisPoints: number;
   percentStr: string;
   completedCount: number;

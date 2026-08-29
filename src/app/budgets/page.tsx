@@ -55,13 +55,11 @@ function getAdjacentMonth(currentPeriod: string, offset: -1 | 1): string {
   return `${year}-${String(month).padStart(2, '0')}-01`;
 }
 
-const COMMON_CURRENCIES = ['VND', 'USD', 'EUR', 'JPY', 'CNY', 'KRW'];
-
 export default function BudgetsPage() {
   const [resolvedTimezone, setResolvedTimezone] = useState('Asia/Ho_Chi_Minh');
-  const [selectedCurrency, setSelectedCurrency] = useState('VND');
-  const [availableCurrencies, setAvailableCurrencies] = useState<string[]>(COMMON_CURRENCIES);
-  const [currentPeriod, setCurrentPeriod] = useState<string>('2026-08-01');
+  const [selectedCurrency, setSelectedCurrency] = useState('');
+  const [availableCurrencies, setAvailableCurrencies] = useState<string[]>([]);
+  const [currentPeriod, setCurrentPeriod] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
   const [budgets, setBudgets] = useState<ExtendedBudget[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -71,23 +69,46 @@ export default function BudgetsPage() {
   const [error, setError] = useState('');
   const [initialized, setInitialized] = useState(false);
 
-  // 1. Initial settings load
+  // 1. Initial settings and real financial currency resolution (fail-closed)
   useEffect(() => {
     async function initSettings() {
       try {
+        setLoading(true);
+        setError('');
         const { data: settings, error: sErr } = await getCurrentUserSettings();
         if (sErr) throw sErr;
+
         const tz = validateAndResolveTimezone(settings?.timezone);
         setResolvedTimezone(tz);
-        const baseCurr = settings?.base_currency?.toUpperCase() || 'VND';
-        setSelectedCurrency(baseCurr);
-        setCurrentPeriod(getDefaultPeriodMonth(tz));
 
-        const accs = await getAccounts().catch(() => []);
-        const currs = Array.from(
-          new Set([baseCurr, ...COMMON_CURRENCIES, ...accs.map((a) => a.currency_code)])
-        );
-        setAvailableCurrencies(currs);
+        const initialPeriod = getDefaultPeriodMonth(tz);
+        setCurrentPeriod(initialPeriod);
+
+        const [accs, cats] = await Promise.all([
+          getAccounts(),
+          getCategories(),
+        ]);
+
+        const realCurrencies = Array.from(
+          new Set(accs.map((a) => a.currency_code).filter(Boolean))
+        ).sort();
+
+        const baseCurr = settings?.base_currency?.toUpperCase() || 'VND';
+        let initialCurrency = baseCurr;
+
+        if (realCurrencies.length > 0) {
+          if (realCurrencies.includes(baseCurr)) {
+            initialCurrency = baseCurr;
+          } else {
+            initialCurrency = realCurrencies[0];
+          }
+          setAvailableCurrencies(realCurrencies);
+        } else {
+          setAvailableCurrencies([baseCurr]);
+        }
+
+        setSelectedCurrency(initialCurrency);
+        setCategories(cats);
         setInitialized(true);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Không thể khởi tạo cài đặt người dùng');
@@ -98,7 +119,7 @@ export default function BudgetsPage() {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!initialized) return;
+    if (!initialized || !currentPeriod || !selectedCurrency) return;
     try {
       setLoading(true);
       setError('');
@@ -121,15 +142,35 @@ export default function BudgetsPage() {
   }, [initialized, currentPeriod, selectedCurrency, showArchived]);
 
   useEffect(() => {
-    if (initialized) {
+    if (initialized && currentPeriod && selectedCurrency) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       loadData();
     }
-  }, [initialized, loadData]);
+  }, [initialized, currentPeriod, selectedCurrency, showArchived, loadData]);
 
   const summary = useMemo(() => {
     return computeBudgetSummary(budgets, selectedCurrency);
   }, [budgets, selectedCurrency]);
+
+  const handleCurrencyChange = (newCurrency: string) => {
+    if (newCurrency === selectedCurrency) return;
+    setBudgets([]);
+    setLoading(true);
+    setSelectedCurrency(newCurrency);
+  };
+
+  const handlePeriodChange = (newPeriod: string) => {
+    if (newPeriod === currentPeriod) return;
+    setBudgets([]);
+    setLoading(true);
+    setCurrentPeriod(newPeriod);
+  };
+
+  const handleToggleArchived = () => {
+    setBudgets([]);
+    setLoading(true);
+    setShowArchived((prev) => !prev);
+  };
 
   const handleAddBudget = async (data: { categoryId: string; limitAmount: string }) => {
     await createBudget({
@@ -161,6 +202,7 @@ export default function BudgetsPage() {
   };
 
   const periodLabel = useMemo(() => {
+    if (!currentPeriod) return '';
     const parts = currentPeriod.split('-');
     if (parts.length >= 2) {
       return `Tháng ${parseInt(parts[1], 10)}/${parts[0]}`;
@@ -172,46 +214,50 @@ export default function BudgetsPage() {
     <AppShell>
       <PageHeader
         title="Ngân sách chi tiêu"
-        subtitle={`Kiểm soát hạn mức các danh mục trong ${periodLabel} (${resolvedTimezone}).`}
+        subtitle={`Kiểm soát hạn mức các danh mục trong ${periodLabel || 'tháng được chọn'} (${resolvedTimezone}).`}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center space-x-1 border rounded-lg p-0.5 bg-card">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0"
-              onClick={() => setCurrentPeriod((p) => getAdjacentMonth(p, -1))}
-              title="Tháng trước"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-xs font-semibold px-2 min-w-[90px] text-center">
-              {periodLabel}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0"
-              onClick={() => setCurrentPeriod((p) => getAdjacentMonth(p, 1))}
-              title="Tháng sau"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          {currentPeriod && (
+            <div className="flex items-center space-x-1 border rounded-lg p-0.5 bg-card">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0"
+                onClick={() => handlePeriodChange(getAdjacentMonth(currentPeriod, -1))}
+                title="Tháng trước"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-xs font-semibold px-2 min-w-[90px] text-center">
+                {periodLabel}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0"
+                onClick={() => handlePeriodChange(getAdjacentMonth(currentPeriod, 1))}
+                title="Tháng sau"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
-          <div className="w-28">
-            <Select
-              id="budgetCurrencySelect"
-              value={selectedCurrency}
-              onChange={(e) => setSelectedCurrency(e.target.value)}
-              options={availableCurrencies.map((c) => ({ value: c, label: c }))}
-            />
-          </div>
+          {availableCurrencies.length > 0 && (
+            <div className="w-28">
+              <Select
+                id="budgetCurrencySelect"
+                value={selectedCurrency}
+                onChange={(e) => handleCurrencyChange(e.target.value)}
+                options={availableCurrencies.map((c) => ({ value: c, label: c }))}
+              />
+            </div>
+          )}
 
           <Button
             size="sm"
             variant={showArchived ? 'secondary' : 'outline'}
-            onClick={() => setShowArchived(!showArchived)}
+            onClick={handleToggleArchived}
             title="Hiện/ẩn danh mục đã lưu trữ"
           >
             <Archive className="h-4 w-4 mr-1.5" />
@@ -222,7 +268,7 @@ export default function BudgetsPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
 
-          <Button size="sm" onClick={() => setAddBudgetOpen(true)}>
+          <Button size="sm" onClick={() => setAddBudgetOpen(true)} disabled={!initialized}>
             <Plus className="h-4 w-4 mr-1.5" />
             Thiết lập ngân sách
           </Button>
@@ -238,8 +284,8 @@ export default function BudgetsPage() {
         </div>
       )}
 
-      {/* Overall Budget Status Card (hidden or blanked on error) */}
-      {!error && (
+      {/* Overall Budget Status Card */}
+      {!error && !loading && budgets.length > 0 && (
         <Card className="border">
           <CardContent className="p-5 sm:p-6 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -299,7 +345,7 @@ export default function BudgetsPage() {
       )}
 
       {/* Individual Categories Budget Grid or Empty State */}
-      {loading && budgets.length === 0 ? (
+      {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           Đang tải dữ liệu ngân sách...
         </div>
@@ -330,14 +376,16 @@ export default function BudgetsPage() {
       )}
 
       {/* Add Budget Modal */}
-      <AddBudgetModal
-        open={addBudgetOpen}
-        onOpenChange={setAddBudgetOpen}
-        categories={categories}
-        currencyCode={selectedCurrency}
-        periodMonth={currentPeriod}
-        onSuccess={handleAddBudget}
-      />
+      {currentPeriod && selectedCurrency && (
+        <AddBudgetModal
+          open={addBudgetOpen}
+          onOpenChange={setAddBudgetOpen}
+          categories={categories}
+          currencyCode={selectedCurrency}
+          periodMonth={currentPeriod}
+          onSuccess={handleAddBudget}
+        />
+      )}
 
       {/* Edit Budget Modal */}
       <EditBudgetModal

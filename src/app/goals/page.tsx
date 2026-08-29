@@ -35,11 +35,9 @@ import { getAccounts } from '@/features/accounts/accounts';
 import { getCurrentUserSettings } from '@/lib/auth';
 import { formatExactMoney } from '@/lib/money/format';
 
-const COMMON_CURRENCIES = ['VND', 'USD', 'EUR', 'JPY', 'CNY', 'KRW'];
-
 export default function GoalsPage() {
-  const [selectedCurrency, setSelectedCurrency] = useState('VND');
-  const [availableCurrencies, setAvailableCurrencies] = useState<string[]>(COMMON_CURRENCIES);
+  const [selectedCurrency, setSelectedCurrency] = useState('');
+  const [availableCurrencies, setAvailableCurrencies] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [goals, setGoals] = useState<ExtendedGoal[]>([]);
   const [addGoalOpen, setAddGoalOpen] = useState(false);
@@ -49,19 +47,42 @@ export default function GoalsPage() {
   const [error, setError] = useState('');
   const [initialized, setInitialized] = useState(false);
 
+  // 1. Initial settings and real financial currency resolution (fail-closed)
   useEffect(() => {
     async function initSettings() {
       try {
+        setLoading(true);
+        setError('');
         const { data: settings, error: sErr } = await getCurrentUserSettings();
         if (sErr) throw sErr;
-        const baseCurr = settings?.base_currency?.toUpperCase() || 'VND';
-        setSelectedCurrency(baseCurr);
 
-        const accs = await getAccounts().catch(() => []);
-        const currs = Array.from(
-          new Set([baseCurr, ...COMMON_CURRENCIES, ...accs.map((a) => a.currency_code)])
-        );
-        setAvailableCurrencies(currs);
+        const [accs, allGoals] = await Promise.all([
+          getAccounts(),
+          getGoals({ includeArchived: true }),
+        ]);
+
+        const realCurrencies = Array.from(
+          new Set([
+            ...accs.map((a) => a.currency_code),
+            ...allGoals.map((g) => g.currency_code),
+          ].filter(Boolean))
+        ).sort();
+
+        const baseCurr = settings?.base_currency?.toUpperCase() || 'VND';
+        let initialCurrency = baseCurr;
+
+        if (realCurrencies.length > 0) {
+          if (realCurrencies.includes(baseCurr)) {
+            initialCurrency = baseCurr;
+          } else {
+            initialCurrency = realCurrencies[0];
+          }
+          setAvailableCurrencies(realCurrencies);
+        } else {
+          setAvailableCurrencies([baseCurr]);
+        }
+
+        setSelectedCurrency(initialCurrency);
         setInitialized(true);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Không thể tải cài đặt người dùng');
@@ -72,7 +93,7 @@ export default function GoalsPage() {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!initialized) return;
+    if (!initialized || !selectedCurrency) return;
     try {
       setLoading(true);
       setError('');
@@ -90,15 +111,28 @@ export default function GoalsPage() {
   }, [initialized, selectedCurrency, showArchived]);
 
   useEffect(() => {
-    if (initialized) {
+    if (initialized && selectedCurrency) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       loadData();
     }
-  }, [initialized, loadData]);
+  }, [initialized, selectedCurrency, showArchived, loadData]);
 
   const summary = useMemo(() => {
     return computeGoalSummary(goals, selectedCurrency);
   }, [goals, selectedCurrency]);
+
+  const handleCurrencyChange = (newCurrency: string) => {
+    if (newCurrency === selectedCurrency) return;
+    setGoals([]);
+    setLoading(true);
+    setSelectedCurrency(newCurrency);
+  };
+
+  const handleToggleArchived = () => {
+    setGoals([]);
+    setLoading(true);
+    setShowArchived((prev) => !prev);
+  };
 
   const handleAddGoal = async (newGoal: GoalInsertInput) => {
     await createGoal({
@@ -134,22 +168,24 @@ export default function GoalsPage() {
     <AppShell>
       <PageHeader
         title="Mục tiêu tài chính"
-        subtitle={`Lập kế hoạch tích lũy và theo dõi tiến độ các mục tiêu lớn (${selectedCurrency}).`}
+        subtitle={`Lập kế hoạch tích lũy và theo dõi tiến độ các mục tiêu lớn (${selectedCurrency || 'Đang tải'}).`}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <div className="w-28">
-            <Select
-              id="goalCurrencySelect"
-              value={selectedCurrency}
-              onChange={(e) => setSelectedCurrency(e.target.value)}
-              options={availableCurrencies.map((c) => ({ value: c, label: c }))}
-            />
-          </div>
+          {availableCurrencies.length > 0 && (
+            <div className="w-28">
+              <Select
+                id="goalCurrencySelect"
+                value={selectedCurrency}
+                onChange={(e) => handleCurrencyChange(e.target.value)}
+                options={availableCurrencies.map((c) => ({ value: c, label: c }))}
+              />
+            </div>
+          )}
 
           <Button
             size="sm"
             variant={showArchived ? 'secondary' : 'outline'}
-            onClick={() => setShowArchived(!showArchived)}
+            onClick={handleToggleArchived}
             title="Hiện/ẩn mục tiêu đã lưu trữ"
           >
             <Archive className="h-4 w-4 mr-1.5" />
@@ -160,7 +196,7 @@ export default function GoalsPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
 
-          <Button size="sm" onClick={() => setAddGoalOpen(true)}>
+          <Button size="sm" onClick={() => setAddGoalOpen(true)} disabled={!initialized}>
             <Plus className="h-4 w-4 mr-1.5" />
             Tạo mục tiêu mới
           </Button>
@@ -176,92 +212,108 @@ export default function GoalsPage() {
         </div>
       )}
 
-      {/* Overview Stat Cards (hidden on error) */}
-      {!error && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
-          <Card className="bg-card border">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {/* Summary KPI Cards */}
+      {!error && !loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">
                   Tổng đã tích lũy
                 </span>
-                <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                  {formatExactMoney(summary.totalCurrent, selectedCurrency)}
-                </p>
-                <span className="text-xs text-muted-foreground">
-                  Đạt {summary.percentStr}% tổng các mục tiêu
-                </span>
+                <Target className="h-4 w-4 text-emerald-500" />
               </div>
-              <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <Target className="h-5 w-5" />
+              <div className="text-xl font-bold mt-2 text-foreground">
+                {formatExactMoney(summary.totalCurrent, selectedCurrency)}
               </div>
+              <span className="text-xs text-muted-foreground mt-1 block">
+                Tiến độ: {summary.percentStr}%
+              </span>
             </CardContent>
           </Card>
 
-          <Card className="bg-card border">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tổng đích đến
+          <Card className="border">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Tổng mục tiêu
                 </span>
-                <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                  {formatExactMoney(summary.totalTarget, selectedCurrency)}
-                </p>
-                <span className="text-xs text-muted-foreground">
-                  {summary.activeCount} mục tiêu đang theo đuổi
-                </span>
+                <TrendingUp className="h-4 w-4 text-primary" />
               </div>
-              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                <TrendingUp className="h-5 w-5" />
+              <div className="text-xl font-bold mt-2 text-foreground">
+                {formatExactMoney(summary.totalTarget, selectedCurrency)}
               </div>
+              <span className="text-xs text-muted-foreground mt-1 block">
+                Còn lại: {formatExactMoney(summary.totalRemaining, selectedCurrency)}
+              </span>
             </CardContent>
           </Card>
 
-          <Card className="bg-card border">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <Card className="border">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Đóng góp hàng tháng
+                </span>
+                <Sparkles className="h-4 w-4 text-amber-500" />
+              </div>
+              <div className="text-xl font-bold mt-2 text-foreground">
+                {formatExactMoney(summary.totalMonthlyContribution, selectedCurrency)}
+              </div>
+              <span className="text-xs text-muted-foreground mt-1 block">
+                {summary.activeCount} mục tiêu đang hoạt động
+              </span>
+            </CardContent>
+          </Card>
+
+          <Card className="border">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">
                   Mục tiêu hoàn thành
                 </span>
-                <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-                  {summary.completedCount} / {summary.activeCount}
-                </p>
-                <span className="text-xs text-muted-foreground">
-                  Còn thiếu {formatExactMoney(summary.remaining, selectedCurrency)}
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded">
+                  {summary.completedCount} / {goals.length}
                 </span>
               </div>
-              <div className="h-10 w-10 rounded-xl bg-amber-50 dark:bg-amber-950 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                <Sparkles className="h-5 w-5" />
+              <div className="text-xl font-bold mt-2 text-foreground">
+                {summary.completedCount} mục tiêu
               </div>
+              <span className="text-xs text-muted-foreground mt-1 block">
+                Đã đạt hoặc vượt 100%
+              </span>
             </CardContent>
           </Card>
         </div>
       )}
 
       {/* Goal Cards Grid or Empty State */}
-      {loading && goals.length === 0 ? (
+      {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           Đang tải danh sách mục tiêu...
         </div>
       ) : goals.length === 0 && !error ? (
         <EmptyState
-          title="Chưa có mục tiêu tài chính"
-          description="Thiết lập các mục tiêu tiết kiệm, mua nhà, du lịch hay quỹ dự phòng để có lộ trình rõ ràng."
+          title="Chưa có mục tiêu tài chính nào"
+          description={`Tạo mục tiêu để theo dõi kế hoạch tiết kiệm (${selectedCurrency}).`}
           actionLabel="+ Tạo mục tiêu mới"
           onAction={() => setAddGoalOpen(true)}
         />
       ) : (
-        <div className="space-y-3">
-          <h3 className="text-base font-semibold text-foreground">
-            Danh sách mục tiêu ({goals.length})
-          </h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-foreground">
+              Danh sách mục tiêu ({goals.length})
+            </h3>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {goals.map((g) => (
+            {goals.map((goal) => (
               <GoalCard
-                key={g.id}
-                goal={g}
-                onEdit={(item) => setEditingGoal(item)}
-                onContribute={(item) => setContributingGoal(item)}
+                key={goal.id}
+                goal={goal}
+                onContribute={(g) => setContributingGoal(g)}
+                onEdit={(g) => setEditingGoal(g)}
                 onArchive={handleArchiveGoal}
                 onUnarchive={handleUnarchiveGoal}
               />
@@ -271,12 +323,14 @@ export default function GoalsPage() {
       )}
 
       {/* Add Goal Modal */}
-      <AddGoalModal
-        open={addGoalOpen}
-        onOpenChange={setAddGoalOpen}
-        currencyCode={selectedCurrency}
-        onSuccess={handleAddGoal}
-      />
+      {selectedCurrency && (
+        <AddGoalModal
+          open={addGoalOpen}
+          onOpenChange={setAddGoalOpen}
+          currencyCode={selectedCurrency}
+          onSuccess={handleAddGoal}
+        />
+      )}
 
       {/* Edit Goal Modal */}
       <EditGoalModal

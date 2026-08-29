@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ import { Repeat, AlertCircle } from 'lucide-react';
 import type { AccountRow, CategoryRow } from '@/types/database';
 import type { RecurringItemInsertInput, RecurringFrequency } from '@/features/recurring';
 import { toExactDecimal, isPositiveExactDecimal } from '@/lib/money';
-import { getTodayISODate } from '@/features/recurring/engine';
+import { isValidISODateString } from '@/features/recurring/engine';
 
 interface AddRecurringModalProps {
   open: boolean;
@@ -26,6 +26,7 @@ interface AddRecurringModalProps {
   accounts: AccountRow[];
   categories: CategoryRow[];
   currencyCode?: string;
+  defaultAnchorDate?: string;
   onSuccess?: (itemData: RecurringItemInsertInput) => Promise<void> | void;
 }
 
@@ -35,6 +36,7 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
   accounts,
   categories,
   currencyCode = 'VND',
+  defaultAnchorDate = '',
   onSuccess,
 }) => {
   const [type, setType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
@@ -43,11 +45,18 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [frequency, setFrequency] = useState<RecurringFrequency>('MONTHLY');
-  const [anchorDate, setAnchorDate] = useState(getTodayISODate());
+  const [anchorDate, setAnchorDate] = useState(defaultAnchorDate);
   const [endDate, setEndDate] = useState('');
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open && defaultAnchorDate) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAnchorDate(defaultAnchorDate);
+    }
+  }, [open, defaultAnchorDate]);
 
   // Filter active categories matching the selected transaction type
   const matchingCategories = categories.filter((c) => !c.is_archived && c.type === type);
@@ -86,9 +95,20 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
         return;
       }
 
-      if (endDate && endDate < anchorDate) {
-        setError('Ngày kết thúc không thể trước ngày bắt đầu');
+      if (!isValidISODateString(anchorDate)) {
+        setError('Ngày bắt đầu không hợp lệ (định dạng YYYY-MM-DD)');
         return;
+      }
+
+      if (endDate) {
+        if (!isValidISODateString(endDate)) {
+          setError('Ngày kết thúc không hợp lệ (định dạng YYYY-MM-DD)');
+          return;
+        }
+        if (endDate < anchorDate) {
+          setError('Ngày kết thúc không thể trước ngày bắt đầu');
+          return;
+        }
       }
 
       const selectedAcc = accounts.find((a) => a.id === effectiveAccountId);
@@ -152,7 +172,7 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
             className="w-full"
           >
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="EXPENSE">Chi tiêu định kỳ</TabsTrigger>
+              <TabsTrigger value="EXPENSE">Chi phí định kỳ</TabsTrigger>
               <TabsTrigger value="INCOME">Thu nhập định kỳ</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -161,7 +181,7 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
             <Label htmlFor="recName">Tên khoản định kỳ</Label>
             <Input
               id="recName"
-              placeholder="Ví dụ: Netflix, Tiền thuê nhà, Lương cố định..."
+              placeholder="Ví dụ: Tiền thuê nhà, Tiền điện, Lương tháng..."
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -176,14 +196,15 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
                 id="recAmount"
                 type="text"
                 inputMode="decimal"
-                placeholder="260000"
+                placeholder="5000000"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="recFreq">Tần suất lặp lại</Label>
+              <Label htmlFor="recFreq">Chu kỳ lặp lại</Label>
               <Select
                 id="recFreq"
                 value={frequency}
@@ -199,9 +220,9 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="recAcc">Tài khoản</Label>
+              <Label htmlFor="recAccount">Tài khoản thanh toán</Label>
               <Select
-                id="recAcc"
+                id="recAccount"
                 value={effectiveAccountId}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
                 options={matchingAccounts.map((a) => ({
@@ -210,10 +231,11 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
                 }))}
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="recCat">Danh mục</Label>
+              <Label htmlFor="recCategory">Danh mục</Label>
               <Select
-                id="recCat"
+                id="recCategory"
                 value={effectiveCategoryId}
                 onChange={(e) => setSelectedCategoryId(e.target.value)}
                 options={matchingCategories.map((c) => ({
@@ -226,19 +248,20 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="recAnchor">Ngày bắt đầu / mốc</Label>
+              <Label htmlFor="anchorDate">Ngày bắt đầu</Label>
               <Input
-                id="recAnchor"
+                id="anchorDate"
                 type="date"
                 value={anchorDate}
                 onChange={(e) => setAnchorDate(e.target.value)}
                 required
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="recEnd">Ngày kết thúc (tùy chọn)</Label>
+              <Label htmlFor="endDate">Ngày kết thúc (Tùy chọn)</Label>
               <Input
-                id="recEnd"
+                id="endDate"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
@@ -247,10 +270,10 @@ export const AddRecurringModal: React.FC<AddRecurringModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="recNote">Ghi chú (tùy chọn)</Label>
+            <Label htmlFor="recNote">Ghi chú (Tùy chọn)</Label>
             <Input
               id="recNote"
-              placeholder="Ghi chú chi tiết..."
+              placeholder="Thông tin thêm về khoản định kỳ..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />

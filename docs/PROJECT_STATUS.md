@@ -497,20 +497,20 @@ Phase 7 implementation contract was executed in full:
   - Column-level privileges granted strictly to `authenticated`.
 
 ### 2. Feature & Application Services
-- `src/features/budgets`: Exact-money queries, creation, archive, basis points calculation, deterministic single-currency summary.
-- `src/features/goals`: Exact-money queries, creation, update, archive, completion tracking, deterministic single-currency summary.
+- `src/features/budgets`: Exact-money queries, creation, archive, basis points calculation, deterministic single-currency summary, active-category budget validation.
+- `src/features/goals`: Exact-money queries, creation, update, archive, completion tracking, deterministic single-currency summary, strict calendar ISO target date validation.
 - `src/features/recurring`: Deterministic date engine (`engine.ts`) supporting leap-year calculations, month-end clamping (e.g. Jan 31 -> Feb 28), next due date calculation, days until due, pause/resume lifecycle, and monthly cash flow projection.
 
 ### 3. User Interface Integration
-- `/src/app/budgets/page.tsx`: Connects to `getBudgets`, category breakdown, overall monthly budget card, progress bars, `AddBudgetModal`.
-- `/src/app/goals/page.tsx`: Connects to `getGoals`, saving progress cards, target deadlines, `AddGoalModal`.
-- `/src/app/recurring/page.tsx`: Connects to `getRecurringItems`, pause/resume toggle, days-until-due badges, `AddRecurringModal`.
+- `/src/app/budgets/page.tsx`: Connects to `getBudgets`, category breakdown, overall monthly budget card, progress bars, month period selector with previous/next navigation, `AddBudgetModal` with active expense category selection.
+- `/src/app/goals/page.tsx`: Connects to `getGoals`, saving progress cards, target deadlines, `AddGoalModal` with dynamic currency detection from user settings.
+- `/src/app/recurring/page.tsx`: Connects to `getRecurringItems`, pause/resume toggle, days-until-due badges, `AddRecurringModal` with active accounts/categories selection and timezone-aware default anchor date.
 - Completely eradicated all mock data imports across all Phase 7 views and components.
 
 ### 4. Verification Suite
-- `scripts/verify-phase7-source.mjs`: Complete source, exact-money arithmetic, and recurring date engine verifier.
-- `scripts/verify-phase7-db.sql`: Database structural SQL verifier.
-- `scripts/verify-phase7-rls.mjs`: Two-user RLS isolation test suite.
+- `scripts/verify-phase7-source.mjs`: Complete source, exact-money arithmetic, and recurring date engine verifier (89/89 checks PASS).
+- `scripts/verify-phase7-db.sql`: Comprehensive 51-check + 99_OVERALL read-only database structural SQL verifier auditing tables, columns, constraints, triggers, RLS, grants, views, and Phase 4–6 non-regressions.
+- `scripts/verify-phase7-rls.mjs`: Full two-user runtime contract test suite verifying complete budget, goal, and recurring lifecycles, cross-user isolation, domain constraint rejections, and financial neutrality.
 
 ```text
 PHASE_0=PASS

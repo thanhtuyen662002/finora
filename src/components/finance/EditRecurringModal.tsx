@@ -22,6 +22,7 @@ import type {
   RecurringFrequency,
 } from '@/features/recurring';
 import { toExactDecimal, isPositiveExactDecimal } from '@/lib/money';
+import { isValidISODateString } from '@/features/recurring/engine';
 
 interface EditRecurringModalProps {
   open: boolean;
@@ -104,9 +105,20 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
         return;
       }
 
-      if (endDate && endDate < anchorDate) {
-        setError('Ngày kết thúc không thể trước ngày bắt đầu');
+      if (!isValidISODateString(anchorDate)) {
+        setError('Ngày bắt đầu không hợp lệ (định dạng YYYY-MM-DD)');
         return;
+      }
+
+      if (endDate) {
+        if (!isValidISODateString(endDate)) {
+          setError('Ngày kết thúc không hợp lệ (định dạng YYYY-MM-DD)');
+          return;
+        }
+        if (endDate < anchorDate) {
+          setError('Ngày kết thúc không thể trước ngày bắt đầu');
+          return;
+        }
       }
 
       setSubmitted(true);
@@ -154,12 +166,19 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
           <Tabs
             value={type}
             onValueChange={(val) => {
-              setType(val as 'EXPENSE' | 'INCOME');
+              const newType = val as 'EXPENSE' | 'INCOME';
+              setType(newType);
+              const validCats = categories.filter(
+                (c) => (c.type === newType && !c.is_archived) || (c.id === item.category_id && c.type === newType)
+              );
+              if (!validCats.some((c) => c.id === categoryId)) {
+                setCategoryId(validCats[0]?.id || '');
+              }
             }}
             className="w-full"
           >
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="EXPENSE">Chi tiêu định kỳ</TabsTrigger>
+              <TabsTrigger value="EXPENSE">Chi phí định kỳ</TabsTrigger>
               <TabsTrigger value="INCOME">Thu nhập định kỳ</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -168,6 +187,7 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
             <Label htmlFor="editRecName">Tên khoản định kỳ</Label>
             <Input
               id="editRecName"
+              placeholder="Ví dụ: Tiền thuê nhà, Tiền điện, Lương tháng..."
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -187,8 +207,9 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
                 required
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="editRecFreq">Tần suất lặp lại</Label>
+              <Label htmlFor="editRecFreq">Chu kỳ lặp lại</Label>
               <Select
                 id="editRecFreq"
                 value={frequency}
@@ -204,9 +225,9 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="editRecAcc">Tài khoản</Label>
+              <Label htmlFor="editRecAccount">Tài khoản thanh toán</Label>
               <Select
-                id="editRecAcc"
+                id="editRecAccount"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
                 options={matchingAccounts.map((a) => ({
@@ -215,10 +236,11 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
                 }))}
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="editRecCat">Danh mục</Label>
+              <Label htmlFor="editRecCategory">Danh mục</Label>
               <Select
-                id="editRecCat"
+                id="editRecCategory"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
                 options={matchingCategories.map((c) => ({
@@ -231,19 +253,20 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="editRecAnchor">Ngày bắt đầu / mốc</Label>
+              <Label htmlFor="editAnchorDate">Ngày bắt đầu</Label>
               <Input
-                id="editRecAnchor"
+                id="editAnchorDate"
                 type="date"
                 value={anchorDate}
                 onChange={(e) => setAnchorDate(e.target.value)}
                 required
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="editRecEnd">Ngày kết thúc (tùy chọn)</Label>
+              <Label htmlFor="editEndDate">Ngày kết thúc (Tùy chọn)</Label>
               <Input
-                id="editRecEnd"
+                id="editEndDate"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
@@ -252,9 +275,10 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="editRecNote">Ghi chú (tùy chọn)</Label>
+            <Label htmlFor="editRecNote">Ghi chú (Tùy chọn)</Label>
             <Input
               id="editRecNote"
+              placeholder="Thông tin thêm về khoản định kỳ..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />

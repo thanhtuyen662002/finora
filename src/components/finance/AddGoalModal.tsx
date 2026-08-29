@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/select';
 import { Sparkles, AlertCircle } from 'lucide-react';
 import type { GoalInsertInput } from '@/features/goals';
 import { toExactDecimal, isPositiveExactDecimal, isNonNegativeExactDecimal } from '@/lib/money';
+import { isValidISODateString } from '@/features/recurring/engine';
 
 interface AddGoalModalProps {
   open: boolean;
@@ -33,9 +34,9 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
   const [name, setName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [initialAmount, setInitialAmount] = useState('');
-  const [targetDate, setTargetDate] = useState('2027-12-31');
+  const [targetDate, setTargetDate] = useState('');
   const [monthlyContribution, setMonthlyContribution] = useState('');
-  const [category, setCategory] = useState('An toàn tài chính');
+  const [category, setCategory] = useState('Tiết kiệm');
   const [color, setColor] = useState('#10b981');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
@@ -78,13 +79,18 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
         return;
       }
 
+      if (targetDate.trim() && !isValidISODateString(targetDate.trim())) {
+        setError('Ngày dự kiến hoàn thành không hợp lệ (định dạng YYYY-MM-DD)');
+        return;
+      }
+
       setSubmitted(true);
       await onSuccess?.({
         name: trimmedName,
         target_amount: exactTarget,
         current_amount: exactInitial,
         currency_code: currencyCode,
-        target_date: targetDate || null,
+        target_date: targetDate.trim() || null,
         monthly_contribution: exactMonthly,
         color,
         category,
@@ -96,6 +102,7 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
       setName('');
       setTargetAmount('');
       setInitialAmount('');
+      setTargetDate('');
       setMonthlyContribution('');
     } catch (err: unknown) {
       setSubmitted(false);
@@ -150,7 +157,7 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="initialAmount">Đã tích lũy ({currencyCode})</Label>
+              <Label htmlFor="initialAmount">Đã tích lũy ban đầu</Label>
               <Input
                 id="initialAmount"
                 type="text"
@@ -164,7 +171,7 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="targetDate">Hạn hoàn thành</Label>
+              <Label htmlFor="targetDate">Hạn hoàn thành (Tùy chọn)</Label>
               <Input
                 id="targetDate"
                 type="date"
@@ -173,48 +180,51 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="monthlyContrib">Góp mỗi tháng ({currencyCode})</Label>
+              <Label htmlFor="monthlyContrib">Đóng góp hàng tháng</Label>
               <Input
                 id="monthlyContrib"
                 type="text"
                 inputMode="decimal"
-                placeholder="5000000"
+                placeholder="0"
                 value={monthlyContribution}
                 onChange={(e) => setMonthlyContribution(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="goalCategory">Nhóm mục tiêu</Label>
-            <Select
-              id="goalCategory"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              options={[
-                { value: 'An toàn tài chính', label: 'An toàn tài chính' },
-                { value: 'Mua sắm lớn', label: 'Mua sắm lớn' },
-                { value: 'Nghỉ dưỡng & Du lịch', label: 'Nghỉ dưỡng & Du lịch' },
-                { value: 'Đầu tư phát triển', label: 'Đầu tư phát triển' },
-                { value: 'Khác', label: 'Khác' },
-              ]}
-            />
-          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="goalCat">Phân loại</Label>
+              <Select
+                id="goalCat"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                options={[
+                  { value: 'Tiết kiệm', label: 'Tiết kiệm' },
+                  { value: 'Mua sắm', label: 'Mua sắm' },
+                  { value: 'Đầu tư', label: 'Đầu tư' },
+                  { value: 'Khẩn cấp', label: 'Khẩn cấp' },
+                  { value: 'Du lịch', label: 'Du lịch' },
+                  { value: 'Khác', label: 'Khác' },
+                ]}
+              />
+            </div>
 
-          <div className="space-y-1.5">
-            <Label>Màu sắc nhận diện</Label>
-            <div className="flex items-center space-x-2 pt-1">
-              {colors.map((c) => (
-                <button
-                  type="button"
-                  key={c}
-                  className={`h-7 w-7 rounded-full transition-transform ${
-                    color === c ? 'scale-110 ring-2 ring-offset-2 ring-primary' : 'opacity-70 hover:opacity-100'
-                  }`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setColor(c)}
-                />
-              ))}
+            <div className="space-y-1.5">
+              <Label>Màu sắc</Label>
+              <div className="flex items-center space-x-1.5 pt-1.5">
+                {colors.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`h-6 w-6 rounded-full border transition-transform ${
+                      color === c ? 'scale-110 ring-2 ring-primary ring-offset-1' : 'opacity-80'
+                    }`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setColor(c)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
 
