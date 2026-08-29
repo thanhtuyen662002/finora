@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 5 — Transfers — AUTHORIZED
-- **Phase status:** PHASE_4_COMPLETE_PHASE_5_AUTHORIZED
+- **Current phase:** Phase 6 — Dashboard + Reports — AUTHORIZED
+- **Phase status:** PHASE_5_COMPLETE_PHASE_6_AUTHORIZED
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -23,8 +23,12 @@
 - **Phase 4 structural-verifier syntax-fix SHA:** `bb6744692f786a0a86602971ee788567c2d44797`
 - **Phase 4 structural receipt SHA:** `182787e142c2cdec4fd4f2bbc94bce2140fcc2fb`
 - **Phase 4 runtime RLS receipt SHA:** `802addec082d0aa4366b2f70d1e6e20f5432827b`
-- **Phase 4 corrective prompt:** `prompts/PHASE_4_CORRECTIVE.md`
-- **Phase 4 final corrective prompt:** `prompts/PHASE_4_FINAL_CORRECTIVE.md`
+- **Accepted Phase 5 exact-head source SHA:** `27215b99484938ff25879a412449a591fe6bb9dc`
+- **Phase 5 structural-verifier fix SHA:** `897883f98ec4df0e94b5b96d6c69ab78d0f08d3e`
+- **Phase 5 structural receipt SHA:** `0411e952b04d831ea440a1707b600b9bf006d3e0`
+- **Phase 5 runtime RLS receipt SHA:** `cfb352460dfc05fc2ea79815eabf6664580d15fc`
+- **Phase 5 closure receipt SHA:** `2794812af0367487247ce30520e62bcd9a29353b`
+- **Phase 5 closure receipt:** `docs/receipts/PHASE_5_CLOSURE.md`
 
 ## Phase 2 Accepted Baseline
 
@@ -254,50 +258,128 @@ PHASE_5_AUTHORIZED=true
 
 Phase 4 is CLOSED. Reopen it only if a regression is found.
 
-## Phase 5 — Transfers — Implementation Receipt
+## Phase 5 — Same-Currency Transfers — Final Receipt
 
-The Phase 5 Transfers feature has been fully implemented in accordance with `prompts/PHASE_5_TRANSFERS.md`, `prompts/PHASE_5_CORRECTIVE.md`, and project governance standards:
+Phase 5 is accepted COMPLETE. Full closure evidence is preserved in `docs/receipts/PHASE_5_CLOSURE.md`.
 
-### 1. Database Schema & Migration
-- Authored migration `supabase/migrations/20260828000003_phase_5_transfers.sql` (deferred from remote execution until audit authorization):
-  - `public.transfers` table with exact `numeric(20,4)` amount, check constraints (`check_transfer_accounts_distinct`: `from_account_id <> to_account_id`, `check_transfer_amount_positive`: `amount > 0`, `check_transfer_currency_code_format`: uppercase 3-5 chars, `check_transfer_note_length`: <= 1000 chars).
-  - Composite foreign keys `(from_account_id, user_id, currency_code)` and `(to_account_id, user_id, currency_code)` referencing `accounts(id, user_id, currency_code)` with `ON DELETE RESTRICT`.
-  - Trigger `set_transfers_updated_at` calling `public.handle_updated_at()`.
-  - Updated `public.account_balances` view with `security_invoker = true` using Cartesian-safe pre-aggregated subqueries (`tx_totals`, `incoming_transfers`, `outgoing_transfers`) with active-only (`is_voided = false`) semantics.
-  - Created `public.transfer_details` view with `security_invoker = true` exposing `amount` as exact text.
-  - Least-privilege column grants for `authenticated` role (SELECT on views and table, explicit column-level INSERT/UPDATE allowlists, no DELETE grant, no anon/PUBLIC access).
+### Source gate
 
-### 2. TypeScript Feature Layer
-- Implemented `src/features/transfers/transfers.ts` and `src/features/transfers/index.ts`:
-  - Strict decimal safety: rejects non-positive values, rejects >4 fractional digits, and canonicalizes amounts before mutation.
-  - Pure string-only input contracts for `TransferInsertInput` and `TransferUpdateInput` without floating-point casts or `as any`.
-  - Reads exclusively through `transfer_details` view, failing closed if unavailable.
-- Updated `src/types/database.ts` with strict string-only types for `transfers` table Insert/Update and `transfer_details` Row.
+Accepted application/source exact-head SHA: `27215b99484938ff25879a412449a591fe6bb9dc`.
 
-### 3. User Interface Layer
-- Implemented `src/components/finance/AddTransferModal.tsx` for creating and editing transfers with same-currency validation, active accounts selector (preserving historical archived account selection when editing), and clean error handling.
-- Implemented `src/components/finance/TransferItem.tsx` and `src/components/finance/TransferList.tsx` for transfer inspection, filtering, and void/restore management.
-- Integrated unified tabbed interface in `src/app/transactions/page.tsx` for switching between Transactions and Transfers.
-- Added quick "Chuyển tiền" action in `src/app/accounts/page.tsx`.
+Exact-head verification established:
 
-### 4. Verification Suites
-- `scripts/verify-phase5-db.sql`: Strict read-only structural SQL verifier testing all 38 checks: transfer schema, constraints, composite FKs, RLS policies, column privilege grants, derived `account_balances` pre-aggregated composition, active-only semantics, and complete Phase 4 transaction non-regression checks.
-- `scripts/verify-phase5-rls.mjs`: Hardened two-user runtime test suite verifying schema-readiness detection, authentication, transfer lifecycle, BigInt-scaled net-worth neutrality assertions, cross-user insert/update/select/FK blocking, delete prevention, view isolation, Phase 4 non-regression co-derivation, and deterministic cleanup.
+- local HEAD = remote main: PASS;
+- worktree clean: PASS;
+- TypeScript: PASS;
+- lint: PASS;
+- production build: PASS;
+- runtime verifier syntax: PASS;
+- git diff check: PASS;
+- money-path scan: PASS;
+- string-only exact-decimal transfer mutation boundary: PASS;
+- same-currency-only transfer design: PASS;
+- transfer/net-worth neutrality design: PASS;
+- Cartesian-safe account balance derivation: PASS.
 
-### 5. Governance & Invariants
-- Remote database migration deferred to subsequent repository audit gate per instructions.
-- Zero Phase 2, Phase 3, or Phase 4 contracts, policies, or receipts regressed or broken.
+**PHASE_5_SOURCE_GATE = PASS**
+
+### Remote database + structural gate
+
+The Phase 5 migration `supabase/migrations/20260828000003_phase_5_transfers.sql` was applied to the target Supabase project.
+
+The strict read-only verifier was rerun after verifier-only correction SHA `897883f98ec4df0e94b5b96d6c69ab78d0f08d3e`.
+
+All 38 mandatory checks returned PASS and `99_OVERALL = PASS`.
+
+Accepted facts include:
+
+- `public.transfers` exists with RLS enabled;
+- exact authenticated ownership policies exist for SELECT/INSERT/UPDATE;
+- DELETE is not exposed to authenticated clients;
+- transfer amount is `numeric(20,4)` with positive constraint;
+- source/destination must differ;
+- composite ownership/currency FKs enforce own-account same-currency transfers;
+- no Phase 5 FX persistence exists;
+- `transfer_details` and `account_balances` are `security_invoker=true`;
+- exact money view boundaries remain text;
+- account balances independently pre-aggregate transaction totals, incoming transfers, and outgoing transfers;
+- formula is opening balance + transaction net + incoming - outgoing;
+- voided transactions/transfers are excluded;
+- Phase 4 transaction RLS, grants, view semantics, and exact-money contract remain intact.
+
+**PHASE_5_REMOTE_DATABASE = PASS**
+**PHASE_5_STRUCTURAL_GATE = PASS**
+
+### Two-user runtime RLS / integrity gate
+
+The hardened public-key/two-user verifier exited `0` with no source changes.
+
+Accepted runtime results:
+
+- User A authentication: PASS;
+- User B authentication: PASS;
+- schema readiness: PASS;
+- User A create/edit/void/restore lifecycle + net-worth neutrality: PASS;
+- User B create/edit/void/restore lifecycle + net-worth neutrality: PASS;
+- bidirectional cross-user isolation/spoofing blocked: PASS;
+- domain/integrity rejection cases: PASS;
+- Phase 4 transaction non-regression/co-derivation: PASS;
+- deterministic fail-closed cleanup: PASS.
+
+**PHASE_5_TWO_USER_RLS = PASS**
+**PHASE_5_RUNTIME_PROCESS_EXIT_CODE = 0**
+
+### Live application persistence smoke
+
+Owner-attested live smoke returned PASS for every required Phase 5 behavior:
+
+- transfer create: PASS;
+- source balance decreases exactly: PASS;
+- destination balance increases exactly: PASS;
+- net-worth neutrality after create: PASS;
+- transfer edit: PASS;
+- net-worth neutrality after edit: PASS;
+- transfer void: PASS;
+- void reverses both balance effects: PASS;
+- transfer restore: PASS;
+- restore reapplies both balance effects: PASS;
+- exact decimal persistence: PASS;
+- refresh persistence: PASS;
+- logout/login persistence: PASS;
+- cross-currency transfer blocked truthfully: PASS;
+- unexpected live errors: NONE.
+
+**PHASE_5_LIVE_PERSISTENCE_SMOKE = PASS**
+
+### Phase 5 final authorization receipt
+
+```text
+PHASE_0=PASS
+PHASE_1=PASS
+PHASE_2=PASS
+PHASE_3=PASS
+PHASE_4=PASS
+PHASE_5_SOURCE_GATE=PASS
+PHASE_5_REMOTE_DATABASE=PASS
+PHASE_5_STRUCTURAL_GATE=PASS
+PHASE_5_TWO_USER_RLS=PASS
+PHASE_5_LIVE_PERSISTENCE_SMOKE=PASS
+FINORA_PHASE_5=PASS
+PHASE_6_AUTHORIZED=true
+```
+
+Phase 5 is CLOSED. Reopen it only if a concrete regression is found.
 
 ## Phase Authorization
 
 - **Phase 0:** PASS
 - **Phase 1:** PASS
 - **Phase 2:** PASS
-- **Phase 3:** PASS
+- **Phase 3 — Accounts + Categories:** PASS
 - **Phase 4 — Transactions:** PASS
-- **Phase 5 — Transfers:** IN_PROGRESS (Code complete, verifiers hardened, remote migration deferred to audit gate)
-- **Phase 6 — Dashboard + Reports:** NOT AUTHORIZED
+- **Phase 5 — Same-Currency Transfers:** PASS
+- **Phase 6 — Dashboard + Reports:** AUTHORIZED
 
 ## Next Recommended Action
 
-Execute local verification suite (`typecheck`, `lint`, `build`, `node --check scripts/verify-phase5-rls.mjs`, `git diff --check`), prepare commit, and present full report.
+Author and review the precise Phase 6 — Dashboard + Reports implementation contract before changing Phase 6 application code. Phase 6 must preserve all accepted Phase 2–5 RLS, exact-money, same-currency transfer neutrality, multi-currency grouping, and no-fake-FX invariants.
