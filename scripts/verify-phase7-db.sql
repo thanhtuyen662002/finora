@@ -65,7 +65,7 @@ checks AS (
     SELECT
         '04_budgets_columns_exact',
         (
-            SELECT count(*) = 9 AND bool_and(column_name IN (
+            SELECT count(*) = 10 AND bool_and(column_name IN (
                 'id', 'user_id', 'category_id', 'category_type', 'limit_amount',
                 'currency_code', 'period_month', 'is_archived', 'created_at', 'updated_at'
             ))
@@ -80,10 +80,10 @@ checks AS (
     SELECT
         '05_goals_columns_exact',
         (
-            SELECT count(*) = 12 AND bool_and(column_name IN (
+            SELECT count(*) = 14 AND bool_and(column_name IN (
                 'id', 'user_id', 'name', 'target_amount', 'current_amount',
-                'currency_code', 'target_date', 'monthly_contribution', 'color',
-                'icon', 'category', 'is_archived', 'created_at', 'updated_at'
+                'monthly_contribution', 'currency_code', 'target_date', 'category',
+                'icon', 'color', 'is_archived', 'created_at', 'updated_at'
             ))
             FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'goals'
@@ -96,7 +96,7 @@ checks AS (
     SELECT
         '06_recurring_columns_exact',
         (
-            SELECT count(*) = 14 AND bool_and(column_name IN (
+            SELECT count(*) = 16 AND bool_and(column_name IN (
                 'id', 'user_id', 'account_id', 'category_id', 'transaction_type',
                 'name', 'amount', 'currency_code', 'frequency', 'anchor_date',
                 'end_date', 'note', 'is_paused', 'is_archived', 'created_at', 'updated_at'
@@ -336,20 +336,21 @@ checks AS (
 
     UNION ALL
 
-    -- 21. Exactly one handle_updated_at trigger per table
+    -- 21. Exactly one trigger executing handle_updated_at function per table
     SELECT
         '21_triggers_handle_updated_at',
         (
-            SELECT count(*) = 3
+            SELECT count(*) = 3 AND count(DISTINCT c.relname) = 3
             FROM pg_catalog.pg_trigger tg
             JOIN pg_catalog.pg_class c ON c.oid = tg.tgrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_proc p ON p.oid = tg.tgfoid
             WHERE n.nspname = 'public'
               AND c.relname IN ('budgets', 'goals', 'recurring_items')
-              AND tg.tgname LIKE '%handle_updated_at%'
+              AND p.proname = 'handle_updated_at'
               AND NOT tg.tgisinternal
         ),
-        'handle_updated_at triggers present'
+        'handle_updated_at function triggers present'
 
     UNION ALL
 

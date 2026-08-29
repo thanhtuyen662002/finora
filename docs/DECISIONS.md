@@ -215,8 +215,14 @@ This file records decisions with architectural consequences. New decisions shoul
 2. All monetary columns are PostgreSQL `numeric(20,4)` at rest, validated with exact decimal string checks at application boundary, and read via `security_invoker = true` views (`budget_progress`, `goal_details`, `recurring_details`) as exact string values.
 3. Budgets are strictly scoped to `EXPENSE` categories and month intervals (`period_month` normalized to the 1st of each month). Spent amounts are derived directly from active non-voided transactions within that calendar month.
 4. Recurring items are defined as planning templates/schedules, NOT automated transaction posting background daemons. A pure calendar date engine computes future occurrences, leap years, month-end clamping (Jan 31 -> Feb 28), and next due dates.
-5. Strict pre-FX currency isolation is maintained across all planning summaries.
-6. Zero-trust security: RLS enabled with 9 exact ownership policies (3 per table, no DELETE policy; soft delete via `is_archived` only).
+5. Monthly-equivalent cash flow projection in recurring summaries uses exact BigInt integer division arithmetic at 4-decimal scale (`computeMonthlyProjectedAmount` in `src/features/recurring/engine.ts`):
+   - `MONTHLY`: amount unchanged ($1 \times \text{amount}$);
+   - `WEEKLY`: $\lfloor \text{amount} \times 52 / 12 \rfloor$ using scaled BigInt integer division;
+   - `YEARLY`: $\lfloor \text{amount} / 12 \rfloor$ using scaled BigInt integer division;
+   - Sub-cent fractional truncation is explicitly documented as integer division at $10^4$ base units;
+   - Recurring items are strictly planning/projection templates only and do NOT automatically post realized income or expense transactions or modify derived account balances or net worth.
+6. Strict pre-FX currency isolation is maintained across all planning summaries.
+7. Zero-trust security: RLS enabled with 9 exact ownership policies (3 per table, no DELETE policy; soft delete via `is_archived` only).
 
 **Reason:**
 - Financial Invariant: Budgets, goals, and recurring schedules are planning and forecast records. Creating, updating, or pausing them does not alter actual account balances or user net worth.

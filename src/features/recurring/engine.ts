@@ -204,3 +204,32 @@ export function generateUpcomingOccurrences(
 
   return occurrences;
 }
+
+export function computeMonthlyProjectedAmount(
+  amount: string,
+  frequency: RecurringFrequency
+): string {
+  // Monthly equivalent representation using exact math
+  const raw = String(amount).trim();
+  const [intPartRaw, fracPartRaw = ''] = raw.split('.');
+  const intPart = intPartRaw.replace(/^0+(?=\d)/, '') || '0';
+  const fracPart = fracPartRaw.padEnd(4, '0').slice(0, 4);
+  const normalized = `${intPart}.${fracPart}`;
+
+  if (frequency === 'MONTHLY') {
+    return normalized;
+  }
+
+  const scaled = BigInt(intPart) * 10000n + BigInt(fracPart);
+
+  let monthlyScaled = 0n;
+  if (frequency === 'WEEKLY') {
+    monthlyScaled = (scaled * 52n) / 12n;
+  } else if (frequency === 'YEARLY') {
+    monthlyScaled = scaled / 12n;
+  }
+
+  const intResult = monthlyScaled / 10000n;
+  const fracResult = monthlyScaled % 10000n;
+  return `${intResult}.${fracResult.toString().padStart(4, '0')}`;
+}

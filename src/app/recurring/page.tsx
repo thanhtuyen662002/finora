@@ -263,55 +263,60 @@ export default function RecurringPage() {
 
       {/* Monthly Projections Summary Card */}
       {!error && !loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="border">
-            <CardContent className="p-5">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Thu định kỳ dự tính (Tháng)
-              </span>
-              <div className="text-xl font-bold mt-2 text-emerald-600 dark:text-emerald-400">
-                +{formatExactMoney(summary.monthlyIncomeProjected, selectedCurrency)}
-              </div>
-              <span className="text-[11px] text-muted-foreground mt-1 block">
-                {summary.activeCount} khoản đang hoạt động
-              </span>
-            </CardContent>
-          </Card>
+        <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border">
+              <CardContent className="p-5">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Thu định kỳ dự tính (Quy đổi tháng)
+                </span>
+                <div className="text-xl font-bold mt-2 text-emerald-600 dark:text-emerald-400">
+                  +{formatExactMoney(summary.monthlyIncomeProjected, selectedCurrency)}
+                </div>
+                <span className="text-[11px] text-muted-foreground mt-1 block">
+                  {summary.activeCount} khoản đang hoạt động
+                </span>
+              </CardContent>
+            </Card>
 
-          <Card className="border">
-            <CardContent className="p-5">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Chi định kỳ dự tính (Tháng)
-              </span>
-              <div className="text-xl font-bold mt-2 text-red-600 dark:text-red-400">
-                -{formatExactMoney(summary.monthlyExpenseProjected, selectedCurrency)}
-              </div>
-              <span className="text-[11px] text-muted-foreground mt-1 block">
-                {summary.pausedCount} khoản đang tạm dừng
-              </span>
-            </CardContent>
-          </Card>
+            <Card className="border">
+              <CardContent className="p-5">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Chi định kỳ dự tính (Quy đổi tháng)
+                </span>
+                <div className="text-xl font-bold mt-2 text-red-600 dark:text-red-400">
+                  -{formatExactMoney(summary.monthlyExpenseProjected, selectedCurrency)}
+                </div>
+                <span className="text-[11px] text-muted-foreground mt-1 block">
+                  {summary.pausedCount} khoản đang tạm dừng
+                </span>
+              </CardContent>
+            </Card>
 
-          <Card className="border">
-            <CardContent className="p-5">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Dòng tiền ròng dự tính (Tháng)
-              </span>
-              <div
-                className={cn(
-                  'text-xl font-bold mt-2',
-                  summary.netMonthlyProjected.startsWith('-')
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-foreground'
-                )}
-              >
-                {formatExactMoney(summary.netMonthlyProjected, selectedCurrency)}
-              </div>
-              <span className="text-[11px] text-muted-foreground mt-1 block">
-                Dự báo dòng tiền tháng quy đổi
-              </span>
-            </CardContent>
-          </Card>
+            <Card className="border">
+              <CardContent className="p-5">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Dòng tiền ròng dự tính (Quy đổi tháng)
+                </span>
+                <div
+                  className={cn(
+                    'text-xl font-bold mt-2',
+                    summary.netMonthlyProjected.startsWith('-')
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-foreground'
+                  )}
+                >
+                  {formatExactMoney(summary.netMonthlyProjected, selectedCurrency)}
+                </div>
+                <span className="text-[11px] text-muted-foreground mt-1 block">
+                  Dự báo dòng tiền tháng quy đổi
+                </span>
+              </CardContent>
+            </Card>
+          </div>
+          <p className="text-[11px] text-muted-foreground italic px-1">
+            * Các khoản định kỳ là mẫu dự báo lập kế hoạch (Hàng tuần * 52 / 12, Hàng năm / 12). Hệ thống không tự động ghi nhận giao dịch vào số dư tài khoản.
+          </p>
         </div>
       )}
 

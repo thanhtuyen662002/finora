@@ -508,7 +508,7 @@ Phase 7 implementation contract was executed in full:
 - Completely eradicated all mock data imports across all Phase 7 views and components.
 
 ### 4. Verification Suite
-- `scripts/verify-phase7-source.mjs`: Complete source, exact-money arithmetic, and recurring date engine verifier (89/89 checks PASS).
+- `scripts/verify-phase7-source.mjs`: Complete source, exact-money arithmetic, and recurring date engine verifier (163/163 checks PASS).
 - `scripts/verify-phase7-db.sql`: Comprehensive 51-check + 99_OVERALL read-only database structural SQL verifier auditing tables, columns, constraints, triggers, RLS, grants, views, and Phase 4–6 non-regressions.
 - `scripts/verify-phase7-rls.mjs`: Full two-user runtime contract test suite verifying complete budget, goal, and recurring lifecycles, cross-user isolation, domain constraint rejections, and financial neutrality.
 
