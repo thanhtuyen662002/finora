@@ -233,12 +233,70 @@ if (threwForInvalid) {
   fail('Timezone invalid check', 'Did not throw error on invalid timezone');
 }
 
-// 5. Check Reports stale-data clearing & loading behavior in UI
+// 5. Check Reports stale-data clearing, synchronous selection transition & request sequencing
 console.log('\n[5/9] Checking Reports stale-data clearing & request sequencing...');
 const dashboardPagePath = path.join(rootDir, 'src/app/dashboard/page.tsx');
 const dashboardPageContent = fs.readFileSync(dashboardPagePath, 'utf8');
 const reportsPagePath = path.join(rootDir, 'src/app/reports/page.tsx');
 const reportsPageContent = fs.readFileSync(reportsPagePath, 'utf8');
+
+// Reject raw onChange={setPeriod} in PeriodSelector
+if (/<PeriodSelector[^>]*onChange=\{setPeriod\}/.test(reportsPageContent)) {
+  fail('Reject raw setPeriod', 'Found prohibited raw onChange={setPeriod} in reports/page.tsx');
+} else {
+  pass('Reports does not use raw onChange={setPeriod} on PeriodSelector');
+}
+
+// Reject raw onClick={() => setSelectedCurrency(c)} in currency selector buttons
+if (/onClick=\{[^{}]*setSelectedCurrency\(/.test(reportsPageContent)) {
+  fail('Reject raw setSelectedCurrency', 'Found prohibited raw onClick setSelectedCurrency in reports/page.tsx');
+} else {
+  pass('Reports does not use raw onClick setSelectedCurrency in currency selector');
+}
+
+// Check that beginSelectionTransition or equivalent synchronously invalidates data, sets loading, and advances request sequence
+const hasTransitionFn = reportsPageContent.includes('const beginSelectionTransition') || reportsPageContent.includes('function beginSelectionTransition');
+if (hasTransitionFn) {
+  const transitionMatch = reportsPageContent.match(/const beginSelectionTransition = useCallback\(\(\) => \{([\s\S]*?)\}, \[\]\);/);
+  if (transitionMatch) {
+    const body = transitionMatch[1];
+    const advancesSeq = body.includes('requestSeqRef.current += 1') || body.includes('++requestSeqRef.current');
+    const setsLoading = body.includes('setLoading(true)');
+    const clearsData = body.includes('setData(null)');
+    const clearsError = body.includes('setError(null)');
+    if (advancesSeq && setsLoading && clearsData && clearsError) {
+      pass('beginSelectionTransition synchronously advances requestSeqRef, sets loading=true, and clears data/error');
+    } else {
+      fail('beginSelectionTransition completeness', 'beginSelectionTransition is missing sequence increment, setLoading(true), or setData(null)');
+    }
+  } else {
+    fail('beginSelectionTransition format', 'Could not parse beginSelectionTransition callback definition');
+  }
+} else {
+  fail('beginSelectionTransition existence', 'Missing beginSelectionTransition in reports/page.tsx');
+}
+
+// Check that handlePeriodChange calls beginSelectionTransition before setPeriod
+if (
+  reportsPageContent.includes('const handlePeriodChange') &&
+  reportsPageContent.includes('beginSelectionTransition();') &&
+  reportsPageContent.includes('setPeriod(nextPeriod);')
+) {
+  pass('handlePeriodChange invokes beginSelectionTransition before setPeriod');
+} else {
+  fail('handlePeriodChange', 'handlePeriodChange does not invoke beginSelectionTransition before setPeriod');
+}
+
+// Check that handleCurrencyChange calls beginSelectionTransition before setSelectedCurrency
+if (
+  reportsPageContent.includes('const handleCurrencyChange') &&
+  reportsPageContent.includes('beginSelectionTransition();') &&
+  reportsPageContent.includes('setSelectedCurrency(nextCurrency);')
+) {
+  pass('handleCurrencyChange invokes beginSelectionTransition before setSelectedCurrency');
+} else {
+  fail('handleCurrencyChange', 'handleCurrencyChange does not invoke beginSelectionTransition before setSelectedCurrency');
+}
 
 // Check that loadReport in reports/page.tsx clears data before awaiting new report
 const loadReportMatch = reportsPageContent.match(/const loadReport = useCallback\(async \(\) => \{([\s\S]*?)\}, \[period, selectedCurrency\]\);/);
@@ -289,6 +347,16 @@ if (
 console.log('\n[6/9] Checking docs/PROJECT_STATUS.md gate state & truthfulness...');
 const projectStatusPath = path.join(rootDir, 'docs/PROJECT_STATUS.md');
 const projectStatusContent = fs.readFileSync(projectStatusPath, 'utf8');
+
+// Check Current State header truthfulness
+if (
+  projectStatusContent.includes('Current phase:** Phase 6 — Dashboard + Reports — SOURCE_COMPLETE_LIVE_SMOKE_PENDING') &&
+  projectStatusContent.includes('Phase status:** PHASE_6_SOURCE_GATE_PASS_CODE_ONLY_LIVE_SMOKE_PENDING')
+) {
+  pass('PROJECT_STATUS Current State header is truthfully set to SOURCE_COMPLETE_LIVE_SMOKE_PENDING');
+} else {
+  fail('PROJECT_STATUS Current State header', 'Top Current State header in docs/PROJECT_STATUS.md is stale or incorrect');
+}
 
 if (projectStatusContent.includes('PHASE_6_SOURCE_GATE=PASS_CODE_ONLY')) {
   pass('PROJECT_STATUS contains PHASE_6_SOURCE_GATE=PASS_CODE_ONLY');

@@ -36,6 +36,23 @@ export default function ReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
 
+  const beginSelectionTransition = useCallback(() => {
+    requestSeqRef.current += 1;
+    setLoading(true);
+    setError(null);
+    setData(null);
+  }, []);
+
+  const handlePeriodChange = useCallback((nextPeriod: ReportPeriod) => {
+    beginSelectionTransition();
+    setPeriod(nextPeriod);
+  }, [beginSelectionTransition]);
+
+  const handleCurrencyChange = useCallback((nextCurrency: string) => {
+    beginSelectionTransition();
+    setSelectedCurrency(nextCurrency);
+  }, [beginSelectionTransition]);
+
   const loadReport = useCallback(async () => {
     const reqId = ++requestSeqRef.current;
     try {
@@ -161,7 +178,7 @@ export default function ReportsPage() {
         subtitle={`Phân tích dòng tiền, cơ cấu chi tiêu và lịch sử tài chính (${data.dateRangeLabel}).`}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <PeriodSelector selected={period} onChange={setPeriod} />
+          <PeriodSelector selected={period} onChange={handlePeriodChange} />
 
           <Button
             variant="outline"
@@ -189,7 +206,7 @@ export default function ReportsPage() {
               <button
                 key={c}
                 type="button"
-                onClick={() => setSelectedCurrency(c)}
+                onClick={() => handleCurrencyChange(c)}
                 className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
                   currency === c
                     ? 'bg-primary text-primary-foreground shadow-xs'

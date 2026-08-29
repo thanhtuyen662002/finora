@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 6 — Dashboard + Reports — AUTHORIZED
-- **Phase status:** PHASE_5_COMPLETE_PHASE_6_AUTHORIZED
+- **Current phase:** Phase 6 — Dashboard + Reports — SOURCE_COMPLETE_LIVE_SMOKE_PENDING
+- **Phase status:** PHASE_6_SOURCE_GATE_PASS_CODE_ONLY_LIVE_SMOKE_PENDING
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
