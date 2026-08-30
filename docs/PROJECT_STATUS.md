@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 8 — Multi-Currency + FX
-- **Phase status:** PHASE_8_PASS_A_UX_PERFORMANCE_BASE_MODE_CLOSURE
+- **Phase status:** PHASE_8_PASS_A_BASE_MODE_FINAL_CORRECTIVE
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -590,7 +590,8 @@ Verification:
 - `build`: PASS
 
 ## Next Recommended Action
-Phase 8 Pass A UX + Performance BASE Mode Closure is complete in code.
+Phase 8 Pass A BASE Mode Final Corrective is complete in code and fully verified.
+Baseline verifier strictly enforces 6/6 BASE-mode defect catches on rejected baseline 41b61488dacee4d0167fe35224dfc73f6a206395.
 Remote database migration, structural gates, and two-user RLS gates are accepted PASS.
 Live persistence smoke testing remains pending final owner retest.
 
@@ -600,6 +601,7 @@ PHASE_8_REMOTE_DATABASE=PASS
 PHASE_8_STRUCTURAL_GATE=PASS
 PHASE_8_TWO_USER_RLS=PASS
 PHASE_8_UX_PERFORMANCE_HARDENING=PASS_CODE_ONLY
+PHASE_8_BASE_MODE_FINAL_CORRECTIVE=PASS_CODE_ONLY
 PHASE_8_LIVE_PERSISTENCE_SMOKE=PENDING_RETEST
 PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS=NOT_STARTED
 PHASE_8_OVERALL=PARTIAL

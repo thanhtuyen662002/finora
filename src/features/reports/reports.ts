@@ -191,10 +191,13 @@ export async function enrichDashboardBaseFx(
     let baseTotalBalance = '0.0000';
     const baseAccounts: AccountBalanceSnapshot[] = [];
 
-    for (const c of data.availableCurrencies) {
+    const activeAccountGroups = Object.values(data.accountBalancesByCurrency).filter(
+      (group) => group.accounts.length > 0
+    );
+
+    for (const group of activeAccountGroups) {
+      const c = group.currency;
       if (c === 'BASE') continue;
-      const group = data.accountBalancesByCurrency[c];
-      if (!group) continue;
 
       const rateObj = rates[c];
       if (!rateObj && c !== data.baseCurrency) {
@@ -385,11 +388,13 @@ export async function getDetailedReportData(
       let baseTotalBalance = '0.0000';
       const baseAccounts: AccountBalanceSnapshot[] = [];
       const accountGroups = aggregateAccountBalancesByCurrency(accounts, balances);
+      const activeAccountGroups = Object.values(accountGroups).filter(
+        (group) => group.accounts.length > 0
+      );
 
-      for (const c of availableCurrencies) {
+      for (const group of activeAccountGroups) {
+        const c = group.currency;
         if (c === 'BASE') continue;
-        const group = accountGroups[c];
-        if (!group) continue;
 
         const rateObj = rates[c];
         if (!rateObj && c !== baseCurrency) {

@@ -195,16 +195,17 @@ runCheck(20, 'Dashboard historical BASE unavailable fails closed without zero ma
 
 // 21. Dashboard BASE balance badge fails closed
 const dashBadgeFailClosedPass = Boolean(
-  dashboardPageContent.includes('isBaseValUnavailable') ||
-  (dashboardPageContent.includes("c === 'BASE'") && dashboardPageContent.includes("data.baseValuation.status !== 'AVAILABLE'"))
+  dashboardPageContent.includes('isBaseValUnavailable') &&
+  dashboardPageContent.includes("'Không khả dụng'")
 );
 runCheck(21, 'Dashboard BASE balance badge fails closed without zero masquerading', 'Dashboard BASE balance badge masquerades as zero', dashBadgeFailClosedPass, 'Dashboard BASE current balance badge masquerades as zero when valuation unavailable');
 
-// 22. Archived-only account currencies excluded from current FX requests
+// 22. Valuation iteration filters for active account groups with holdings
 const archivedOnlyFxExcludedPass = Boolean(
-  (reportsTsContent.match(/const\s+activeAccounts\s*=\s*accounts\.filter\(\s*\(a\)\s*=>\s*!a\.is_archived\s*\);/g) || []).length >= 2
+  (reportsTsContent.match(/const\s+activeAccounts\s*=\s*accounts\.filter\(\s*\(a\)\s*=>\s*!a\.is_archived\s*\);/g) || []).length >= 2 &&
+  reportsTsContent.includes('.accounts.length > 0')
 );
-runCheck(22, 'Archived-only account currencies excluded from current FX source requests', 'archived-only FX source included', archivedOnlyFxExcludedPass, 'Archived-only account currencies included in current FX source currency requests');
+runCheck(22, 'Valuation iteration filters for active account groups with holdings', 'archived-only FX source included', archivedOnlyFxExcludedPass, 'Valuation iteration does not filter zero-active-account currency groups before quote lookup');
 
 // 23. User-facing snapshot jargon absent
 const jsxTextPattern = />\s*[^<]*?\bsnapshots?\b[^<]*?</i;
@@ -217,7 +218,18 @@ console.log(`TOTAL CHECKS: ${checks.length}`);
 console.log(`PASSED: ${passedCount}`);
 console.log(`FAILED: ${failedCount}`);
 
-// Mandatory defect classes list for rejected baseline verification
+// Baseline-specific expected defect sets
+const baselineExpectedDefectsMap = {
+  '41b61488dacee4d0167fe35224dfc73f6a206395': [
+    'BASE discoverable missing',
+    'Reports historical BASE masquerades as zero',
+    'Dashboard historical BASE masquerades as zero',
+    'Dashboard BASE balance badge masquerades as zero',
+    'archived-only FX source included',
+    'user-facing snapshot jargon',
+  ],
+};
+
 const mandatoryDefectClasses = [
   'theme load missing',
   'theme save missing',
@@ -243,9 +255,10 @@ if (baselineRef) {
     }
   }
 
-  // Count how many of the 8 mandatory defect classes were caught
+  const expectedDefects = baselineExpectedDefectsMap[baselineRef] || mandatoryDefectClasses;
+
   let caughtCount = 0;
-  for (const defect of mandatoryDefectClasses) {
+  for (const defect of expectedDefects) {
     if (caughtDefectClasses.has(defect)) {
       caughtCount++;
       console.log(`[REJECTED_BASELINE_DEFECT_CAUGHT] ${defect}`);
@@ -254,13 +267,13 @@ if (baselineRef) {
     }
   }
 
-  console.log(`REJECTED_BASELINE_DEFECTS_CAUGHT: ${caughtCount}/${mandatoryDefectClasses.length}`);
+  console.log(`BASE_MODE_REJECTED_BASELINE_DEFECTS_CAUGHT: ${caughtCount}/${expectedDefects.length}`);
 
-  if (failedCount > 0 && caughtCount > 0) {
-    console.log(`\nEXPECTED_FAIL: Rejected baseline ${baselineRef} successfully caught ${caughtCount} defect classes (${failedCount} failed checks).`);
+  if (failedCount > 0 && caughtCount === expectedDefects.length) {
+    console.log(`\nEXPECTED_FAIL: Rejected baseline ${baselineRef} successfully caught ${caughtCount}/${expectedDefects.length} required defect classes.`);
     process.exit(1);
   } else {
-    console.log(`\nUNEXPECTED: Rejected baseline ${baselineRef} did not trigger expected failures.`);
+    console.log(`\nUNEXPECTED: Rejected baseline ${baselineRef} caught ${caughtCount}/${expectedDefects.length} defect classes (expected ${expectedDefects.length}).`);
     process.exit(1);
   }
 } else {
