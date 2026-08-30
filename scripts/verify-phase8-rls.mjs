@@ -27,11 +27,17 @@ function exactMoneyEqual(a, b) {
   return pad(a) === pad(b);
 }
 
+function canonicalSnapshots(rows) {
+  if (!Array.isArray(rows)) return JSON.stringify(rows);
+  const sorted = [...rows].map(r => ({ ...r })).sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+  return JSON.stringify(sorted);
+}
+
 function assert(condition, msg) {
   total++;
   if (!condition) {
     console.error(`[FAIL] ${msg}`);
-    process.exit(1);
+    throw new Error(`Assertion failed: ${msg}`);
   } else {
     console.log(`[PASS] ${msg}`);
     passed++;
@@ -55,6 +61,8 @@ async function runTests() {
   let origA, origB;
   let txId, trId, accA1Id, accA2Id, catAId;
   let txBId, trBId, accB1Id, accB2Id, catBId;
+
+  let mainError = null;
 
   try {
     console.log('\n--- Settings A/B lifecycle and isolation ---');
@@ -103,13 +111,13 @@ async function runTests() {
     const badUpdate = await clientA.from('transaction_fx_snapshots').update({ rate: '2.000000000000' }).eq('user_id', userAId).select();
     const updateDenied = (badUpdate.error && badUpdate.error.code === '42501') || (badUpdate.data && badUpdate.data.length === 0);
     const snapsAfterUpdateA = await clientA.from('transaction_fx_snapshots').select('*').eq('user_id', userAId);
-    const updateUnchanged = JSON.stringify(snapsBeforeA.data) === JSON.stringify(snapsAfterUpdateA.data);
+    const updateUnchanged = canonicalSnapshots(snapsBeforeA.data) === canonicalSnapshots(snapsAfterUpdateA.data);
     assert(updateDenied && updateUnchanged, 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Update denied with mutation proof and readback');
 
     const badDelete = await clientA.from('transaction_fx_snapshots')['delete']().eq('user_id', userAId).select();
     const deleteDenied = (badDelete.error && badDelete.error.code === '42501') || (badDelete.data && badDelete.data.length === 0);
     const snapsAfterDeleteA = await clientA.from('transaction_fx_snapshots').select('*').eq('user_id', userAId);
-    const deleteUnchanged = JSON.stringify(snapsBeforeA.data) === JSON.stringify(snapsAfterDeleteA.data);
+    const deleteUnchanged = canonicalSnapshots(snapsBeforeA.data) === canonicalSnapshots(snapsAfterDeleteA.data);
     assert(deleteDenied && deleteUnchanged, 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Delete denied with mutation proof and readback');
 
     console.log('\n--- Bidirectional Snapshot isolation ---');
@@ -228,6 +236,8 @@ async function runTests() {
     });
     assert(nonRls.error && nonRls.error.code === '23503', 'DELIBERATE_NON_RLS_ERROR_DISTINCTION=PASS - Distinguish RLS (42501) vs FK (23503)');
 
+  } catch (err) {
+    mainError = err;
   } finally {
     console.log('\n--- Cleanup ---');
     const cleanupFailures = [];
@@ -353,15 +363,22 @@ async function runTests() {
       }
     }
 
+    if (mainError) {
+      console.error('Test execution failed:', mainError.message || mainError);
+    }
     if (cleanupFailures.length > 0) {
-      console.error(`Cleanup failed with ${cleanupFailures.length} issues.`);
-      process.exit(1);
+      console.error(`Cleanup completed with ${cleanupFailures.length} failure(s):`);
+      cleanupFailures.forEach(f => console.error(`  - ${f}`));
+    }
+    if (mainError || cleanupFailures.length > 0) {
+      throw mainError || new Error(`Cleanup failed with ${cleanupFailures.length} issues.`);
     }
   }
-  console.log('\n99_OVERALL=PASS');
 }
 
-runTests().catch(e => {
+runTests().then(() => {
+  console.log('\n99_OVERALL=PASS');
+}).catch(e => {
   console.error(e);
   process.exit(1);
 });

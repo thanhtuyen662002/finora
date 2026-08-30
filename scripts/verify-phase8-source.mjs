@@ -73,7 +73,7 @@ check(18, "No placeholder test assertions", !mathTests.includes('assertEq(true, 
 const dbVer = fs.readFileSync('scripts/verify-phase8-db.sql', 'utf-8');
 check(19, "Structural verifier checks exact 12 columns and rejects extra columns",
   dbVer.includes('99_OVERALL') &&
-  dbVer.includes('(SELECT count(*) FROM information_schema.columns WHERE table_name = \'transaction_fx_snapshots\') = 12') &&
+  dbVer.includes('(SELECT count(*) FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'transaction_fx_snapshots\') = 12') &&
   dbVer.includes('count(DISTINCT column_name)') &&
   !dbVer.includes('INTERSECT')
 );
@@ -94,10 +94,13 @@ check(21, "Structural verifier proves TEXT types and correct recurring_items tab
   !dbVer.includes("'recurring_transactions'")
 );
 
-check(22, "Structural verifier proves SELECT-only authenticated grants",
-  dbVer.includes("min(privilege_type) = 'SELECT'") &&
-  dbVer.includes("count(*) = 1") &&
-  !dbVer.includes("EXCEPT VALUES")
+check(22, "Structural verifier proves exact column/table privileges and catalog RLS policy proof",
+  dbVer.includes("information_schema.table_privileges") &&
+  dbVer.includes("information_schema.column_privileges") &&
+  dbVer.includes("pg_policy") &&
+  dbVer.includes("pg_get_expr") &&
+  !dbVer.includes("role_table_grants") &&
+  !dbVer.includes("role_column_grants")
 );
 
 const rlsVer = fs.readFileSync('scripts/verify-phase8-rls.mjs', 'utf-8');
@@ -106,11 +109,12 @@ check(23, "Runtime verifier asserts distinct users and settings readiness",
   rlsVer.includes("SETTINGS_READINESS=PASS")
 );
 
-check(24, "Runtime verifier proves snapshot mutation denial with readback proof",
+check(24, "Runtime verifier proves snapshot mutation denial with canonical readback proof",
   rlsVer.includes("updateUnchanged") &&
   rlsVer.includes("deleteUnchanged") &&
-  rlsVer.includes("JSON.stringify") &&
-  rlsVer.includes("42501")
+  rlsVer.includes("canonicalSnapshots") &&
+  rlsVer.includes("42501") &&
+  !rlsVer.includes("JSON.stringify(snapsBeforeA.data)")
 );
 
 check(25, "Runtime verifier tests snapshot view and Phase 4/5 isolation bidirectionally",
@@ -119,10 +123,10 @@ check(25, "Runtime verifier tests snapshot view and Phase 4/5 isolation bidirect
   rlsVer.includes("BIDIRECTIONAL_TR_ISOLATION=PASS")
 );
 
-check(26, "Runtime verifier cleanup performs separate final readback queries and does not crash early",
+check(26, "Runtime verifier cleanup throws instead of process.exit in assert and handles all cleanup attempts",
   rlsVer.includes("cleanupFailures") &&
   rlsVer.includes("checkCleanup") &&
-  rlsVer.includes("readback persisted")
+  rlsVer.includes("throw new Error(")
 );
 
 const status = fs.readFileSync('docs/PROJECT_STATUS.md', 'utf-8');
