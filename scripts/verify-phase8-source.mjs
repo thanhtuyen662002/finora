@@ -72,7 +72,15 @@ const mathTests = fs.readFileSync('tests/phase8-math.test.ts', 'utf-8');
 check(18, "No placeholder test assertions", !mathTests.includes('assertEq(true, true'));
 
 const dbVer = fs.readFileSync('scripts/verify-phase8-db.sql', 'utf-8');
-check(19, "Structural verifier exhaustive", dbVer.includes('99_OVERALL') && dbVer.includes('{3,5}') && dbVer.includes('security_invoker=true') && dbVer.includes('fk_snapshot_transaction') && dbVer.includes('auth.uid() = user_id'));
+check(19, "Structural verifier exhaustive",
+  dbVer.includes('99_OVERALL') &&
+  dbVer.includes('security_invoker=true') &&
+  !dbVer.includes('pg_relation_is_updatable') &&
+  (dbVer.includes('<>') || dbVer.includes('!=')) &&
+  dbVer.includes('is_nullable') && dbVer.includes('information_schema.columns') &&
+  dbVer.includes('anon') && dbVer.includes('PUBLIC') &&
+  dbVer.includes('pg_class') && dbVer.includes('relrowsecurity = true')
+);
 
 const rlsVer = fs.readFileSync('scripts/verify-phase8-rls.mjs', 'utf-8');
 check(20, "Runtime verifier real operations", rlsVer.includes('signInWithPassword') && !rlsVer.includes('console.error(`[FAIL] ${msg}: Did not throw`); process.exit(1); }') && rlsVer.includes('auto_fx_enabled'));
@@ -95,7 +103,12 @@ check(26, "Tests test actual logic, not placeholder", mathTests.includes('pre-mi
 
 
 
-check(27, "RLS verifier NO delete() cleanup", !rlsVer.includes('.delete()') && rlsVer.includes('is_voided: true') && rlsVer.includes('is_archived: true'));
+check(27, "RLS verifier cleanup and assertions",
+  !rlsVer.includes("color: '#000'") && rlsVer.includes("color: '#000000'") &&
+  !rlsVer.includes(".eq('id', accA1Id)") && rlsVer.includes(".eq('account_id', accA1Id)") &&
+  rlsVer.includes("exactMoneyEqual") &&
+  rlsVer.includes("finally {") && rlsVer.includes("try {")
+);
 check(28, "RLS verifier requires explicit env vars", !rlsVer.includes("testa@example.com") && rlsVer.includes("process.env.FINORA_TEST_USER_A_EMAIL"));
 check(29, "RLS verifier uses correct phase 3/4/5 schema", !rlsVer.includes('base_amount') && !rlsVer.includes('exchange_rate') && !rlsVer.includes('occurred_at'));
 check(30, "RLS verifier bidirectional isolation checks lack self-equality", !rlsVer.match(/assertEq\(.*?\.data.*?,.*?\.data.*?\)/) && rlsVer.includes('xUpdateA.data.length === 0'));
