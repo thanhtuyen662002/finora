@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 8 — Multi-Currency + FX
-- **Phase status:** PHASE_8_PASS_A_UX_PERFORMANCE_HARDENING_PASS
+- **Phase status:** PHASE_8_PASS_A_UX_PERFORMANCE_CORRECTIVE_PASS
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -564,22 +564,25 @@ Verification:
 - `typecheck`: PASS
 - `build`: PASS
 
-## Phase 8 — Pass A UX + Performance Hardening
-Pass A UX and Performance Hardening has been successfully implemented in the source repository:
+## Phase 8 — Pass A UX + Performance Hardening & Corrective
+Pass A UX, Performance Hardening, and Corrective updates have been successfully implemented and verified in the source repository:
 
-Implemented UX + Performance optimizations:
-- Removed unbounded transaction history fetch in Dashboard report loader; uses bounded range and recent transactions merge.
-- Reports queries scoped strictly by date range BEFORE issuing FX snapshot API requests.
-- Concurrency limit (chunk size 4) applied to parallel FX snapshot requests.
-- Eliminated duplicate initial fetch in Reports page.
-- Filtered archived accounts from Dashboard and Reports previews.
-- Capped Dashboard account preview at max 6 active accounts; Reports account preview at max 8 active accounts.
-- Added pagination (20 items/page) to `TransactionList` and `TransferList` with filter change page resets.
-- Added pagination (12 accounts/page) to `AccountsPage` with filter/view change page resets.
-- Centered and balanced `SettingsPage` layout with single-column max-w-2xl responsive container.
-- Eradicated internal developer/system jargon ("RLS", "user_settings", "Phase 8 (FX Engine)") across user-facing pages.
-- Hidden/disabled mock-only settings options that do not exist in the database.
-- Centralized account type localization with `getAccountTypeLabel` helper in `@/features/accounts`.
+Implemented UX + Performance Corrective optimizations:
+- Centered and balanced `SettingsPage` desktop grid layout (`max-w-6xl`) with User Profile, Theme, Currency & Region, Categories navigation, Notifications (disabled with "Sắp hỗ trợ"), AI (disabled with "Sắp hỗ trợ"), and Security cards.
+- Complete eradication of internal developer jargon (`user_settings`, `Row Level Security`, `Credential Source`, `(Light)`, `(Dark)`, `(Auto)`, `Base Currency`, `Phase 7`, `Phase 8`) from user-facing Settings interface.
+- Friendly, localized labels: "Cài đặt", "Tiền tệ cơ sở", "Tiền tệ & khu vực", "Sáng", "Tối", "Theo hệ thống", IANA timezones mapped to friendly labels.
+- Fixed Reports initial duplicate fetch by preventing redundant `selectedCurrency` state updates when `selectedCurrency` is null.
+- Optimized native report mode: single-currency/native report selection skips FX snapshot API requests entirely.
+- Scoped historical snapshot requests strictly to transactions within period start/end date range.
+- `TransactionList` pagination resets to page 1 on every filter and sort state change.
+- Filtered archived accounts from Dashboard (max 6 active accounts preview) and Reports (max 8 active accounts preview).
+- Added `scripts/verify-phase8-ux-performance.mjs` verifying all UX and performance requirements.
+
+Verification:
+- `scripts/verify-phase8-ux-performance.mjs`: PASS
+- `typecheck`: PASS
+- `lint`: PASS
+- `build`: PASS
 
 ## Next Recommended Action
 1. User must apply the local `supabase/migrations/20260829000001_phase_8_fx.sql` to their remote Supabase.

@@ -37,6 +37,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
   const pageSize = 20;
 
+  const filterKey = `${searchTerm}_${selectedType}_${selectedCategory}_${selectedAccount}_${selectedPeriod}_${sortBy}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
+    setCurrentPage(1);
+  }
+
   const isFiltered =
     searchTerm.trim() !== '' ||
     selectedType !== 'ALL' ||

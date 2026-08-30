@@ -342,6 +342,10 @@ export async function getDetailedReportData(
     })();
 
     const historicalTask = (async () => {
+      if (preferredCurrency && preferredCurrency.toUpperCase() !== 'BASE') {
+        return;
+      }
+
       const txIds = transactions.map((t) => t.id);
       const snapshots = await fetchSnapshots(baseCurrency, txIds);
       const snapMap = new Map(snapshots.map((s) => [s.transaction_id, s]));

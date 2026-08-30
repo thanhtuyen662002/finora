@@ -62,7 +62,6 @@ export default function ReportsPage() {
       const res = await getDetailedReportData(period, selectedCurrency || undefined);
       if (reqId === requestSeqRef.current) {
         setData(res);
-        setSelectedCurrency(res.selectedCurrency);
       }
     } catch (err: any) {
       if (reqId === requestSeqRef.current) {
@@ -87,7 +86,7 @@ export default function ReportsPage() {
         const res = await getDetailedReportData(period, selectedCurrency || undefined);
         if (!ignore && reqId === requestSeqRef.current) {
           setData(res);
-          setSelectedCurrency(res.selectedCurrency);
+          // Do not update selectedCurrency state if it was null to avoid triggering a second useEffect call
         }
       } catch (err: any) {
         if (!ignore && reqId === requestSeqRef.current) {
@@ -359,6 +358,10 @@ export default function ReportsPage() {
                 }
                 return (
                   <div className="space-y-2 pt-1">
+                    <div className="text-[11px] font-medium text-muted-foreground flex items-center justify-between pb-1">
+                      <span>Tài khoản đang hoạt động: {activeAccounts.length}</span>
+                      {activeAccounts.length > 8 && <span>(Hiển thị 8/{activeAccounts.length})</span>}
+                    </div>
                     {previewAccounts.map((acc) => (
                       <div
                         key={acc.accountId}
