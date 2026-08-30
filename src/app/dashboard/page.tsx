@@ -250,22 +250,34 @@ export default function DashboardPage() {
         )}
         <SummaryCard
           title="Thu nhập tháng này"
-          value={formatExactMoney(activeSummary.totalIncome, displayCurrency)}
+          value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+            ? 'Không khả dụng'
+            : formatExactMoney(activeSummary.totalIncome, displayCurrency)}
           icon={ArrowDownLeft}
-          subtext={data.currentMonthLabel}
+          subtext={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+            ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+            : data.currentMonthLabel}
         />
         <SummaryCard
           title="Chi tiêu tháng này"
-          value={formatExactMoney(activeSummary.totalExpense, displayCurrency)}
+          value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+            ? 'Không khả dụng'
+            : formatExactMoney(activeSummary.totalExpense, displayCurrency)}
           icon={ArrowUpRight}
-          subtext={data.currentMonthLabel}
+          subtext={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+            ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+            : data.currentMonthLabel}
         />
         <SummaryCard
           title="Tiết kiệm & Tỷ lệ"
-          value={formatExactMoney(activeSummary.netSavings, displayCurrency, { showSign: true })}
+          value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+            ? 'Không khả dụng'
+            : formatExactMoney(activeSummary.netSavings, displayCurrency, { showSign: true })}
           icon={PiggyBank}
           subtext={
-            activeSummary.savingRatePercent
+            effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+              ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+              : activeSummary.savingRatePercent
               ? `Tỷ lệ tiết kiệm đạt ${activeSummary.savingRatePercent}%`
               : 'Chưa có thu nhập tháng này'
           }
@@ -284,11 +296,14 @@ export default function DashboardPage() {
           <div className="flex flex-wrap gap-3 pt-1">
             {data.availableCurrencies.map((c) => {
               const group = data.accountBalancesByCurrency[c];
+              const isBaseValUnavailable = c === 'BASE' && data.baseValuation.status !== 'AVAILABLE';
               return (
                 <div key={c} className="flex items-center space-x-1.5 bg-muted/40 px-2.5 py-1 rounded-md border">
                   <span className="font-bold text-foreground">{c === 'BASE' ? `Tổng hợp (${data.baseCurrency})` : c}:</span>
                   <span className="font-medium text-foreground">
-                    {formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c)}
+                    {isBaseValUnavailable
+                      ? 'Không khả dụng'
+                      : formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c)}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
                     ({group?.accounts.length || 0} TK)
@@ -329,10 +344,16 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent>
-              <CashFlowChart
-                data={data.sixMonthCashFlowByCurrency[effectiveCurrency] || []}
-                currency={displayCurrency}
-              />
+              {effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
+                <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+                  Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+                </div>
+              ) : (
+                <CashFlowChart
+                  data={data.sixMonthCashFlowByCurrency[effectiveCurrency] || []}
+                  currency={displayCurrency}
+                />
+              )}
             </CardContent>
           </Card>
 

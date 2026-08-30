@@ -172,6 +172,46 @@ const projectStatusPass =
   !lastTextBlock.includes('NOT_RUN');
 runCheck(17, 'PROJECT_STATUS authoritative current gate block contains DB/RLS PASS', 'stale gate ledger', projectStatusPass, 'PROJECT_STATUS gate ledger retains stale BLOCKED_NOT_APPLIED or NOT_RUN entries');
 
+// 18. BASE discoverable on native-first Reports initial state
+const baseDiscoverablePass = Boolean(
+  reportsTsContent.includes('hasMeaningfulForeignScope') ||
+  (reportsTsContent.includes('activeAccountsHasForeign') && reportsTsContent.includes('inScopeTxHasForeign'))
+);
+runCheck(18, 'BASE discoverable on native-first Reports initial state', 'BASE discoverable missing', baseDiscoverablePass, 'BASE capability is not discoverable from native-first Reports initial state');
+
+// 19. Reports historical BASE unavailable fails closed
+const reportsHistFailClosedPass = Boolean(
+  reportsPageContent.includes("data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'") &&
+  reportsPageContent.includes('Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.')
+);
+runCheck(19, 'Reports historical BASE unavailable fails closed without zero masquerading', 'Reports historical BASE masquerades as zero', reportsHistFailClosedPass, 'Reports historical BASE unavailable masquerades as zero summary/chart/details');
+
+// 20. Dashboard historical BASE unavailable fails closed
+const dashHistFailClosedPass = Boolean(
+  dashboardPageContent.includes("effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'") &&
+  dashboardPageContent.includes('Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.')
+);
+runCheck(20, 'Dashboard historical BASE unavailable fails closed without zero masquerading', 'Dashboard historical BASE masquerades as zero', dashHistFailClosedPass, 'Dashboard historical BASE unavailable masquerades as zero summary/chart');
+
+// 21. Dashboard BASE balance badge fails closed
+const dashBadgeFailClosedPass = Boolean(
+  dashboardPageContent.includes('isBaseValUnavailable') ||
+  (dashboardPageContent.includes("c === 'BASE'") && dashboardPageContent.includes("data.baseValuation.status !== 'AVAILABLE'"))
+);
+runCheck(21, 'Dashboard BASE balance badge fails closed without zero masquerading', 'Dashboard BASE balance badge masquerades as zero', dashBadgeFailClosedPass, 'Dashboard BASE current balance badge masquerades as zero when valuation unavailable');
+
+// 22. Archived-only account currencies excluded from current FX requests
+const archivedOnlyFxExcludedPass = Boolean(
+  (reportsTsContent.match(/const\s+activeAccounts\s*=\s*accounts\.filter\(\s*\(a\)\s*=>\s*!a\.is_archived\s*\);/g) || []).length >= 2
+);
+runCheck(22, 'Archived-only account currencies excluded from current FX source requests', 'archived-only FX source included', archivedOnlyFxExcludedPass, 'Archived-only account currencies included in current FX source currency requests');
+
+// 23. User-facing snapshot jargon absent
+const jsxTextPattern = />\s*[^<]*?\bsnapshots?\b[^<]*?</i;
+const strLiteralPattern = /["`\x27][^"`\x27]*?\bsnapshots?\b[^"`\x27]*?["`\x27]/i;
+const noSnapshotJargonPass = !jsxTextPattern.test(reportsPageContent) && !jsxTextPattern.test(dashboardPageContent) && !strLiteralPattern.test(reportsPageContent) && !strLiteralPattern.test(dashboardPageContent);
+runCheck(23, 'User-facing snapshot jargon absent from Reports and Dashboard UI', 'user-facing snapshot jargon', noSnapshotJargonPass, 'User-facing snapshot jargon found in Reports or Dashboard UI');
+
 console.log('----------------------------------------------------');
 console.log(`TOTAL CHECKS: ${checks.length}`);
 console.log(`PASSED: ${passedCount}`);
@@ -187,6 +227,12 @@ const mandatoryDefectClasses = [
   'native Reports current-FX call',
   'archived raw current counts',
   'stale gate ledger',
+  'BASE discoverable missing',
+  'Reports historical BASE masquerades as zero',
+  'Dashboard historical BASE masquerades as zero',
+  'Dashboard BASE balance badge masquerades as zero',
+  'archived-only FX source included',
+  'user-facing snapshot jargon',
 ];
 
 if (baselineRef) {
@@ -208,10 +254,10 @@ if (baselineRef) {
     }
   }
 
-  console.log(`REJECTED_BASELINE_DEFECTS_CAUGHT: ${caughtCount}/8`);
+  console.log(`REJECTED_BASELINE_DEFECTS_CAUGHT: ${caughtCount}/${mandatoryDefectClasses.length}`);
 
-  if (failedCount > 0 && caughtCount >= 8) {
-    console.log(`\nEXPECTED_FAIL: Rejected baseline ${baselineRef} successfully caught ${caughtCount}/8 defect classes.`);
+  if (failedCount > 0 && caughtCount > 0) {
+    console.log(`\nEXPECTED_FAIL: Rejected baseline ${baselineRef} successfully caught ${caughtCount} defect classes (${failedCount} failed checks).`);
     process.exit(1);
   } else {
     console.log(`\nUNEXPECTED: Rejected baseline ${baselineRef} did not trigger expected failures.`);

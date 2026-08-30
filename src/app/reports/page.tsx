@@ -231,10 +231,14 @@ export default function ReportsPage() {
               <ArrowDownLeft className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              {formatExactMoney(summary.totalIncome, displayCurrency)}
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+                ? 'Không khả dụng'
+                : formatExactMoney(summary.totalIncome, displayCurrency)}
             </p>
             <span className="text-xs text-muted-foreground block">
-              {data.dateRangeLabel} ({summary.transactionCount} giao dịch)
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+                ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+                : `${data.dateRangeLabel} (${summary.transactionCount} giao dịch)`}
             </span>
           </CardContent>
         </Card>
@@ -248,10 +252,14 @@ export default function ReportsPage() {
               <ArrowUpRight className="h-4 w-4 text-slate-500" />
             </div>
             <p className="text-2xl font-bold text-foreground">
-              {formatExactMoney(summary.totalExpense, displayCurrency)}
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+                ? 'Không khả dụng'
+                : formatExactMoney(summary.totalExpense, displayCurrency)}
             </p>
             <span className="text-xs text-muted-foreground block">
-              {data.dateRangeLabel}
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+                ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+                : data.dateRangeLabel}
             </span>
           </CardContent>
         </Card>
@@ -265,10 +273,14 @@ export default function ReportsPage() {
               <PiggyBank className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             </div>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {formatExactMoney(summary.netSavings, displayCurrency, { showSign: true })}
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+                ? 'Không khả dụng'
+                : formatExactMoney(summary.netSavings, displayCurrency, { showSign: true })}
             </p>
             <span className="text-xs text-muted-foreground block">
-              {summary.savingRatePercent
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
+                ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+                : summary.savingRatePercent
                 ? `Tỷ lệ tiết kiệm đạt ${summary.savingRatePercent}%`
                 : 'Không có thu nhập trong kỳ'}
             </span>
@@ -278,7 +290,7 @@ export default function ReportsPage() {
 
       {data.baseHistorical.status === 'UNAVAILABLE' && (
         <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/50 text-xs text-amber-700 dark:text-amber-300">
-          Chưa thể quy đổi lịch sử tỷ giá hợp nhất cho khoảng thời gian này do chưa có dữ liệu tỷ giá snapshots.
+          Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
         </div>
       )}
       {/* Full Width Cash Flow Chart */}
@@ -299,7 +311,13 @@ export default function ReportsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <CashFlowChart data={data.cashFlow} currency={displayCurrency} />
+          {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
+            <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+              Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+            </div>
+          ) : (
+            <CashFlowChart data={data.cashFlow} currency={displayCurrency} />
+          )}
         </CardContent>
       </Card>
 
@@ -313,15 +331,21 @@ export default function ReportsPage() {
                 Cơ cấu chi tiêu theo danh mục
               </CardTitle>
               <CardDescription>
-                Phân bổ chi tiêu thực tế trong kỳ ({formatExactMoney(summary.totalExpense, displayCurrency)}).
+                Phân bổ chi tiêu thực tế trong kỳ ({data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? 'Không khả dụng' : formatExactMoney(summary.totalExpense, displayCurrency)}).
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <CategoryDonutChart
-                data={data.categoryBreakdown}
-                currency={displayCurrency}
-                totalExpense={summary.totalExpense}
-              />
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
+                <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+                  Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+                </div>
+              ) : (
+                <CategoryDonutChart
+                  data={data.categoryBreakdown}
+                  currency={displayCurrency}
+                  totalExpense={summary.totalExpense}
+                />
+              )}
             </CardContent>
           </Card>
         </div>
@@ -342,7 +366,7 @@ export default function ReportsPage() {
               <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">Tổng số dư {displayCurrency}:</span>
                 <span className="text-base font-bold text-foreground">
-                  {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? '— (Không khả dụng)' : formatExactMoney(data.totalAccountBalance || '0', displayCurrency)}
+                  {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? 'Không khả dụng' : formatExactMoney(data.totalAccountBalance || '0', displayCurrency)}
                 </span>
               </div>
 
@@ -395,13 +419,13 @@ export default function ReportsPage() {
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base font-semibold">
-              Chi tiết giao dịch trong kỳ ({data.transactions.length})
+              Chi tiết giao dịch trong kỳ ({data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? 0 : data.transactions.length})
             </CardTitle>
             <CardDescription>
               Các khoản thu/chi thực tế {displayCurrency} thuộc {data.dateRangeLabel}.
             </CardDescription>
           </div>
-          {data.transactions.length > 0 && (
+          {data.transactions.length > 0 && !(data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE') && (
             <Button
               variant="ghost"
               size="sm"
@@ -414,10 +438,16 @@ export default function ReportsPage() {
           )}
         </CardHeader>
         <CardContent>
-          <TransactionList
-            transactions={data.transactions}
-            showFilters={true}
-          />
+          {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
+            <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+              Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+            </div>
+          ) : (
+            <TransactionList
+              transactions={data.transactions}
+              showFilters={true}
+            />
+          )}
         </CardContent>
       </Card>
     </AppShell>

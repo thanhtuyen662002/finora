@@ -170,7 +170,8 @@ export async function enrichDashboardBaseFx(
   const enriched = { ...data };
 
   const valuationTask = (async () => {
-    const uniqueAccCurrencies = Array.from(new Set(accounts.map((a) => a.currency_code || 'VND')));
+    const activeAccounts = accounts.filter((a) => !a.is_archived);
+    const uniqueAccCurrencies = Array.from(new Set(activeAccounts.map((a) => (a.currency_code || 'VND').toUpperCase())));
     const rateRes = await fetch('/api/fx/current-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -331,6 +332,20 @@ export async function getDetailedReportData(
     baseCurrency
   );
 
+  const activeAccountsHasForeign = accounts.some(
+    (a) => !a.is_archived && (a.currency_code || 'VND').toUpperCase() !== baseCurrency
+  );
+  const inScopeTxHasForeign = transactions.some(
+    (t) => !t.is_voided && (t.currency_code || 'VND').toUpperCase() !== baseCurrency
+  );
+  const hasMeaningfulForeignScope = activeAccountsHasForeign || inScopeTxHasForeign;
+
+  if (autoFxEnabled && hasMeaningfulForeignScope) {
+    if (!availableCurrencies.includes('BASE')) {
+      availableCurrencies.unshift('BASE');
+    }
+  }
+
   let baseTransactions: BaseConvertedTransaction[] = [];
   let baseAccountGroup: any = null;
 
@@ -353,7 +368,8 @@ export async function getDetailedReportData(
 
   if (autoFxEnabled && isBaseSelected && !isNativeMode) {
     const valuationTask = (async () => {
-      const uniqueAccCurrencies = Array.from(new Set(accounts.map((a) => a.currency_code || 'VND')));
+      const activeAccounts = accounts.filter((a) => !a.is_archived);
+      const uniqueAccCurrencies = Array.from(new Set(activeAccounts.map((a) => (a.currency_code || 'VND').toUpperCase())));
       const rateRes = await fetch('/api/fx/current-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
