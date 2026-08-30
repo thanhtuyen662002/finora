@@ -1,52 +1,52 @@
-
 WITH
-  -- 1. Exact 12 columns for transaction_fx_snapshots
+  -- 1. Exact 12 columns for transaction_fx_snapshots (total count = 12 AND exact set = 12)
   test_snap_cols AS (
-    SELECT count(*) = 12 AS pass FROM (
-      SELECT column_name FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshots'
-      INTERSECT
-      VALUES
-        ('id'), ('user_id'), ('transaction_id'), ('target_currency_code'),
-        ('source_currency_code'), ('source_amount'), ('rate'), ('converted_amount'),
-        ('requested_date'), ('effective_date'), ('provider'), ('created_at')
-    ) t
+    SELECT (
+      (SELECT count(*) FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshots') = 12
+      AND
+      (SELECT count(DISTINCT column_name) FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshots' AND column_name IN (
+        'id', 'user_id', 'transaction_id', 'target_currency_code', 'source_currency_code',
+        'source_amount', 'rate', 'converted_amount', 'requested_date', 'effective_date',
+        'provider', 'created_at'
+      )) = 12
+    ) AS pass
   ),
   test_snap_col_types AS (
     SELECT count(*) = 12 AS pass FROM information_schema.columns
     WHERE table_name = 'transaction_fx_snapshots' AND (
-      (column_name = 'id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NOT NULL) OR
+      (column_name = 'id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default ILIKE '%gen_random_uuid()%') OR
       (column_name IN ('user_id', 'transaction_id') AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NULL) OR
       (column_name IN ('target_currency_code', 'source_currency_code', 'provider') AND data_type = 'text' AND is_nullable = 'NO' AND column_default IS NULL) OR
       (column_name IN ('source_amount', 'converted_amount') AND data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 AND is_nullable = 'NO' AND column_default IS NULL) OR
       (column_name = 'rate' AND data_type = 'numeric' AND numeric_precision = 30 AND numeric_scale = 12 AND is_nullable = 'NO' AND column_default IS NULL) OR
       (column_name IN ('requested_date', 'effective_date') AND data_type = 'date' AND is_nullable = 'NO' AND column_default IS NULL) OR
-      (column_name = 'created_at' AND data_type = 'timestamp with time zone' AND is_nullable = 'NO' AND column_default IS NOT NULL)
+      (column_name = 'created_at' AND data_type = 'timestamp with time zone' AND is_nullable = 'NO' AND (column_default ILIKE '%now()%' OR column_default ILIKE '%CURRENT_TIMESTAMP%'))
     )
   ),
-  -- 2. CHECK constraints
+  -- 2. Exact CHECK constraints (operators and bounds)
   test_check_source_curr AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%source_currency_code%~%^[A-Z]{3,5}$%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%source_currency_code%~%^[A-Z]{3,5}$%' OR pg_get_constraintdef(oid) ILIKE '%source_currency_code%~%''^[A-Z]{3,5}$''%')
   ),
   test_check_target_curr AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%target_currency_code%~%^[A-Z]{3,5}$%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%target_currency_code%~%^[A-Z]{3,5}$%' OR pg_get_constraintdef(oid) ILIKE '%target_currency_code%~%''^[A-Z]{3,5}$''%')
   ),
   test_check_distinct_curr AS (
     SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%source_currency_code%!=%target_currency_code%' OR pg_get_constraintdef(oid) ILIKE '%source_currency_code%<>%target_currency_code%')
   ),
   test_check_source_amt AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%source_amount%0%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%source_amount > (0)::numeric%' OR pg_get_constraintdef(oid) ILIKE '%source_amount > 0%')
   ),
   test_check_rate AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%rate%0%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%rate > (0)::numeric%' OR pg_get_constraintdef(oid) ILIKE '%rate > 0%')
   ),
   test_check_converted_amt AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%converted_amount%0%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%converted_amount > (0)::numeric%' OR pg_get_constraintdef(oid) ILIKE '%converted_amount > 0%')
   ),
   test_check_dates AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%effective_date%requested_date%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%effective_date <= requested_date%'
   ),
   test_check_provider AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%length%trim%provider%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%char_length%provider%>= 1%char_length%provider%<= 100%' OR pg_get_constraintdef(oid) ILIKE '%length%provider%>= 1%length%provider%<= 100%' OR pg_get_constraintdef(oid) ILIKE '%BETWEEN 1 AND 100%')
   ),
   -- 3. Ordered Keys/FK
   test_tx_key AS (
@@ -69,7 +69,7 @@ WITH
     SELECT count(*) = 1 as pass FROM pg_policies WHERE tablename = 'transaction_fx_snapshots'
   ),
   test_rls_policies AS (
-    SELECT count(*) = 1 as pass FROM pg_policies WHERE tablename = 'transaction_fx_snapshots' AND cmd = 'SELECT' AND roles = '{authenticated}' AND qual ILIKE '%auth.uid() = user_id%'
+    SELECT count(*) = 1 as pass FROM pg_policies WHERE tablename = 'transaction_fx_snapshots' AND cmd = 'SELECT' AND roles = '{authenticated}' AND (qual ILIKE '%auth.uid() = user_id%' OR qual ILIKE '%(SELECT auth.uid()) = user_id%')
   ),
   -- 5. Grants
   test_no_anon_public_table_grants AS (
@@ -87,12 +87,23 @@ WITH
   test_user_settings_grant AS (
     SELECT count(*) = 1 as pass FROM information_schema.role_column_grants WHERE table_name = 'user_settings' AND column_name = 'auto_fx_enabled' AND grantee = 'authenticated' AND privilege_type = 'UPDATE'
   ),
+  test_user_settings_no_anon_public_grant AS (
+    SELECT count(*) = 0 as pass FROM information_schema.role_column_grants WHERE table_name = 'user_settings' AND column_name = 'auto_fx_enabled' AND grantee IN ('anon', 'PUBLIC')
+  ),
   -- 6. View
   test_view_exists AS (
     SELECT count(*) = 1 as pass FROM pg_class WHERE relname = 'transaction_fx_snapshot_details' AND relkind = 'v'
   ),
   test_view_columns_count AS (
-    SELECT count(*) = 12 as pass FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshot_details'
+    SELECT (
+      (SELECT count(*) FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshot_details') = 12
+      AND
+      (SELECT count(DISTINCT column_name) FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshot_details' AND column_name IN (
+        'id', 'user_id', 'transaction_id', 'target_currency_code', 'source_currency_code',
+        'source_amount', 'rate', 'converted_amount', 'requested_date', 'effective_date',
+        'provider', 'created_at'
+      )) = 12
+    ) as pass
   ),
   test_view_columns_text AS (
     SELECT count(*) = 3 as pass FROM information_schema.columns WHERE table_name = 'transaction_fx_snapshot_details' AND column_name IN ('source_amount', 'rate', 'converted_amount') AND data_type = 'text'
@@ -136,6 +147,7 @@ SELECT
   (SELECT pass FROM test_authenticated_table_select_only) AS pass_authenticated_table_select_only,
   (SELECT pass FROM test_authenticated_view_select_only) AS pass_authenticated_view_select_only,
   (SELECT pass FROM test_user_settings_grant) AS pass_user_settings_grant,
+  (SELECT pass FROM test_user_settings_no_anon_public_grant) AS pass_user_settings_no_anon_public_grant,
   (SELECT pass FROM test_view_exists) AS pass_view_exists,
   (SELECT pass FROM test_view_columns_count) AS pass_view_columns_count,
   (SELECT pass FROM test_view_columns_text) AS pass_view_columns_text,
@@ -166,6 +178,7 @@ SELECT
     (SELECT pass FROM test_authenticated_table_select_only) AND
     (SELECT pass FROM test_authenticated_view_select_only) AND
     (SELECT pass FROM test_user_settings_grant) AND
+    (SELECT pass FROM test_user_settings_no_anon_public_grant) AND
     (SELECT pass FROM test_view_exists) AND
     (SELECT pass FROM test_view_columns_count) AND
     (SELECT pass FROM test_view_columns_text) AND

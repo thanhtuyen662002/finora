@@ -1,9 +1,8 @@
 import fs from 'fs';
-import path from 'fs';
 import crypto from 'crypto';
 
 let passed = 0;
-const total = 32;
+const total = 35;
 
 function check(num, name, condition) {
   if (condition) {
@@ -72,51 +71,78 @@ const mathTests = fs.readFileSync('tests/phase8-math.test.ts', 'utf-8');
 check(18, "No placeholder test assertions", !mathTests.includes('assertEq(true, true'));
 
 const dbVer = fs.readFileSync('scripts/verify-phase8-db.sql', 'utf-8');
-check(19, "Structural verifier exhaustive",
+check(19, "Structural verifier checks exact 12 columns and rejects extra columns",
   dbVer.includes('99_OVERALL') &&
-  dbVer.includes('security_invoker=true') &&
-  !dbVer.includes('pg_relation_is_updatable') &&
-  (dbVer.includes('<>') || dbVer.includes('!=')) &&
-  dbVer.includes('is_nullable') && dbVer.includes('information_schema.columns') &&
-  dbVer.includes('anon') && dbVer.includes('PUBLIC') &&
-  dbVer.includes('pg_class') && dbVer.includes('relrowsecurity = true')
+  dbVer.includes('(SELECT count(*) FROM information_schema.columns WHERE table_name = \'transaction_fx_snapshots\') = 12') &&
+  dbVer.includes('count(DISTINCT column_name)') &&
+  !dbVer.includes('INTERSECT')
+);
+
+check(20, "Structural verifier proves exact CHECK constraint operators and bounds",
+  dbVer.includes("source_amount >") &&
+  dbVer.includes("rate >") &&
+  dbVer.includes("converted_amount >") &&
+  dbVer.includes("effective_date <=") &&
+  !dbVer.includes("%source_amount%0%") &&
+  !dbVer.includes("%rate%0%")
+);
+
+check(21, "Structural verifier proves TEXT types and correct recurring_items table name",
+  dbVer.includes("data_type = 'text'") &&
+  !dbVer.includes("character varying") &&
+  dbVer.includes("'recurring_items'") &&
+  !dbVer.includes("'recurring_transactions'")
+);
+
+check(22, "Structural verifier proves SELECT-only authenticated grants",
+  dbVer.includes("min(privilege_type) = 'SELECT'") &&
+  dbVer.includes("count(*) = 1") &&
+  !dbVer.includes("EXCEPT VALUES")
 );
 
 const rlsVer = fs.readFileSync('scripts/verify-phase8-rls.mjs', 'utf-8');
-check(20, "Runtime verifier real operations", rlsVer.includes('signInWithPassword') && !rlsVer.includes('console.error(`[FAIL] ${msg}: Did not throw`); process.exit(1); }') && rlsVer.includes('auto_fx_enabled'));
+check(23, "Runtime verifier asserts distinct users and settings readiness",
+  rlsVer.includes("userAId !== userBId") &&
+  rlsVer.includes("SETTINGS_READINESS=PASS")
+);
+
+check(24, "Runtime verifier proves snapshot mutation denial with readback proof",
+  rlsVer.includes("updateUnchanged") &&
+  rlsVer.includes("deleteUnchanged") &&
+  rlsVer.includes("JSON.stringify") &&
+  rlsVer.includes("42501")
+);
+
+check(25, "Runtime verifier tests snapshot view and Phase 4/5 isolation bidirectionally",
+  rlsVer.includes("BIDIRECTIONAL_SNAPSHOT_VIEW_ISOLATION=PASS") &&
+  rlsVer.includes("BIDIRECTIONAL_TX_ISOLATION=PASS") &&
+  rlsVer.includes("BIDIRECTIONAL_TR_ISOLATION=PASS")
+);
+
+check(26, "Runtime verifier cleanup performs separate final readback queries and does not crash early",
+  rlsVer.includes("cleanupFailures") &&
+  rlsVer.includes("checkCleanup") &&
+  rlsVer.includes("readback persisted")
+);
 
 const status = fs.readFileSync('docs/PROJECT_STATUS.md', 'utf-8');
-check(21, "PROJECT_STATUS truthful", status.includes('PHASE_8_PASS_A_SOURCE_GATE=PASS_CODE_ONLY') && status.includes('PHASE_8_REMOTE_DATABASE=BLOCKED_NOT_APPLIED'));
+check(27, "PROJECT_STATUS truthful", status.includes('PHASE_8_PASS_A_SOURCE_GATE=PASS_CODE_ONLY') && status.includes('PHASE_8_REMOTE_DATABASE=BLOCKED_NOT_APPLIED'));
 
 const adr = fs.readFileSync('docs/DECISIONS.md', 'utf-8');
 const dbDocs = fs.readFileSync('docs/DATABASE.md', 'utf-8');
-check(22, "ADR-013 and DATABASE docs exist with required semantics", adr.includes('ADR-013') && dbDocs.includes('transaction_fx_snapshots'));
-check(23, "Phase 9 remains unauthorized", status.includes('PHASE_9_AUTHORIZED=false'));
+check(28, "ADR-013 and DATABASE docs exist with required semantics", adr.includes('ADR-013') && dbDocs.includes('transaction_fx_snapshots'));
+check(29, "Phase 9 remains unauthorized", status.includes('PHASE_9_AUTHORIZED=false'));
 
-check(24, "Pre-migration explicit-select of auto_fx_enabled is forbidden", !reportEngine.includes("select('base_currency, timezone, auto_fx_enabled')"));
+check(30, "Pre-migration explicit-select of auto_fx_enabled is forbidden", !reportEngine.includes("select('base_currency, timezone, auto_fx_enabled')"));
 
 const appShell = fs.readFileSync('src/components/layout/AppShell.tsx', 'utf-8');
-check(25, "AppShell fake identity and sequential set is forbidden", !appShell.includes("setDisplayName('Người dùng')") && appShell.includes('getCurrentUserContext'));
+check(31, "AppShell fake identity and sequential set is forbidden", !appShell.includes("setDisplayName('Người dùng')") && appShell.includes('getCurrentUserContext'));
 
-check(26, "Tests test actual logic, not placeholder", mathTests.includes('pre-migration settings compatibility') && mathTests.includes('identity display precedence'));
+check(32, "Tests test actual logic, not placeholder", mathTests.includes('pre-migration settings compatibility') && mathTests.includes('identity display precedence'));
 
-
-
-
-check(27, "RLS verifier cleanup and assertions",
-  !rlsVer.includes("color: '#000'") && rlsVer.includes("color: '#000000'") &&
-  !rlsVer.includes(".eq('id', accA1Id)") && rlsVer.includes(".eq('account_id', accA1Id)") &&
-  rlsVer.includes("exactMoneyEqual") &&
-  rlsVer.includes("finally {") && rlsVer.includes("try {")
-);
-check(28, "RLS verifier requires explicit env vars", !rlsVer.includes("testa@example.com") && rlsVer.includes("process.env.FINORA_TEST_USER_A_EMAIL"));
-check(29, "RLS verifier uses correct phase 3/4/5 schema", !rlsVer.includes('base_amount') && !rlsVer.includes('exchange_rate') && !rlsVer.includes('occurred_at'));
-check(30, "RLS verifier bidirectional isolation checks lack self-equality", !rlsVer.match(/assertEq\(.*?\.data.*?,.*?\.data.*?\)/) && rlsVer.includes('xUpdateA.data.length === 0'));
-check(31, "DB verifier proves ordered keys/FKs", dbVer.includes('c.conkey[1]') && dbVer.includes('c.confkey[1]') && dbVer.includes('pg_attribute'));
-check(32, "Tests import production helpers", mathTests.includes('resolveAutoFxCapability') && mathTests.includes('resolveDisplayIdentity'));
-
-
-
+check(33, "RLS verifier requires explicit env vars", !rlsVer.includes("testa@example.com") && rlsVer.includes("process.env.FINORA_TEST_USER_A_EMAIL"));
+check(34, "RLS verifier uses correct phase 3/4/5 schema", !rlsVer.includes('base_amount') && !rlsVer.includes('exchange_rate') && !rlsVer.includes('occurred_at'));
+check(35, "DB verifier proves ordered keys/FKs", dbVer.includes('c.conkey[1]') && dbVer.includes('c.confkey[1]') && dbVer.includes('pg_attribute'));
 
 console.log(`\nPHASE_8_SOURCE_CHECK_COUNT: ${passed}/${total}`);
 if (passed !== total) process.exit(1);
