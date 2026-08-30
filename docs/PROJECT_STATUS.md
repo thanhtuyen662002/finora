@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 8 — Multi-Currency + FX
-- **Phase status:** PHASE_8_PASS_A_UX_PERFORMANCE_CORRECTIVE_PASS
+- **Phase status:** PHASE_8_PASS_A_UX_PERFORMANCE_AUDIT_CLOSURE
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -573,7 +573,7 @@ Implemented UX + Performance Final Corrective optimizations:
 - Centered and balanced `SettingsPage` desktop grid layout (`max-w-6xl`) with User Profile, Theme, Currency & Region, Categories navigation, Notifications (disabled with "Sắp hỗ trợ"), AI (disabled with "Sắp hỗ trợ"), and Security cards.
 - Complete eradication of internal developer jargon (`user_settings`, `Row Level Security`, `Credential Source`, `(Light)`, `(Dark)`, `(Auto)`, `Base Currency`, `Phase 7`, `Phase 8`) from user-facing Settings interface.
 - Friendly, localized labels: "Cài đặt", "Tiền tệ cơ sở", "Tiền tệ & khu vực", "Sáng", "Tối", "Theo hệ thống", IANA timezones mapped to friendly labels.
-- Non-blocking Dashboard rendering: Native Dashboard balances, current-month summaries, 6M native cash flow, and recent transactions return immediately in `~30ms` without awaiting historical FX snapshots or current rates.
+- Non-blocking Dashboard rendering: Native Dashboard balances, current-month summaries, 6M native cash flow, and recent transactions return immediately without awaiting historical FX snapshots or current rates.
 - Progressive background enrichment (`enrichDashboardBaseFx`) hydrates BASE valuation and 6M historical snapshots asynchronously without blocking the UI or blanking native data.
 - Historical snapshot scope for Dashboard is strictly restricted to the 6M `periodTxList` transaction IDs, ignoring out-of-scope recent transactions.
 - Optimized native report mode in `getDetailedReportData`: selecting native ISO currencies skips FX current rates and FX snapshot API requests entirely.
@@ -590,18 +590,17 @@ Verification:
 - `build`: PASS
 
 ## Next Recommended Action
-1. User must apply the local `supabase/migrations/20260829000001_phase_8_fx.sql` to their remote Supabase.
-2. User must run the read-only `verify-phase8-db.sql` against their live DB to ensure structures are correct.
-3. User must run `verify-phase8-rls.mjs` against their live DB to ensure RLS protection for FX snapshots.
-4. Provide the receipt back to authorize Phase 8 Pass B.```text
-PHASE_7_OVERALL=PASS
-FINORA_PHASE_7=PASS
-PHASE_8_AUTHORIZED=true
+Phase 8 Pass A UX + Performance Audit Closure is complete in code.
+Remote database migration, structural gates, and two-user RLS gates are accepted PASS.
+Live persistence smoke testing remains pending final owner retest.
+
+```text
 PHASE_8_PASS_A_SOURCE_GATE=PASS_CODE_ONLY
-PHASE_8_REMOTE_DATABASE=BLOCKED_NOT_APPLIED
-PHASE_8_STRUCTURAL_GATE=NOT_RUN
-PHASE_8_TWO_USER_RLS=NOT_RUN
-PHASE_8_LIVE_PERSISTENCE_SMOKE=NOT_RUN
+PHASE_8_REMOTE_DATABASE=PASS
+PHASE_8_STRUCTURAL_GATE=PASS
+PHASE_8_TWO_USER_RLS=PASS
+PHASE_8_UX_PERFORMANCE_HARDENING=PENDING_AUDIT_CLOSURE
+PHASE_8_LIVE_PERSISTENCE_SMOKE=PENDING_RETEST
 PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS=NOT_STARTED
 PHASE_8_OVERALL=PARTIAL
 PHASE_9_AUTHORIZED=false

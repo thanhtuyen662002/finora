@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/finance/PageHeader';
@@ -46,11 +46,16 @@ export default function DashboardPage() {
   const [addTxOpen, setAddTxOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
 
-  const loadDashboard = useCallback(async () => {
+  const reqGenRef = useRef(0);
+
+  const loadDashboard = useCallback(async (isInitial = false) => {
+    const currentGen = ++reqGenRef.current;
     try {
-      setLoading(true);
+      if (!isInitial) setLoading(true);
       setError(null);
       const res = await getDashboardReportData();
+      if (reqGenRef.current !== currentGen) return;
+
       setData(res);
       setActiveCurrency((prev) => {
         if (prev && res.availableCurrencies.includes(prev)) return prev;
@@ -59,68 +64,41 @@ export default function DashboardPage() {
 
       if (res.autoFxEnabled) {
         enrichDashboardBaseFx(res).then((enriched) => {
+          if (reqGenRef.current !== currentGen) return;
           setData({ ...enriched });
           setActiveCurrency((prev) => {
             if (prev && enriched.availableCurrencies.includes(prev)) return prev;
             return enriched.defaultCurrency || enriched.availableCurrencies[0];
           });
         }).catch((err) => {
+          if (reqGenRef.current !== currentGen) return;
           console.error('FX enrichment background error:', err);
         });
       }
     } catch (err: any) {
+      if (reqGenRef.current !== currentGen) return;
       setError(err?.message || 'Không thể tải dữ liệu tổng quan tài chính');
       setData(null);
     } finally {
-      setLoading(false);
+      if (reqGenRef.current === currentGen) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    let ignore = false;
-    async function init() {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await getDashboardReportData();
-        if (!ignore) {
-          setData(res);
-          setActiveCurrency((prev) => {
-            if (prev && res.availableCurrencies.includes(prev)) return prev;
-            return res.defaultCurrency || res.availableCurrencies[0];
-          });
-          setLoading(false);
-
-          if (res.autoFxEnabled) {
-            enrichDashboardBaseFx(res).then((enriched) => {
-              if (!ignore) {
-                setData({ ...enriched });
-                setActiveCurrency((prev) => {
-                  if (prev && enriched.availableCurrencies.includes(prev)) return prev;
-                  return enriched.defaultCurrency || enriched.availableCurrencies[0];
-                });
-              }
-            }).catch((err) => {
-              console.error('FX enrichment background error:', err);
-            });
-          }
-        }
-      } catch (err: any) {
-        if (!ignore) {
-          setError(err?.message || 'Không thể tải dữ liệu tổng quan tài chính');
-          setData(null);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
+    let isCancelled = false;
+    const reqRef = reqGenRef;
+    (async () => {
+      if (!isCancelled) {
+        await loadDashboard(true);
       }
-    }
-    init();
+    })();
     return () => {
-      ignore = true;
+      isCancelled = true;
+      reqRef.current++;
     };
-  }, []);
+  }, [loadDashboard]);
 
   const handleAccountClick = (acc: AccountBalanceSnapshot) => {
     setSelectedAccount(acc);
@@ -163,7 +141,7 @@ export default function DashboardPage() {
             <h3 className="font-semibold text-foreground">Không thể tải dữ liệu tài chính</h3>
             <p className="text-xs text-muted-foreground mt-1">{error || 'Lỗi không xác định'}</p>
           </div>
-          <Button size="sm" variant="outline" onClick={loadDashboard}>
+          <Button size="sm" variant="outline" onClick={() => loadDashboard(false)}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             Thử lại
           </Button>

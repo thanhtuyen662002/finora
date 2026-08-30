@@ -95,7 +95,6 @@ export default function SettingsPage() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [exported, setExported] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -214,11 +213,6 @@ export default function SettingsPage() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleExportBackup = () => {
-    setExported(true);
-    setTimeout(() => setExported(false), 2500);
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -665,9 +659,12 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border bg-muted/20">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border bg-muted/20 opacity-60">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Xuất bản sao lưu dữ liệu</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">Xuất bản sao lưu dữ liệu</p>
+                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium text-muted-foreground">Sắp hỗ trợ</span>
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       Tải về toàn bộ tài khoản và giao dịch dưới định dạng chuẩn.
                     </p>
@@ -676,20 +673,11 @@ export default function SettingsPage() {
                     variant="outline"
                     size="sm"
                     type="button"
-                    onClick={handleExportBackup}
+                    disabled
                     className="shrink-0"
                   >
-                    {exported ? (
-                      <>
-                        <Check className="h-4 w-4 mr-1.5 text-emerald-600" />
-                        Đã tải bản sao lưu
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-4 w-4 mr-1.5" />
-                        Tải bản sao lưu
-                      </>
-                    )}
+                    <Download className="h-4 w-4 mr-1.5" />
+                    Tải bản sao lưu
                   </Button>
                 </div>
               </CardContent>
