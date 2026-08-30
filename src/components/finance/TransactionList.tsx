@@ -33,6 +33,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [selectedPeriod, setSelectedPeriod] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('NEWEST');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const pageSize = 20;
 
   const isFiltered =
     searchTerm.trim() !== '' ||
@@ -49,6 +52,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     setSelectedAccount('ALL');
     setSelectedPeriod('ALL');
     setSortBy('NEWEST');
+    setCurrentPage(1);
   };
 
   const filtered = useMemo(() => {
@@ -119,7 +123,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     });
   }, [filtered, sortBy]);
 
-  const displayedTransactions = limit ? sorted.slice(0, limit) : sorted;
+  const totalPages = Math.ceil(sorted.length / pageSize) || 1;
+  const displayedTransactions = limit
+    ? sorted.slice(0, limit)
+    : sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Group by date
   const groupedByDate: Record<string, ExtendedTransaction[]> = {};
@@ -153,13 +160,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               <Input
                 placeholder="Tìm giao dịch, cửa hàng, ghi chú..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 className="pl-9 bg-card"
               />
               {searchTerm && (
                 <button
                   type="button"
-                  onClick={() => setSearchTerm('')}
+                  onClick={() => { setSearchTerm(''); setCurrentPage(1); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -323,6 +330,38 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               </div>
             </div>
           ))}
+
+          {!limit && totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t text-xs text-muted-foreground">
+              <span>
+                Hiển thị {(currentPage - 1) * pageSize + 1}–
+                {Math.min(currentPage * pageSize, sorted.length)} trên tổng {sorted.length} giao dịch
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  Trang trước
+                </Button>
+                <span className="px-2 font-medium text-foreground">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  Trang sau
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

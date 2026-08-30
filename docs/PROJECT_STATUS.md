@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 8 — Multi-Currency + FX
-- **Phase status:** PHASE_8_PASS_A_SOURCE_GATE_PASS_CODE_ONLY
+- **Phase status:** PHASE_8_PASS_A_UX_PERFORMANCE_HARDENING_PASS
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -563,6 +563,23 @@ Verification:
 - Math deterministic checks: PASS
 - `typecheck`: PASS
 - `build`: PASS
+
+## Phase 8 — Pass A UX + Performance Hardening
+Pass A UX and Performance Hardening has been successfully implemented in the source repository:
+
+Implemented UX + Performance optimizations:
+- Removed unbounded transaction history fetch in Dashboard report loader; uses bounded range and recent transactions merge.
+- Reports queries scoped strictly by date range BEFORE issuing FX snapshot API requests.
+- Concurrency limit (chunk size 4) applied to parallel FX snapshot requests.
+- Eliminated duplicate initial fetch in Reports page.
+- Filtered archived accounts from Dashboard and Reports previews.
+- Capped Dashboard account preview at max 6 active accounts; Reports account preview at max 8 active accounts.
+- Added pagination (20 items/page) to `TransactionList` and `TransferList` with filter change page resets.
+- Added pagination (12 accounts/page) to `AccountsPage` with filter/view change page resets.
+- Centered and balanced `SettingsPage` layout with single-column max-w-2xl responsive container.
+- Eradicated internal developer/system jargon ("RLS", "user_settings", "Phase 8 (FX Engine)") across user-facing pages.
+- Hidden/disabled mock-only settings options that do not exist in the database.
+- Centralized account type localization with `getAccountTypeLabel` helper in `@/features/accounts`.
 
 ## Next Recommended Action
 1. User must apply the local `supabase/migrations/20260829000001_phase_8_fx.sql` to their remote Supabase.

@@ -12,6 +12,7 @@ import type { AccountRow } from '@/types/database';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyBadge } from './CurrencyBadge';
 import { formatExactMoney } from '@/lib/money';
+import { getAccountTypeLabel } from '@/features/accounts';
 
 interface AccountCardProps {
   account: AccountRow;
@@ -19,16 +20,6 @@ interface AccountCardProps {
   onClick?: () => void;
   variant?: 'compact' | 'detailed';
 }
-
-const ACCOUNT_TYPE_LABELS: Record<string, string> = {
-  BANK: 'Ngân hàng',
-  CASH: 'Tiền mặt',
-  EWALLET: 'Ví điện tử',
-  SAVINGS: 'Sổ tiết kiệm',
-  CREDIT_CARD: 'Thẻ tín dụng',
-  INVESTMENT: 'Đầu tư',
-  OTHER: 'Khác',
-};
 
 export const AccountCard: React.FC<AccountCardProps> = ({
   account,
@@ -75,7 +66,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </div>
           <div className="truncate">
             <p className="text-sm font-medium text-foreground truncate">{account.name}</p>
-            <p className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[account.type] || account.type}</p>
+            <p className="text-xs text-muted-foreground">{getAccountTypeLabel(account.type)}</p>
           </div>
         </div>
         <div className="text-right shrink-0 pl-2">
@@ -108,7 +99,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                 {account.name}
               </h4>
               <p className="text-xs text-muted-foreground">
-                {account.institution || ACCOUNT_TYPE_LABELS[account.type]}
+                {account.institution || getAccountTypeLabel(account.type)}
               </p>
             </div>
           </div>

@@ -277,7 +277,11 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      {data.baseHistorical.status === 'UNAVAILABLE' && (<div className="p-4 text-xs text-amber-600 bg-amber-50 rounded-lg">Historical BASE conversion is UNAVAILABLE due to missing FX snapshots.</div>)}
+      {data.baseHistorical.status === 'UNAVAILABLE' && (
+        <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/50 text-xs text-amber-700 dark:text-amber-300">
+          Chưa thể quy đổi lịch sử tỷ giá hợp nhất cho khoảng thời gian này do chưa có dữ liệu tỷ giá snapshots.
+        </div>
+      )}
       {/* Full Width Cash Flow Chart */}
       <Card>
         <CardHeader>
@@ -343,34 +347,41 @@ export default function ReportsPage() {
                 </span>
               </div>
 
-              {data.accountsInCurrency && data.accountsInCurrency.length > 0 ? (
-                <div className="space-y-2 pt-1">
-                  {data.accountsInCurrency.map((acc) => (
-                    <div
-                      key={acc.accountId}
-                      className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs"
-                    >
-                      <div className="flex items-center space-x-2.5 min-w-0 pr-2">
-                        <span
-                          className="h-3 w-3 rounded-full shrink-0"
-                          style={{ backgroundColor: acc.color }}
-                        />
-                        <div className="truncate">
-                          <p className="font-medium text-foreground truncate">{acc.name}</p>
-                          <p className="text-[10px] text-muted-foreground">{acc.institution || acc.type}</p>
+              {(() => {
+                const activeAccounts = (data.accountsInCurrency || []).filter(acc => !acc.isArchived);
+                const previewAccounts = activeAccounts.slice(0, 8);
+                if (previewAccounts.length === 0) {
+                  return (
+                    <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
+                      Không có tài khoản đang hoạt động nào sử dụng {displayCurrency}.
+                    </div>
+                  );
+                }
+                return (
+                  <div className="space-y-2 pt-1">
+                    {previewAccounts.map((acc) => (
+                      <div
+                        key={acc.accountId}
+                        className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs"
+                      >
+                        <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                          <span
+                            className="h-3 w-3 rounded-full shrink-0"
+                            style={{ backgroundColor: acc.color }}
+                          />
+                          <div className="truncate">
+                            <p className="font-medium text-foreground truncate">{acc.name}</p>
+                            <p className="text-[10px] text-muted-foreground">{acc.institution || acc.type}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 font-semibold text-foreground">
+                          {formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency)}
                         </div>
                       </div>
-                      <div className="text-right shrink-0 font-semibold text-foreground">
-                        {formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
-                  Không có tài khoản nào sử dụng {displayCurrency}.
-                </div>
-              )}
+                    ))}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>

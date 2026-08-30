@@ -166,13 +166,15 @@ export default function DashboardPage() {
     accounts: [],
   };
 
-  // Flatten all accounts for the account list display
+  // Flatten active non-archived accounts for the account preview display (max 6)
   const allAccounts: AccountBalanceSnapshot[] = [];
   data.availableCurrencies.filter(c => c !== 'BASE').forEach((c) => {
     if (data.accountBalancesByCurrency[c]) {
-      allAccounts.push(...data.accountBalancesByCurrency[c].accounts);
+      const active = data.accountBalancesByCurrency[c].accounts.filter(acc => !acc.isArchived);
+      allAccounts.push(...active);
     }
   });
+  const previewAccounts = allAccounts.slice(0, 6);
 
   return (
     <AppShell>
@@ -270,7 +272,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <span className="font-semibold text-foreground">Tổng số dư theo từng loại tiền tệ:</span>
             <span className="text-[11px] text-muted-foreground italic">
-              Quy đổi tài sản ròng hợp nhất sẽ được kích hoạt ở Phase 8 (FX Engine).
+              Đã bao gồm tỷ giá quy đổi tài sản tự động.
             </span>
           </div>
           <div className="flex flex-wrap gap-3 pt-1">
@@ -379,12 +381,12 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent className="space-y-2.5">
-              {allAccounts.length === 0 ? (
+              {previewAccounts.length === 0 ? (
                 <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
                   Chưa có tài khoản nào. Hãy thêm tài khoản mới.
                 </div>
               ) : (
-                allAccounts.map((acc) => (
+                previewAccounts.map((acc) => (
                   <AccountCard
                     key={acc.accountId}
                     account={{

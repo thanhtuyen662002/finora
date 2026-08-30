@@ -24,6 +24,9 @@ export default function AccountsPage() {
   const [editAccount, setEditAccount] = useState<AccountRow | null>(null);
   const [addTransferOpen, setAddTransferOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [accountPage, setAccountPage] = useState(1);
+
+  const accountPageSize = 12;
 
   const loadAccounts = async () => {
     try {
@@ -137,7 +140,7 @@ export default function AccountsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
         <Select
           value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
+          onChange={(e) => { setFilterType(e.target.value); setAccountPage(1); }}
           className="w-full sm:w-56 bg-card"
           options={[
             { value: 'ALL', label: 'Tất cả loại tài khoản' },
@@ -152,7 +155,14 @@ export default function AccountsPage() {
           ]}
         />
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowArchived((current) => !current)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setShowArchived((current) => !current);
+              setAccountPage(1);
+            }}
+          >
             {showArchived ? 'Hiện đang hoạt động' : 'Hiện đã lưu trữ'}
           </Button>
           <span className="text-xs text-muted-foreground hidden sm:inline-block">
@@ -187,30 +197,68 @@ export default function AccountsPage() {
           onAction={() => setFilterType('ALL')}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredAccounts.map((account) => (
-            <div key={account.id} className="relative group">
-              <AccountCard account={account} currentBalance={balances[account.id]} variant="detailed" />
-              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredAccounts
+              .slice((accountPage - 1) * accountPageSize, accountPage * accountPageSize)
+              .map((account) => (
+                <div key={account.id} className="relative group">
+                  <AccountCard account={account} currentBalance={balances[account.id]} variant="detailed" />
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setEditAccount(account); setAddAccountOpen(true); }}
+                      className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
+                    >
+                      Sửa
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleArchiveAccount(account.id, !showArchived)}
+                      className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      {showArchived ? 'Khôi phục' : 'Lưu trữ'}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+          </div>
+
+          {Math.ceil(filteredAccounts.length / accountPageSize) > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t text-xs text-muted-foreground">
+              <span>
+                Hiển thị {(accountPage - 1) * accountPageSize + 1}–
+                {Math.min(accountPage * accountPageSize, filteredAccounts.length)} trên tổng {filteredAccounts.length} tài khoản
+              </span>
+              <div className="flex items-center gap-1.5">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  onClick={() => { setEditAccount(account); setAddAccountOpen(true); }}
-                  className="h-8 px-2 text-xs text-muted-foreground hover:text-primary"
+                  onClick={() => setAccountPage((p) => Math.max(p - 1, 1))}
+                  disabled={accountPage === 1}
+                  className="h-8 px-2.5 text-xs"
                 >
-                  Sửa
+                  Trang trước
                 </Button>
+                <span className="px-2 font-medium text-foreground">
+                  {accountPage} / {Math.ceil(filteredAccounts.length / accountPageSize)}
+                </span>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  onClick={() => handleArchiveAccount(account.id, !showArchived)}
-                  className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                  onClick={() =>
+                    setAccountPage((p) => Math.min(p + 1, Math.ceil(filteredAccounts.length / accountPageSize)))
+                  }
+                  disabled={accountPage === Math.ceil(filteredAccounts.length / accountPageSize)}
+                  className="h-8 px-2.5 text-xs"
                 >
-                  {showArchived ? 'Khôi phục' : 'Lưu trữ'}
+                  Trang sau
                 </Button>
               </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 

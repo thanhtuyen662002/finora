@@ -3,8 +3,9 @@ import { ExtendedTransfer } from '@/features/transfers';
 import { TransferItem } from './TransferItem';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from './EmptyState';
-import { Search, ArrowRightLeft } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { AccountRow } from '@/types/database';
 
 interface TransferListProps {
@@ -23,6 +24,24 @@ export const TransferList: React.FC<TransferListProps> = ({
   const [search, setSearch] = useState('');
   const [accountFilter, setAccountFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const pageSize = 20;
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
+
+  const handleAccountFilterChange = (val: string) => {
+    setAccountFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handleStatusFilterChange = (val: string) => {
+    setStatusFilter(val);
+    setCurrentPage(1);
+  };
 
   const filteredTransfers = useMemo(() => {
     return transfers.filter((t) => {
@@ -58,6 +77,12 @@ export const TransferList: React.FC<TransferListProps> = ({
     });
   }, [transfers, search, accountFilter, statusFilter]);
 
+  const totalPages = Math.ceil(filteredTransfers.length / pageSize) || 1;
+  const paginatedTransfers = filteredTransfers.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
   return (
     <div className="space-y-4">
       {/* Controls / Filters */}
@@ -68,7 +93,7 @@ export const TransferList: React.FC<TransferListProps> = ({
             type="text"
             placeholder="Tìm theo tài khoản, ghi chú..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 bg-card"
           />
         </div>
@@ -76,7 +101,7 @@ export const TransferList: React.FC<TransferListProps> = ({
         <div className="sm:col-span-3">
           <Select
             value={accountFilter}
-            onChange={(e) => setAccountFilter(e.target.value)}
+            onChange={(e) => handleAccountFilterChange(e.target.value)}
             className="bg-card"
           >
             <option value="ALL">Tất cả tài khoản</option>
@@ -91,7 +116,7 @@ export const TransferList: React.FC<TransferListProps> = ({
         <div className="sm:col-span-3">
           <Select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => handleStatusFilterChange(e.target.value)}
             className="bg-card"
           >
             <option value="ACTIVE">Chỉ giao dịch hoạt động</option>
@@ -118,14 +143,48 @@ export const TransferList: React.FC<TransferListProps> = ({
           onAction={onAddNewTransfer}
         />
       ) : (
-        <div className="space-y-2">
-          {filteredTransfers.map((transfer) => (
-            <TransferItem
-              key={transfer.id}
-              transfer={transfer}
-              onClick={() => onSelectTransfer?.(transfer)}
-            />
-          ))}
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {paginatedTransfers.map((transfer) => (
+              <TransferItem
+                key={transfer.id}
+                transfer={transfer}
+                onClick={() => onSelectTransfer?.(transfer)}
+              />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t text-xs text-muted-foreground">
+              <span>
+                Hiển thị {(currentPage - 1) * pageSize + 1}–
+                {Math.min(currentPage * pageSize, filteredTransfers.length)} trên tổng {filteredTransfers.length} chuyển tiền
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  Trang trước
+                </Button>
+                <span className="px-2 font-medium text-foreground">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  Trang sau
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,7 +1,12 @@
 import { resolveAutoFxCapability } from '@/lib/exchange-rate/capability';
 
 import { createClient } from '@/lib/supabase/client';
-import { getTransactions, type ExtendedTransaction } from '@/features/transactions';
+import {
+  getTransactions,
+  getTransactionsInDateRange,
+  getRecentTransactions,
+  type ExtendedTransaction,
+} from '@/features/transactions';
 import { getAccounts, getAccountBalances } from '@/features/accounts';
 import {
   getDateRangeForPeriod,
@@ -29,28 +34,40 @@ import { convertExactAmount } from '@/lib/exchange-rate/fx-math';
 import { addExactDecimals } from '@/lib/money';
 
 async function fetchSnapshots(targetCurrency: string, txIds: string[]) {
-  const snapshots: any[] = [];
+  if (txIds.length === 0) return [];
+  const chunks: string[][] = [];
   for (let i = 0; i < txIds.length; i += 200) {
-    const chunk = txIds.slice(i, i + 200);
-    const res = await fetch('/api/fx/transaction-snapshots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetCurrency, transactionIds: chunk })
-    });
-    if (!res.ok) throw new Error('Failed to fetch historical snapshots');
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    snapshots.push(...(data.snapshots || []));
+    chunks.push(txIds.slice(i, i + 200));
   }
-  return snapshots;
+
+  const allSnapshots: any[] = [];
+  const MAX_CONCURRENT_CHUNKS = 4;
+  for (let i = 0; i < chunks.length; i += MAX_CONCURRENT_CHUNKS) {
+    const batch = chunks.slice(i, i + MAX_CONCURRENT_CHUNKS);
+    const batchResults = await Promise.all(
+      batch.map(async (chunk) => {
+        const res = await fetch('/api/fx/transaction-snapshots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetCurrency, transactionIds: chunk })
+        });
+        if (!res.ok) throw new Error('Failed to fetch historical snapshots');
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        return (data.snapshots || []) as any[];
+      })
+    );
+    batchResults.forEach((snaps) => allSnapshots.push(...snaps));
+  }
+  return allSnapshots;
 }
 
 export async function getDashboardReportData(
   preferredCurrency?: string
 ): Promise<DashboardReportData> {
   const supabase = createClient();
-  const [transactions, accounts, balances, userSettingsResult] = await Promise.all([
-    getTransactions(),
+
+  const [accounts, balances, userSettingsResult] = await Promise.all([
     getAccounts(),
     getAccountBalances(),
     supabase.from('user_settings').select('*').maybeSingle(),
@@ -63,6 +80,23 @@ export async function getDashboardReportData(
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
   const { schemaAvailable: schemaHasAutoFx, enabled: autoFxEnabled } = resolveAutoFxCapability(userSettingsResult.data);
   const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
+
+  const dateRange6M = getDateRangeForPeriod('6M', timezone, new Date(), undefined, undefined);
+
+  const [periodTxList, recentTxList] = await Promise.all([
+    getTransactionsInDateRange(dateRange6M.startDate, dateRange6M.endDate),
+    getRecentTransactions(6),
+  ]);
+
+  // Combine and deduplicate
+  const txMap = new Map<string, ExtendedTransaction>();
+  for (const t of periodTxList) txMap.set(t.id, t);
+  for (const t of recentTxList) txMap.set(t.id, t);
+  const transactions = Array.from(txMap.values()).sort((a, b) => {
+    if (b.occurred_on !== a.occurred_on) return b.occurred_on.localeCompare(a.occurred_on);
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  });
+
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,
     transactions,
@@ -72,9 +106,7 @@ export async function getDashboardReportData(
   const currentMonthPrefix = getCurrentMonthPrefix(timezone);
   const currentMonthSummaries = aggregateCurrencySummaries(transactions, currentMonthPrefix);
   const accountBalancesByCurrency = aggregateAccountBalancesByCurrency(accounts, balances);
-  
-  // Date range for 6M cash flow
-  const dateRange6M = getDateRangeForPeriod('6M', timezone, new Date(), transactions, undefined);
+
   const sixMonthCashFlowByCurrency: Record<string, any> = {};
   for (const c of availableCurrencies) {
     sixMonthCashFlowByCurrency[c] = aggregateCashFlow(transactions, c, dateRange6M.monthKeys);
@@ -85,16 +117,15 @@ export async function getDashboardReportData(
     error: null,
     quotes: {}
   };
-  
+
   const baseHistorical: BaseHistoricalProvenance = {
     status: autoFxEnabled ? 'UNAVAILABLE' : 'DISABLED',
     error: null
   };
 
   if (autoFxEnabled) {
-    try {
-      const uniqueAccCurrencies = Array.from(new Set(accounts.map(a => a.currency_code || 'VND')));
-      
+    const valuationTask = (async () => {
+      const uniqueAccCurrencies = Array.from(new Set(accounts.map((a) => a.currency_code || 'VND')));
       const rateRes = await fetch('/api/fx/current-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -103,56 +134,51 @@ export async function getDashboardReportData(
       if (!rateRes.ok) throw new Error('Failed to load current rates');
       const rateData = await rateRes.json();
       if (rateData.error) throw new Error(rateData.error);
-      
+
       const rates = rateData.rates as Record<string, FxQuote>;
       baseValuation.quotes = rates;
-      
+
       let baseTotalBalance = '0.0000';
       const baseAccounts: AccountBalanceSnapshot[] = [];
-      
+
       for (const c of availableCurrencies) {
         if (c === 'BASE') continue;
         const group = accountBalancesByCurrency[c];
         if (!group) continue;
-        
+
         const rateObj = rates[c];
         if (!rateObj && c !== baseCurrency) {
           throw new Error(`Missing required rate for ${c}`);
         }
         const rate = rateObj ? rateObj.rate : '1.000000000000';
-        
+
         for (const acc of group.accounts) {
-           const converted = convertExactAmount(acc.currentBalance, rate);
-           baseAccounts.push({
-             ...acc,
-             currency: 'BASE',
-             currentBalance: converted
-           });
-           if (!acc.isArchived) {
-             baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
-           }
+          const converted = convertExactAmount(acc.currentBalance, rate);
+          baseAccounts.push({
+            ...acc,
+            currency: 'BASE',
+            currentBalance: converted
+          });
+          if (!acc.isArchived) {
+            baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
+          }
         }
       }
-      
+
       accountBalancesByCurrency['BASE'] = {
         currency: 'BASE',
         totalBalance: baseTotalBalance,
         accounts: baseAccounts
       };
       baseValuation.status = 'AVAILABLE';
-      
-    } catch (e: any) {
-      console.error('Base valuation failed:', e);
-      baseValuation.error = e.message;
-    }
-    
-    try {
-      // 2. Historical snapshots for transactions
-      const txIds = transactions.map(t => t.id);
+    })();
+
+    const historicalTask = (async () => {
+      const txIds = transactions.map((t) => t.id);
       const snapshots = await fetchSnapshots(baseCurrency, txIds);
-      const snapMap = new Map(snapshots.map(s => [s.transaction_id, s]));
-      
-      const baseTransactions: BaseConvertedTransaction[] = transactions.map(tx => {
+      const snapMap = new Map(snapshots.map((s) => [s.transaction_id, s]));
+
+      const baseTransactions: BaseConvertedTransaction[] = transactions.map((tx) => {
         const snap = snapMap.get(tx.id);
         if (!snap) throw new Error('Missing snapshot for transaction ' + tx.id);
         return {
@@ -167,7 +193,7 @@ export async function getDashboardReportData(
           fx_target_currency: baseCurrency
         } as BaseConvertedTransaction;
       });
-      
+
       const baseSummaries = aggregateCurrencySummaries(baseTransactions, currentMonthPrefix);
       currentMonthSummaries['BASE'] = baseSummaries['BASE'] || {
         currency: 'BASE',
@@ -180,13 +206,22 @@ export async function getDashboardReportData(
       };
       sixMonthCashFlowByCurrency['BASE'] = aggregateCashFlow(baseTransactions, 'BASE', dateRange6M.monthKeys);
       baseHistorical.status = 'AVAILABLE';
-    } catch (e: any) {
-      console.error('Base historical failed:', e);
-      baseHistorical.error = e.message;
+    })();
+
+    const [valResult, histResult] = await Promise.allSettled([valuationTask, historicalTask]);
+    if (valResult.status === 'rejected') {
+      console.error('Base valuation failed:', valResult.reason);
+      baseValuation.error = valResult.reason?.message || String(valResult.reason);
     }
-    
+    if (histResult.status === 'rejected') {
+      console.error('Base historical failed:', histResult.reason);
+      baseHistorical.error = histResult.reason?.message || String(histResult.reason);
+    }
+
     if (baseValuation.status === 'AVAILABLE' || baseHistorical.status === 'AVAILABLE') {
-       availableCurrencies.unshift('BASE');
+      if (!availableCurrencies.includes('BASE')) {
+        availableCurrencies.unshift('BASE');
+      }
     }
   }
 
@@ -214,8 +249,8 @@ export async function getDetailedReportData(
   preferredCurrency?: string
 ): Promise<DetailedReportData> {
   const supabase = createClient();
-  const [transactions, accounts, balances, userSettingsResult] = await Promise.all([
-    getTransactions(),
+
+  const [accounts, balances, userSettingsResult] = await Promise.all([
     getAccounts(),
     getAccountBalances(),
     supabase.from('user_settings').select('*').maybeSingle(),
@@ -228,6 +263,13 @@ export async function getDetailedReportData(
   const baseCurrency = (userSettingsResult.data?.base_currency || 'VND').toUpperCase();
   const { schemaAvailable: schemaHasAutoFx, enabled: autoFxEnabled } = resolveAutoFxCapability(userSettingsResult.data);
   const timezone = validateAndResolveTimezone(userSettingsResult.data?.timezone);
+
+  const dateRangeTemp = getDateRangeForPeriod(period, timezone, new Date(), undefined, preferredCurrency || undefined);
+
+  const transactions = period === 'ALL'
+    ? await getTransactions()
+    : await getTransactionsInDateRange(dateRangeTemp.startDate, dateRangeTemp.endDate);
+
   const { availableCurrencies, defaultCurrency } = getAvailableCurrenciesAndDefault(
     accounts,
     transactions,
@@ -236,22 +278,21 @@ export async function getDetailedReportData(
 
   let baseTransactions: BaseConvertedTransaction[] = [];
   let baseAccountGroup: any = null;
-  
+
   const baseValuation: BaseValuationProvenance = {
     status: autoFxEnabled ? 'UNAVAILABLE' : 'DISABLED',
     error: null,
     quotes: {}
   };
-  
+
   const baseHistorical: BaseHistoricalProvenance = {
     status: autoFxEnabled ? 'UNAVAILABLE' : 'DISABLED',
     error: null
   };
 
   if (autoFxEnabled) {
-    try {
-      const uniqueAccCurrencies = Array.from(new Set(accounts.map(a => a.currency_code || 'VND')));
-      
+    const valuationTask = (async () => {
+      const uniqueAccCurrencies = Array.from(new Set(accounts.map((a) => a.currency_code || 'VND')));
       const rateRes = await fetch('/api/fx/current-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -260,56 +301,52 @@ export async function getDetailedReportData(
       if (!rateRes.ok) throw new Error('Failed to load current rates');
       const rateData = await rateRes.json();
       if (rateData.error) throw new Error(rateData.error);
-      
+
       const rates = rateData.rates as Record<string, FxQuote>;
       baseValuation.quotes = rates;
-      
+
       let baseTotalBalance = '0.0000';
       const baseAccounts: AccountBalanceSnapshot[] = [];
       const accountGroups = aggregateAccountBalancesByCurrency(accounts, balances);
-      
+
       for (const c of availableCurrencies) {
         if (c === 'BASE') continue;
         const group = accountGroups[c];
         if (!group) continue;
-        
+
         const rateObj = rates[c];
         if (!rateObj && c !== baseCurrency) {
           throw new Error(`Missing required rate for ${c}`);
         }
         const rate = rateObj ? rateObj.rate : '1.000000000000';
-        
+
         for (const acc of group.accounts) {
-           const converted = convertExactAmount(acc.currentBalance, rate);
-           baseAccounts.push({
-             ...acc,
-             currency: 'BASE',
-             currentBalance: converted
-           });
-           if (!acc.isArchived) {
-             baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
-           }
+          const converted = convertExactAmount(acc.currentBalance, rate);
+          baseAccounts.push({
+            ...acc,
+            currency: 'BASE',
+            currentBalance: converted
+          });
+          if (!acc.isArchived) {
+            baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
+          }
         }
       }
-      
+
       baseAccountGroup = {
         currency: 'BASE',
         totalBalance: baseTotalBalance,
         accounts: baseAccounts
       };
-      
       baseValuation.status = 'AVAILABLE';
-    } catch (e: any) {
-      console.error('Base valuation failed:', e);
-      baseValuation.error = e.message;
-    }
-    
-    try {
-      const txIds = transactions.map(t => t.id);
+    })();
+
+    const historicalTask = (async () => {
+      const txIds = transactions.map((t) => t.id);
       const snapshots = await fetchSnapshots(baseCurrency, txIds);
-      const snapMap = new Map(snapshots.map(s => [s.transaction_id, s]));
-      
-      baseTransactions = transactions.map(tx => {
+      const snapMap = new Map(snapshots.map((s) => [s.transaction_id, s]));
+
+      baseTransactions = transactions.map((tx) => {
         const snap = snapMap.get(tx.id);
         if (!snap) throw new Error('Missing snapshot for transaction ' + tx.id);
         return {
@@ -324,15 +361,24 @@ export async function getDetailedReportData(
           fx_target_currency: baseCurrency
         } as BaseConvertedTransaction;
       });
-      
+
       baseHistorical.status = 'AVAILABLE';
-    } catch (e: any) {
-      console.error('Base historical failed:', e);
-      baseHistorical.error = e.message;
+    })();
+
+    const [valResult, histResult] = await Promise.allSettled([valuationTask, historicalTask]);
+    if (valResult.status === 'rejected') {
+      console.error('Base valuation failed:', valResult.reason);
+      baseValuation.error = valResult.reason?.message || String(valResult.reason);
     }
-    
+    if (histResult.status === 'rejected') {
+      console.error('Base historical failed:', histResult.reason);
+      baseHistorical.error = histResult.reason?.message || String(histResult.reason);
+    }
+
     if (baseValuation.status === 'AVAILABLE' || baseHistorical.status === 'AVAILABLE') {
-       availableCurrencies.unshift('BASE');
+      if (!availableCurrencies.includes('BASE')) {
+        availableCurrencies.unshift('BASE');
+      }
     }
   }
 

@@ -1,6 +1,22 @@
 import { createClient } from '@/lib/supabase/client';
 import type { AccountInsert, AccountRow, AccountUpdate } from '@/types/database';
 
+export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  BANK: 'Ngân hàng',
+  CASH: 'Tiền mặt',
+  EWALLET: 'Ví điện tử',
+  SAVINGS: 'Sổ tiết kiệm',
+  CREDIT_CARD: 'Thẻ tín dụng',
+  INVESTMENT: 'Đầu tư',
+  OTHER: 'Khác',
+};
+
+export function getAccountTypeLabel(type?: string | null): string {
+  if (!type) return 'Khác';
+  const norm = type.trim().toUpperCase();
+  return ACCOUNT_TYPE_LABELS[norm] || type;
+}
+
 export async function getAccounts(): Promise<AccountRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase

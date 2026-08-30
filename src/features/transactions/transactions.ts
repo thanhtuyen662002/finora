@@ -76,6 +76,41 @@ export async function getTransactions(): Promise<ExtendedTransaction[]> {
   return (data || []).map((row) => mapDetailRow(row as TransactionDetailRow));
 }
 
+export async function getTransactionsInDateRange(
+  startDate?: string | null,
+  endDate?: string | null,
+  options?: { accountId?: string; limit?: number }
+): Promise<ExtendedTransaction[]> {
+  const supabase = createClient();
+  let query = supabase.from('transaction_details').select('*');
+
+  if (startDate) {
+    query = query.gte('occurred_on', startDate);
+  }
+  if (endDate) {
+    query = query.lte('occurred_on', endDate);
+  }
+  if (options?.accountId) {
+    query = query.eq('account_id', options.accountId);
+  }
+
+  query = query
+    .order('occurred_on', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (options?.limit && options.limit > 0) {
+    query = query.limit(options.limit);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map((row) => mapDetailRow(row as TransactionDetailRow));
+}
+
+export async function getRecentTransactions(limit = 6): Promise<ExtendedTransaction[]> {
+  return getTransactionsInDateRange(undefined, undefined, { limit });
+}
+
 export async function createTransaction(
   transaction: TransactionInsertInput
 ): Promise<ExtendedTransaction> {
