@@ -51,7 +51,8 @@ async function runTests() {
 
   const runId = Math.random().toString(36).substring(7);
 
-    try {
+    let origA, origB, txId, trId, accA1Id, accA2Id, catAId;
+  try {
 console.log('\n--- Settings A/B lifecycle and isolation ---');
   const getA = await clientA.from('user_settings').select('auto_fx_enabled').eq('user_id', userAId).single();
   origA = getA.data?.auto_fx_enabled;
@@ -91,11 +92,11 @@ console.log('\n--- Settings A/B lifecycle and isolation ---');
   // RLS error for insert is usually 42501 (new row violates row-level security policy for table)
   assert(badInsert.error && badInsert.error.code === '42501', 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Insert denied');
 
-  const badUpdate = await clientA.from('transaction_fx_snapshots').update({ rate: '2.00' }).eq('user_id', userAId);
-  assert(badUpdate.data === null || badUpdate.data?.length === 0, 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Update denied');
+  const badUpdate = await clientA.from('transaction_fx_snapshots').update({ rate: '2.00' }).eq('user_id', userAId).select();
+  assert(badUpdate.error != null || (badUpdate.data && badUpdate.data.length === 0), 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Update denied');
 
-  const badDelete = await clientA.from('transaction_fx_snapshots')['delete']().eq('user_id', userAId);
-  assert(badDelete.data === null || badDelete.data?.length === 0, 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Delete denied');
+  const badDelete = await clientA.from('transaction_fx_snapshots')['delete']().eq('user_id', userAId).select();
+  assert(badDelete.error != null || (badDelete.data && badDelete.data.length === 0), 'SNAPSHOT_BROWSER_MUTATION_DENIAL=PASS - Delete denied');
 
   console.log('\n--- Bidirectional Snapshot isolation ---');
   const snapSelA = await clientA.from('transaction_fx_snapshots').select().eq('user_id', userBId);

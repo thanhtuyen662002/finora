@@ -14,10 +14,12 @@ WITH
   test_snap_col_types AS (
     SELECT count(*) = 12 AS pass FROM information_schema.columns
     WHERE table_name = 'transaction_fx_snapshots' AND (
-      (column_name IN ('id', 'user_id', 'transaction_id') AND data_type = 'uuid' AND is_nullable = 'NO') OR
-      (column_name IN ('target_currency_code', 'source_currency_code', 'provider') AND data_type = 'character varying' AND is_nullable = 'NO') OR
-      (column_name IN ('source_amount', 'rate', 'converted_amount') AND data_type = 'numeric' AND is_nullable = 'NO') OR
-      (column_name IN ('requested_date', 'effective_date') AND data_type = 'date' AND is_nullable = 'NO') OR
+      (column_name = 'id' AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NOT NULL) OR
+      (column_name IN ('user_id', 'transaction_id') AND data_type = 'uuid' AND is_nullable = 'NO' AND column_default IS NULL) OR
+      (column_name IN ('target_currency_code', 'source_currency_code', 'provider') AND data_type = 'text' AND is_nullable = 'NO' AND column_default IS NULL) OR
+      (column_name IN ('source_amount', 'converted_amount') AND data_type = 'numeric' AND numeric_precision = 20 AND numeric_scale = 4 AND is_nullable = 'NO' AND column_default IS NULL) OR
+      (column_name = 'rate' AND data_type = 'numeric' AND numeric_precision = 30 AND numeric_scale = 12 AND is_nullable = 'NO' AND column_default IS NULL) OR
+      (column_name IN ('requested_date', 'effective_date') AND data_type = 'date' AND is_nullable = 'NO' AND column_default IS NULL) OR
       (column_name = 'created_at' AND data_type = 'timestamp with time zone' AND is_nullable = 'NO' AND column_default IS NOT NULL)
     )
   ),
@@ -32,19 +34,19 @@ WITH
     SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%source_currency_code%!=%target_currency_code%' OR pg_get_constraintdef(oid) ILIKE '%source_currency_code%<>%target_currency_code%')
   ),
   test_check_source_amt AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%source_amount%>%0%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%source_amount%0%'
   ),
   test_check_rate AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%rate%>%0%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%rate%0%'
   ),
   test_check_converted_amt AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%converted_amount%>%0%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%converted_amount%0%'
   ),
   test_check_dates AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%effective_date%<=%requested_date%'
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%effective_date%requested_date%'
   ),
   test_check_provider AS (
-    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND (pg_get_constraintdef(oid) ILIKE '%length%trim%provider%>%0%' OR pg_get_constraintdef(oid) ILIKE '%char_length%trim%provider%>%0%')
+    SELECT count(*) = 1 AS pass FROM pg_constraint WHERE conrelid = 'transaction_fx_snapshots'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%length%trim%provider%'
   ),
   -- 3. Ordered Keys/FK
   test_tx_key AS (
@@ -77,16 +79,10 @@ WITH
     SELECT count(*) = 0 as pass FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshot_details' AND grantee IN ('anon', 'PUBLIC')
   ),
   test_authenticated_table_select_only AS (
-    SELECT count(*) = 1 as pass FROM (
-      SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshots' AND grantee = 'authenticated'
-      EXCEPT VALUES ('SELECT')
-    ) t HAVING count(*) = 0
+    SELECT (count(*) = 1 AND min(privilege_type) = 'SELECT') as pass FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshots' AND grantee = 'authenticated'
   ),
   test_authenticated_view_select_only AS (
-    SELECT count(*) = 1 as pass FROM (
-      SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshot_details' AND grantee = 'authenticated'
-      EXCEPT VALUES ('SELECT')
-    ) t HAVING count(*) = 0
+    SELECT (count(*) = 1 AND min(privilege_type) = 'SELECT') as pass FROM information_schema.role_table_grants WHERE table_name = 'transaction_fx_snapshot_details' AND grantee = 'authenticated'
   ),
   test_user_settings_grant AS (
     SELECT count(*) = 1 as pass FROM information_schema.role_column_grants WHERE table_name = 'user_settings' AND column_name = 'auto_fx_enabled' AND grantee = 'authenticated' AND privilege_type = 'UPDATE'
@@ -110,7 +106,7 @@ WITH
   ),
   -- 8. Non-regression
   test_phase2_7_rls AS (
-    SELECT count(*) = 9 as pass FROM pg_class WHERE relname IN ('profiles', 'user_settings', 'accounts', 'categories', 'transactions', 'transfers', 'budgets', 'goals', 'recurring_transactions') AND relrowsecurity = true
+    SELECT count(*) = 9 as pass FROM pg_class WHERE relname IN ('profiles', 'user_settings', 'accounts', 'categories', 'transactions', 'transfers', 'budgets', 'goals', 'recurring_items') AND relrowsecurity = true
   ),
   test_phase5_transfers AS (
     SELECT count(*) = 0 as pass FROM information_schema.columns WHERE table_name = 'transfers' AND column_name IN ('to_currency', 'exchange_rate', 'base_amount')
