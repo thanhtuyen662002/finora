@@ -124,6 +124,18 @@ export default function SettingsPage() {
           if (settings.base_currency) setBaseCurrency(settings.base_currency);
           if (settings.locale) setLocale(settings.locale);
           if (settings.timezone) setTimezone(settings.timezone);
+          if (settings.theme) {
+            const savedTheme = settings.theme as 'light' | 'dark' | 'system';
+            setTheme(savedTheme);
+            if (typeof window !== 'undefined') {
+              if (savedTheme === 'dark') document.documentElement.classList.add('dark');
+              else if (savedTheme === 'light') document.documentElement.classList.remove('dark');
+              else {
+                if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+              }
+            }
+          }
 
           if (settings.auto_fx_enabled !== undefined) {
             setAutoFx(settings.auto_fx_enabled);
@@ -146,6 +158,23 @@ export default function SettingsPage() {
     };
   }, []);
 
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme);
+    if (typeof window !== 'undefined') {
+      if (newTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (newTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -160,6 +189,7 @@ export default function SettingsPage() {
         base_currency: baseCurrency,
         locale,
         timezone,
+        theme,
       };
 
       if (hasAutoFxSchema) {
@@ -329,7 +359,7 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <button
                       type="button"
-                      onClick={() => setTheme('light')}
+                      onClick={() => handleThemeChange('light')}
                       className={`p-3 rounded-lg border text-center text-xs ${
                         theme === 'light'
                           ? 'border-primary bg-primary/5 font-semibold text-foreground'
@@ -340,7 +370,7 @@ export default function SettingsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTheme('dark')}
+                      onClick={() => handleThemeChange('dark')}
                       className={`p-3 rounded-lg border text-center text-xs ${
                         theme === 'dark'
                           ? 'border-primary bg-primary/5 font-semibold text-foreground'
@@ -351,7 +381,7 @@ export default function SettingsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTheme('system')}
+                      onClick={() => handleThemeChange('system')}
                       className={`p-3 rounded-lg border text-center text-xs ${
                         theme === 'system'
                           ? 'border-primary bg-primary/5 font-semibold text-foreground'
@@ -424,14 +454,17 @@ export default function SettingsPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between opacity-60">
                       <div>
-                        <p className="text-sm font-medium text-foreground">Che số dư công cộng</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">Che số dư công cộng</p>
+                          <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium text-muted-foreground">Sắp hỗ trợ</span>
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           Ẩn các con số tài chính ở giao diện chính.
                         </p>
                       </div>
-                      <Switch checked={maskBalance} onCheckedChange={setMaskBalance} />
+                      <Switch checked={false} disabled />
                     </div>
                   </div>
                 </CardContent>

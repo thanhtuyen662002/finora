@@ -377,10 +377,9 @@ export function aggregateAccountBalancesByCurrency(
       isArchived: account.is_archived,
     };
 
-    groups[currency].accounts.push(snapshot);
-
-    // Active accounts participate in total balance
+    // Active accounts participate in total balance and account list
     if (!account.is_archived) {
+      groups[currency].accounts.push(snapshot);
       groups[currency].totalBalance = addExactDecimals(
         groups[currency].totalBalance,
         currentBalance

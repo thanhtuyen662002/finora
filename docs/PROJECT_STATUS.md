@@ -564,22 +564,27 @@ Verification:
 - `typecheck`: PASS
 - `build`: PASS
 
-## Phase 8 — Pass A UX + Performance Hardening & Corrective
-Pass A UX, Performance Hardening, and Corrective updates have been successfully implemented and verified in the source repository:
+## Phase 8 — Pass A UX + Performance Hardening & Final Corrective
+Pass A UX, Performance Hardening, and Final Corrective updates have been successfully implemented and verified in the source repository:
 
-Implemented UX + Performance Corrective optimizations:
+Implemented UX + Performance Final Corrective optimizations:
+- Restored persisted theme loading and saving in `SettingsPage` with runtime DOM theme class management (`light`/`dark`/`system`).
+- Mask balance switch disabled with "Sắp hỗ trợ" badge in Settings.
 - Centered and balanced `SettingsPage` desktop grid layout (`max-w-6xl`) with User Profile, Theme, Currency & Region, Categories navigation, Notifications (disabled with "Sắp hỗ trợ"), AI (disabled with "Sắp hỗ trợ"), and Security cards.
 - Complete eradication of internal developer jargon (`user_settings`, `Row Level Security`, `Credential Source`, `(Light)`, `(Dark)`, `(Auto)`, `Base Currency`, `Phase 7`, `Phase 8`) from user-facing Settings interface.
 - Friendly, localized labels: "Cài đặt", "Tiền tệ cơ sở", "Tiền tệ & khu vực", "Sáng", "Tối", "Theo hệ thống", IANA timezones mapped to friendly labels.
+- Non-blocking Dashboard rendering: Native Dashboard balances, current-month summaries, 6M native cash flow, and recent transactions return immediately in `~30ms` without awaiting historical FX snapshots or current rates.
+- Progressive background enrichment (`enrichDashboardBaseFx`) hydrates BASE valuation and 6M historical snapshots asynchronously without blocking the UI or blanking native data.
+- Historical snapshot scope for Dashboard is strictly restricted to the 6M `periodTxList` transaction IDs, ignoring out-of-scope recent transactions.
+- Optimized native report mode in `getDetailedReportData`: selecting native ISO currencies skips FX current rates and FX snapshot API requests entirely.
+- Exact active account filtering across Dashboard, Reports, and BASE synthetic account group: archived accounts are excluded from current-position account lists/counts and BASE total balances, while historical transactions of archived accounts remain fully preserved in report calculations.
 - Fixed Reports initial duplicate fetch by preventing redundant `selectedCurrency` state updates when `selectedCurrency` is null.
-- Optimized native report mode: single-currency/native report selection skips FX snapshot API requests entirely.
-- Scoped historical snapshot requests strictly to transactions within period start/end date range.
 - `TransactionList` pagination resets to page 1 on every filter and sort state change.
-- Filtered archived accounts from Dashboard (max 6 active accounts preview) and Reports (max 8 active accounts preview).
 - Added `scripts/verify-phase8-ux-performance.mjs` verifying all UX and performance requirements.
 
 Verification:
 - `scripts/verify-phase8-ux-performance.mjs`: PASS
+- `scripts/verify-phase8-source.mjs`: PASS
 - `typecheck`: PASS
 - `lint`: PASS
 - `build`: PASS

@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { formatExactMoney, formatExactDecimal } from '@/lib/money';
 import {
   getDashboardReportData,
+  enrichDashboardBaseFx,
   type DashboardReportData,
   type AccountBalanceSnapshot,
 } from '@/features/reports';
@@ -55,6 +56,18 @@ export default function DashboardPage() {
         if (prev && res.availableCurrencies.includes(prev)) return prev;
         return res.defaultCurrency || res.availableCurrencies[0];
       });
+
+      if (res.autoFxEnabled) {
+        enrichDashboardBaseFx(res).then((enriched) => {
+          setData({ ...enriched });
+          setActiveCurrency((prev) => {
+            if (prev && enriched.availableCurrencies.includes(prev)) return prev;
+            return enriched.defaultCurrency || enriched.availableCurrencies[0];
+          });
+        }).catch((err) => {
+          console.error('FX enrichment background error:', err);
+        });
+      }
     } catch (err: any) {
       setError(err?.message || 'Không thể tải dữ liệu tổng quan tài chính');
       setData(null);
@@ -76,6 +89,21 @@ export default function DashboardPage() {
             if (prev && res.availableCurrencies.includes(prev)) return prev;
             return res.defaultCurrency || res.availableCurrencies[0];
           });
+          setLoading(false);
+
+          if (res.autoFxEnabled) {
+            enrichDashboardBaseFx(res).then((enriched) => {
+              if (!ignore) {
+                setData({ ...enriched });
+                setActiveCurrency((prev) => {
+                  if (prev && enriched.availableCurrencies.includes(prev)) return prev;
+                  return enriched.defaultCurrency || enriched.availableCurrencies[0];
+                });
+              }
+            }).catch((err) => {
+              console.error('FX enrichment background error:', err);
+            });
+          }
         }
       } catch (err: any) {
         if (!ignore) {

@@ -8,6 +8,7 @@ import {
   type ExtendedTransaction,
 } from '@/features/transactions';
 import { getAccounts, getAccountBalances } from '@/features/accounts';
+import type { AccountRow } from '@/types/database';
 import {
   getDateRangeForPeriod,
   getCurrentMonthPrefix,
@@ -88,7 +89,7 @@ export async function getDashboardReportData(
     getRecentTransactions(6),
   ]);
 
-  // Combine and deduplicate
+  // Combine and deduplicate for recent transactions display
   const txMap = new Map<string, ExtendedTransaction>();
   for (const t of periodTxList) txMap.set(t.id, t);
   for (const t of recentTxList) txMap.set(t.id, t);
@@ -123,115 +124,19 @@ export async function getDashboardReportData(
     error: null
   };
 
-  if (autoFxEnabled) {
-    const valuationTask = (async () => {
-      const uniqueAccCurrencies = Array.from(new Set(accounts.map((a) => a.currency_code || 'VND')));
-      const rateRes = await fetch('/api/fx/current-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetCurrency: baseCurrency, sourceCurrencies: uniqueAccCurrencies })
-      });
-      if (!rateRes.ok) throw new Error('Failed to load current rates');
-      const rateData = await rateRes.json();
-      if (rateData.error) throw new Error(rateData.error);
-
-      const rates = rateData.rates as Record<string, FxQuote>;
-      baseValuation.quotes = rates;
-
-      let baseTotalBalance = '0.0000';
-      const baseAccounts: AccountBalanceSnapshot[] = [];
-
-      for (const c of availableCurrencies) {
-        if (c === 'BASE') continue;
-        const group = accountBalancesByCurrency[c];
-        if (!group) continue;
-
-        const rateObj = rates[c];
-        if (!rateObj && c !== baseCurrency) {
-          throw new Error(`Missing required rate for ${c}`);
-        }
-        const rate = rateObj ? rateObj.rate : '1.000000000000';
-
-        for (const acc of group.accounts) {
-          const converted = convertExactAmount(acc.currentBalance, rate);
-          baseAccounts.push({
-            ...acc,
-            currency: 'BASE',
-            currentBalance: converted
-          });
-          if (!acc.isArchived) {
-            baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
-          }
-        }
-      }
-
-      accountBalancesByCurrency['BASE'] = {
-        currency: 'BASE',
-        totalBalance: baseTotalBalance,
-        accounts: baseAccounts
-      };
-      baseValuation.status = 'AVAILABLE';
-    })();
-
-    const historicalTask = (async () => {
-      const txIds = transactions.map((t) => t.id);
-      const snapshots = await fetchSnapshots(baseCurrency, txIds);
-      const snapMap = new Map(snapshots.map((s) => [s.transaction_id, s]));
-
-      const baseTransactions: BaseConvertedTransaction[] = transactions.map((tx) => {
-        const snap = snapMap.get(tx.id);
-        if (!snap) throw new Error('Missing snapshot for transaction ' + tx.id);
-        return {
-          ...tx,
-          currency_code: 'BASE',
-          amount: snap.converted_amount,
-          fx_rate: snap.rate,
-          fx_provider: snap.provider,
-          fx_effective_date: snap.effective_date,
-          fx_original_amount: tx.amount,
-          fx_original_currency: tx.currency_code,
-          fx_target_currency: baseCurrency
-        } as BaseConvertedTransaction;
-      });
-
-      const baseSummaries = aggregateCurrencySummaries(baseTransactions, currentMonthPrefix);
-      currentMonthSummaries['BASE'] = baseSummaries['BASE'] || {
-        currency: 'BASE',
-        totalIncome: '0.0000',
-        totalExpense: '0.0000',
-        netSavings: '0.0000',
-        savingRateBasisPoints: null,
-        savingRatePercent: null,
-        transactionCount: 0,
-      };
-      sixMonthCashFlowByCurrency['BASE'] = aggregateCashFlow(baseTransactions, 'BASE', dateRange6M.monthKeys);
-      baseHistorical.status = 'AVAILABLE';
-    })();
-
-    const [valResult, histResult] = await Promise.allSettled([valuationTask, historicalTask]);
-    if (valResult.status === 'rejected') {
-      console.error('Base valuation failed:', valResult.reason);
-      baseValuation.error = valResult.reason?.message || String(valResult.reason);
-    }
-    if (histResult.status === 'rejected') {
-      console.error('Base historical failed:', histResult.reason);
-      baseHistorical.error = histResult.reason?.message || String(histResult.reason);
-    }
-
-    if (baseValuation.status === 'AVAILABLE' || baseHistorical.status === 'AVAILABLE') {
-      if (!availableCurrencies.includes('BASE')) {
-        availableCurrencies.unshift('BASE');
-      }
-    }
-  }
-
   const recentTransactions = transactions.slice(0, 6);
   const currentMonthLabel = formatFullMonthLabel(currentMonthPrefix);
 
-  return {
+  const nativeData: DashboardReportData & {
+    _periodTxList?: ExtendedTransaction[];
+    _accounts?: AccountRow[];
+    _balances?: Record<string, string>;
+    _dateRange6M?: any;
+    _currentMonthPrefix?: string;
+  } = {
     baseCurrency,
     autoFxEnabled,
-    defaultCurrency: autoFxEnabled && availableCurrencies.includes('BASE') ? 'BASE' : defaultCurrency,
+    defaultCurrency,
     timezone,
     availableCurrencies,
     baseValuation,
@@ -241,7 +146,157 @@ export async function getDashboardReportData(
     sixMonthCashFlowByCurrency,
     recentTransactions,
     currentMonthLabel,
+    _periodTxList: periodTxList,
+    _accounts: accounts,
+    _balances: balances,
+    _dateRange6M: dateRange6M,
+    _currentMonthPrefix: currentMonthPrefix,
   };
+
+  return nativeData;
+}
+
+export async function enrichDashboardBaseFx(
+  data: DashboardReportData
+): Promise<DashboardReportData> {
+  if (!data.autoFxEnabled) return data;
+
+  const periodTxList: ExtendedTransaction[] = (data as any)._periodTxList || [];
+  const accounts: AccountRow[] = (data as any)._accounts || [];
+  const balances: Record<string, string> = (data as any)._balances || {};
+  const dateRange6M = (data as any)._dateRange6M || getDateRangeForPeriod('6M', data.timezone, new Date(), undefined, undefined);
+  const currentMonthPrefix = (data as any)._currentMonthPrefix || getCurrentMonthPrefix(data.timezone);
+
+  const enriched = { ...data };
+
+  const valuationTask = (async () => {
+    const uniqueAccCurrencies = Array.from(new Set(accounts.map((a) => a.currency_code || 'VND')));
+    const rateRes = await fetch('/api/fx/current-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetCurrency: data.baseCurrency, sourceCurrencies: uniqueAccCurrencies })
+    });
+    if (!rateRes.ok) throw new Error('Failed to load current rates');
+    const rateData = await rateRes.json();
+    if (rateData.error) throw new Error(rateData.error);
+
+    const rates = rateData.rates as Record<string, FxQuote>;
+    enriched.baseValuation = {
+      status: 'AVAILABLE',
+      error: null,
+      quotes: rates,
+    };
+
+    let baseTotalBalance = '0.0000';
+    const baseAccounts: AccountBalanceSnapshot[] = [];
+
+    for (const c of data.availableCurrencies) {
+      if (c === 'BASE') continue;
+      const group = data.accountBalancesByCurrency[c];
+      if (!group) continue;
+
+      const rateObj = rates[c];
+      if (!rateObj && c !== data.baseCurrency) {
+        throw new Error(`Missing required rate for ${c}`);
+      }
+      const rate = rateObj ? rateObj.rate : '1.000000000000';
+
+      for (const acc of group.accounts) {
+        if (acc.isArchived) continue;
+        const converted = convertExactAmount(acc.currentBalance, rate);
+        baseAccounts.push({
+          ...acc,
+          currency: 'BASE',
+          currentBalance: converted
+        });
+        baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
+      }
+    }
+
+    enriched.accountBalancesByCurrency = {
+      ...enriched.accountBalancesByCurrency,
+      BASE: {
+        currency: 'BASE',
+        totalBalance: baseTotalBalance,
+        accounts: baseAccounts
+      }
+    };
+  })();
+
+  const historicalTask = (async () => {
+    // Snapshot scope is STRICTLY the 6M periodTxList, excluding out-of-scope recent transactions
+    const periodTxIds = periodTxList.map((t) => t.id);
+    const snapshots = await fetchSnapshots(data.baseCurrency, periodTxIds);
+    const snapMap = new Map(snapshots.map((s) => [s.transaction_id, s]));
+
+    const baseTransactions: BaseConvertedTransaction[] = periodTxList.map((tx) => {
+      const snap = snapMap.get(tx.id);
+      if (!snap) throw new Error('Missing snapshot for transaction ' + tx.id);
+      return {
+        ...tx,
+        currency_code: 'BASE',
+        amount: snap.converted_amount,
+        fx_rate: snap.rate,
+        fx_provider: snap.provider,
+        fx_effective_date: snap.effective_date,
+        fx_original_amount: tx.amount,
+        fx_original_currency: tx.currency_code,
+        fx_target_currency: data.baseCurrency
+      } as BaseConvertedTransaction;
+    });
+
+    const baseSummaries = aggregateCurrencySummaries(baseTransactions, currentMonthPrefix);
+    enriched.currentMonthSummaries = {
+      ...enriched.currentMonthSummaries,
+      BASE: baseSummaries['BASE'] || {
+        currency: 'BASE',
+        totalIncome: '0.0000',
+        totalExpense: '0.0000',
+        netSavings: '0.0000',
+        savingRateBasisPoints: null,
+        savingRatePercent: null,
+        transactionCount: 0,
+      }
+    };
+
+    enriched.sixMonthCashFlowByCurrency = {
+      ...enriched.sixMonthCashFlowByCurrency,
+      BASE: aggregateCashFlow(baseTransactions, 'BASE', dateRange6M.monthKeys)
+    };
+
+    enriched.baseHistorical = {
+      status: 'AVAILABLE',
+      error: null
+    };
+  })();
+
+  const [valResult, histResult] = await Promise.allSettled([valuationTask, historicalTask]);
+  if (valResult.status === 'rejected') {
+    console.error('Base valuation failed:', valResult.reason);
+    enriched.baseValuation = {
+      status: 'UNAVAILABLE',
+      error: valResult.reason?.message || String(valResult.reason),
+      quotes: {}
+    };
+  }
+  if (histResult.status === 'rejected') {
+    console.error('Base historical failed:', histResult.reason);
+    enriched.baseHistorical = {
+      status: 'UNAVAILABLE',
+      error: histResult.reason?.message || String(histResult.reason)
+    };
+  }
+
+  if (enriched.baseValuation.status === 'AVAILABLE' || enriched.baseHistorical.status === 'AVAILABLE') {
+    const newAvail = [...enriched.availableCurrencies];
+    if (!newAvail.includes('BASE')) {
+      newAvail.unshift('BASE');
+    }
+    enriched.availableCurrencies = newAvail;
+    enriched.defaultCurrency = 'BASE';
+  }
+
+  return enriched;
 }
 
 export async function getDetailedReportData(
@@ -290,7 +345,13 @@ export async function getDetailedReportData(
     error: null
   };
 
-  if (autoFxEnabled) {
+  const isBaseSelected = preferredCurrency
+    ? preferredCurrency.toUpperCase() === 'BASE'
+    : false;
+
+  const isNativeMode = preferredCurrency && preferredCurrency.toUpperCase() !== 'BASE';
+
+  if (autoFxEnabled && isBaseSelected && !isNativeMode) {
     const valuationTask = (async () => {
       const uniqueAccCurrencies = Array.from(new Set(accounts.map((a) => a.currency_code || 'VND')));
       const rateRes = await fetch('/api/fx/current-batch', {
@@ -321,15 +382,14 @@ export async function getDetailedReportData(
         const rate = rateObj ? rateObj.rate : '1.000000000000';
 
         for (const acc of group.accounts) {
+          if (acc.isArchived) continue;
           const converted = convertExactAmount(acc.currentBalance, rate);
           baseAccounts.push({
             ...acc,
             currency: 'BASE',
             currentBalance: converted
           });
-          if (!acc.isArchived) {
-            baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
-          }
+          baseTotalBalance = addExactDecimals(baseTotalBalance, converted);
         }
       }
 
@@ -342,10 +402,6 @@ export async function getDetailedReportData(
     })();
 
     const historicalTask = (async () => {
-      if (preferredCurrency && preferredCurrency.toUpperCase() !== 'BASE') {
-        return;
-      }
-
       const txIds = transactions.map((t) => t.id);
       const snapshots = await fetchSnapshots(baseCurrency, txIds);
       const snapMap = new Map(snapshots.map((s) => [s.transaction_id, s]));
