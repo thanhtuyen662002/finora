@@ -71,10 +71,6 @@ SELECT
     t.to_account_id,
     CAST(t.amount AS TEXT) AS amount,
     t.currency_code,
-    t.source_currency_code,
-    t.destination_currency_code,
-    CAST(t.destination_amount AS TEXT) AS destination_amount,
-    CAST(t.exchange_rate AS TEXT) AS exchange_rate,
     t.note,
     t.occurred_on,
     t.is_voided,
@@ -83,10 +79,14 @@ SELECT
     fa.name AS from_account_name,
     fa.type AS from_account_type,
     fa.color AS from_account_color,
-    fa.currency_code AS from_account_currency,
     ta.name AS to_account_name,
     ta.type AS to_account_type,
     ta.color AS to_account_color,
+    t.source_currency_code,
+    t.destination_currency_code,
+    CAST(t.destination_amount AS TEXT) AS destination_amount,
+    CAST(t.exchange_rate AS TEXT) AS exchange_rate,
+    fa.currency_code AS from_account_currency,
     ta.currency_code AS to_account_currency
 FROM public.transfers t
 JOIN public.accounts fa ON t.from_account_id = fa.id

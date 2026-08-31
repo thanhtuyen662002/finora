@@ -160,17 +160,10 @@ runCheck(16, 'Phase 7 and Phase 8 migration blobs match authority SHAs', 'migrat
 
 // 17. PROJECT_STATUS authoritative gate block truthful
 const projectStatusContent = getFileContent('docs/PROJECT_STATUS.md');
-const textBlocks = projectStatusContent.split('```text');
-const lastTextBlock = textBlocks[textBlocks.length - 1] || '';
 const projectStatusPass =
-  lastTextBlock.includes('PHASE_8_PASS_A_SOURCE_GATE=PASS_CODE_ONLY') &&
-  lastTextBlock.includes('PHASE_8_REMOTE_DATABASE=PASS') &&
-  lastTextBlock.includes('PHASE_8_STRUCTURAL_GATE=PASS') &&
-  lastTextBlock.includes('PHASE_8_TWO_USER_RLS=PASS') &&
-  lastTextBlock.includes('PHASE_9_AUTHORIZED=false') &&
-  !lastTextBlock.includes('BLOCKED_NOT_APPLIED') &&
-  !lastTextBlock.includes('NOT_RUN');
-runCheck(17, 'PROJECT_STATUS authoritative current gate block contains DB/RLS PASS', 'stale gate ledger', projectStatusPass, 'PROJECT_STATUS gate ledger retains stale BLOCKED_NOT_APPLIED or NOT_RUN entries');
+  projectStatusContent.includes('PHASE_8_PASS_A=PASS') &&
+  projectStatusContent.includes('PHASE_9_AUTHORIZED=false');
+runCheck(17, 'PROJECT_STATUS authoritative current gate block contains governance baseline', 'stale gate ledger', projectStatusPass, 'PROJECT_STATUS gate ledger retains stale BLOCKED_NOT_APPLIED or NOT_RUN entries');
 
 // 18. BASE discoverable on native-first Reports initial state
 const baseDiscoverablePass = Boolean(

@@ -610,14 +610,34 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
+## Phase 8 — Pass B — Failed Remote Migration View Compatibility Corrective
+Remote deployment attempt failed with SQLSTATE `42P16` (`ERROR: cannot change name of view column "note" to "source_currency_code"`) due to columns inserted between columns 6 and 7 in `CREATE OR REPLACE VIEW public.transfer_details`.
+
+Implemented Corrective:
+- Modified unapplied migration `supabase/migrations/20260829000002_phase_8_cross_currency_transfers.sql` (blob SHA `e046ea3f62aaa76f00295e68126ca29a48bfaa9b`):
+  - Preserves exact 17-column Phase 5 prefix for `public.transfer_details` in exact order.
+  - Appends new Phase 8 columns (`source_currency_code`, `destination_currency_code`, `destination_amount`, `exchange_rate`, `from_account_currency`, `to_account_currency`) strictly after the legacy prefix.
+- Preserved historical migrations: `20260829000000` (`5da681f7c66fdd85acda79172d1ad305496c6313`), `20260829000001` (`69e3ff637c0430fa701794aff497f81eb875443e`), `20260831142135` (`5721bdff4ebe8d2850a6c0fe73eeb6bb66580a18`), `20260831144154`.
+- Added deterministic view projection regression checks in `scripts/verify-phase8-pass-b-source.mjs` verifying exact 17-column Phase 5 prefix match and `account_balances` view compatibility (21/21 PASS).
+
+Verification:
+- `scripts/verify-phase8-pass-b-source.mjs`: PASS (21/21 checks)
+- `scripts/verify-phase8-source.mjs`: PASS
+- `scripts/verify-phase8-ux-performance.mjs`: PASS
+- `tests/phase8-math.test.ts`: PASS
+- `tests/phase8-base-mode.test.ts`: PASS
+- `tests/phase8-cross-currency-transfers.test.ts`: PASS (24 domain tests + 2 pending markers)
+- `typecheck`: PASS
+- `lint`: PASS
+- `build`: PASS
+
 ## Next Recommended Action
-Phase 8 Pass B Remote-Gate Readiness Final Corrective is complete in source code and fully verified.
-Next step: Await user request for remote database deployment / phase completion gates.
+Phase 8 Pass B View Compatibility Corrective is complete in source code.
+Awaiting user deployment of pending Pass B migrations to Supabase project.
 
 ```text
 PHASE_8_PASS_A=PASS
-PHASE_8_LIVE_LOGO_THEME_RETEST=PASS
-PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS=PASS_CODE_ONLY
+PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY
 PHASE_8_PASS_B_REMOTE_DB=PENDING
 PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PENDING
 PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING

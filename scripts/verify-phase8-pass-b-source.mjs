@@ -23,10 +23,10 @@ function check(id, description, condition) {
   }
 }
 
-// 1. Initial Phase 8 Pass B migration Git blob SHA unchanged
+// 1. Initial Phase 8 Pass B migration Git blob SHA lock (updated to compatible projection)
 const origMigBuf = fs.readFileSync('supabase/migrations/20260829000002_phase_8_cross_currency_transfers.sql');
 const origSha = sha(origMigBuf);
-check(1, "Phase 8 Pass B initial migration SHA unchanged", origSha === 'fbe5fefed202fcdc9f9bc48fb590aa11deba4e79');
+check(1, "Phase 8 Pass B initial migration SHA matches compatible lock", origSha === 'e046ea3f62aaa76f00295e68126ca29a48bfaa9b');
 
 // 2. Phase 8 Pass B integrity corrective migration Git blob SHA unchanged
 const corrMigBuf = fs.readFileSync('supabase/migrations/20260831142135_phase_8_cross_currency_transfer_integrity_corrective.sql');
@@ -109,6 +109,58 @@ const brandOk = iconSha256 === '909fe9a761994d8d95713f794daa76233a2b9e4f6ca5ab6e
                 darkSha256 === '749fae78db093081fd6d403eb4e7e8d984a7ddfeee79ff5f02ee3da7c2bcf3cc' &&
                 lightSha256 === '0dfdd3460f7a11994e4e2c5983429326410a8a46e74ba3900bf58c007b9e5dc7';
 check(19, "Brand asset PNG sha256 hashes match regression locks", brandOk);
+
+// 20. transfer_details view projection in Phase 8 preserves Phase 5 17-column prefix in exact order and only appends
+function extractFinalSelectColumns(sql, viewName, finalFromTable) {
+  const viewBlockRegex = new RegExp('CREATE OR REPLACE VIEW public\\.' + viewName + '[\\s\\S]*?;', 'i');
+  const viewMatch = sql.match(viewBlockRegex);
+  if (!viewMatch) return [];
+  const viewSql = viewMatch[0];
+  const finalFromIdx = viewSql.search(new RegExp('FROM\\s+public\\.' + finalFromTable, 'i'));
+  if (finalFromIdx === -1) return [];
+  const beforeFrom = viewSql.substring(0, finalFromIdx);
+  const lastSelectIdx = beforeFrom.lastIndexOf('SELECT');
+  if (lastSelectIdx === -1) return [];
+  const selectClause = beforeFrom.substring(lastSelectIdx + 6);
+  const cols = [];
+  let depth = 0;
+  let current = '';
+  for (let i = 0; i < selectClause.length; i++) {
+    const c = selectClause[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    if (c === ',' && depth === 0) {
+      cols.push(current.trim());
+      current = '';
+    } else {
+      current += c;
+    }
+  }
+  if (current.trim()) cols.push(current.trim());
+  return cols;
+}
+
+const p5Sql = fs.readFileSync('supabase/migrations/20260828000003_phase_5_transfers.sql', 'utf8');
+const p8Sql = fs.readFileSync('supabase/migrations/20260829000002_phase_8_cross_currency_transfers.sql', 'utf8');
+
+const p5TransferCols = extractFinalSelectColumns(p5Sql, 'transfer_details', 'transfers');
+const p8TransferCols = extractFinalSelectColumns(p8Sql, 'transfer_details', 'transfers');
+
+const p5IsPrefix = p5TransferCols.length === 17 &&
+  p8TransferCols.length > 17 &&
+  p5TransferCols.every((col, idx) => p8TransferCols[idx] === col);
+
+check(20, "transfer_details view in Phase 8 preserves exact 17-column Phase 5 prefix without reordering", p5IsPrefix);
+
+// 21. account_balances view projection in Phase 8 matches Phase 5 columns identically
+const p5AccountBalCols = extractFinalSelectColumns(p5Sql, 'account_balances', 'accounts');
+const p8AccountBalCols = extractFinalSelectColumns(p8Sql, 'account_balances', 'accounts');
+
+const accountBalMatches = p5AccountBalCols.length === 4 &&
+  p8AccountBalCols.length === 4 &&
+  p5AccountBalCols.every((col, idx) => p8AccountBalCols[idx] === col);
+
+check(21, "account_balances view in Phase 8 preserves exact 4-column Phase 5 structure", accountBalMatches);
 
 console.log(`\nPHASE_8_PASS_B_SOURCE_CHECK_COUNT: ${passed}/${total}`);
 
