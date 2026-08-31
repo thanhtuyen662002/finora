@@ -130,15 +130,29 @@ check(26, "Runtime verifier cleanup throws instead of process.exit in assert and
 );
 
 const status = fs.readFileSync('docs/PROJECT_STATUS.md', 'utf-8');
+const textBlocks = [...status.matchAll(/```text([\s\S]*?)```/g)];
+const lastTextBlock = textBlocks.length > 0 ? textBlocks[textBlocks.length - 1][1].trim() : '';
+
 const hasGovernancePass =
-  status.includes('PHASE_8_PASS_A=PASS') &&
-  status.includes('PHASE_9_AUTHORIZED=false');
+  lastTextBlock.includes('PHASE_8_PASS_A=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_REMOTE_DB=PENDING') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PENDING') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING') &&
+  lastTextBlock.includes('PHASE_8_OVERALL=PARTIAL') &&
+  lastTextBlock.includes('PHASE_9_AUTHORIZED=false') &&
+  !lastTextBlock.includes('PHASE_8_PASS_B_REMOTE_DB=PASS') &&
+  !lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
+  !lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  !lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
+  !lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
 check(27, "PROJECT_STATUS governance truthful current block", hasGovernancePass);
 
 const adr = fs.readFileSync('docs/DECISIONS.md', 'utf-8');
 const dbDocs = fs.readFileSync('docs/DATABASE.md', 'utf-8');
 check(28, "ADR-013 and DATABASE docs exist with required semantics", adr.includes('ADR-013') && dbDocs.includes('transaction_fx_snapshots'));
-check(29, "Phase 9 remains unauthorized", status.includes('PHASE_9_AUTHORIZED=false'));
+check(29, "Phase 9 remains unauthorized", lastTextBlock.includes('PHASE_9_AUTHORIZED=false') && !lastTextBlock.includes('PHASE_9_AUTHORIZED=true'));
 
 check(30, "Pre-migration explicit-select of auto_fx_enabled is forbidden", !reportEngine.includes("select('base_currency, timezone, auto_fx_enabled')"));
 

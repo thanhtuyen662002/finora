@@ -160,9 +160,23 @@ runCheck(16, 'Phase 7 and Phase 8 migration blobs match authority SHAs', 'migrat
 
 // 17. PROJECT_STATUS authoritative gate block truthful
 const projectStatusContent = getFileContent('docs/PROJECT_STATUS.md');
+const textBlocks = [...projectStatusContent.matchAll(/```text([\s\S]*?)```/g)];
+const lastTextBlock = textBlocks.length > 0 ? textBlocks[textBlocks.length - 1][1].trim() : '';
+
 const projectStatusPass =
-  projectStatusContent.includes('PHASE_8_PASS_A=PASS') &&
-  projectStatusContent.includes('PHASE_9_AUTHORIZED=false');
+  lastTextBlock.includes('PHASE_8_PASS_A=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_REMOTE_DB=PENDING') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PENDING') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING') &&
+  lastTextBlock.includes('PHASE_8_OVERALL=PARTIAL') &&
+  lastTextBlock.includes('PHASE_9_AUTHORIZED=false') &&
+  !lastTextBlock.includes('PHASE_8_PASS_B_REMOTE_DB=PASS') &&
+  !lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
+  !lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  !lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
+  !lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
 runCheck(17, 'PROJECT_STATUS authoritative current gate block contains governance baseline', 'stale gate ledger', projectStatusPass, 'PROJECT_STATUS gate ledger retains stale BLOCKED_NOT_APPLIED or NOT_RUN entries');
 
 // 18. BASE discoverable on native-first Reports initial state
