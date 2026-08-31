@@ -73,19 +73,29 @@ User financial transactions (Income/Expense) managed under RLS.
 - `created_at` (timestamptz, default now())
 - `updated_at` (timestamptz, default now())
 
-### `public.transfers` (Phase 5)
-User financial transfers (Same-Currency Account-to-Account movements) managed under RLS.
+### `public.transfers` (Phase 5 / Phase 8 Pass B Corrective)
+User financial transfers (Same-Currency and Cross-Currency Account-to-Account movements) managed under RLS.
 - `id` (uuid, primary key, default `gen_random_uuid()`)
 - `user_id` (uuid, not null)
 - `from_account_id` (uuid, not null)
 - `to_account_id` (uuid, not null, check `from_account_id <> to_account_id`)
 - `amount` (numeric(20,4), not null, check > 0)
-- `currency_code` (text, not null, check format `^[A-Z]{3,5}$`)
+- `currency_code` (text, not null, check format `^[A-Z]{3,5}$`, check `currency_code = source_currency_code`)
+- `source_currency_code` (text, not null, check format `^[A-Z]{3,5}$`)
+- `destination_currency_code` (text, not null, check format `^[A-Z]{3,5}$`)
+- `destination_amount` (numeric(20,4), not null, check > 0, check `destination_amount = ROUND(amount * exchange_rate, 4)`)
+- `exchange_rate` (numeric(30,12), not null, default 1.000000000000, check > 0)
 - `note` (text, nullable, max length 1000)
 - `occurred_on` (date, not null, default CURRENT_DATE)
 - `is_voided` (boolean, not null, default false)
 - `created_at` (timestamptz, default now())
 - `updated_at` (timestamptz, default now())
+
+**DB Integrity Constraints:**
+- `chk_transfers_currency_compatibility`: `currency_code = source_currency_code`
+- `chk_transfers_same_currency_invariant`: `(source_currency_code <> destination_currency_code) OR (destination_amount = amount AND exchange_rate = 1.000000000000)`
+- `chk_transfers_cross_currency_conversion`: `destination_amount = ROUND(amount * exchange_rate, 4)`
+- `trg_check_transfer_accounts_active`: Trigger on BEFORE INSERT OR UPDATE ensuring neither source nor destination account is archived (`is_archived = false`).
 
 ### `public.budgets` (Phase 7)
 Monthly category expense budgets managed under RLS.

@@ -245,3 +245,33 @@ Consequences:
 - transaction_fx_snapshots is authoritative.
 - Provider must be queried with bounded 7-day lookback.
 - UI will explicitly show UNAVAILABLE when a required rate is missing, rather than omitting it silently or defaulting to 1:1.
+
+---
+
+## ADR-014 — Cross-Currency Transfers Integrity Corrective — Canonical FX Contract, DB Constraints, and Active-Account Enforcement
+
+**Status:** Accepted
+
+**Decision:**
+1. Establish the Canonical FX Contract for cross-currency transfers:
+   - `exchange_rate` is defined explicitly as destination currency units received per 1 source currency unit ($1 \text{ Source} = \text{Rate} \text{ Destination}$).
+   - `destination_amount` is calculated strictly via exact arithmetic: `destination_amount = convertExactAmount(source_amount, exchange_rate)`.
+2. DB Schema & Invariant Enforcement:
+   - Same-currency transfers MUST enforce `destination_amount = amount` and `exchange_rate = 1.000000000000`.
+   - Cross-currency transfers MUST satisfy DB check constraint `CHECK (destination_amount = ROUND(amount * exchange_rate, 4))`.
+   - Source currency compatibility constraint `CHECK (currency_code = source_currency_code)` is strictly enforced.
+3. Active Account Enforcement:
+   - A PostgreSQL BEFORE INSERT OR UPDATE trigger (`trg_check_transfer_accounts_active`) enforces that transfers cannot be created or moved onto archived accounts (`is_archived = true`).
+   - Service layer `createTransfer` and `updateTransfer` fetch account records under user RLS scope and derive source and destination currencies from DB accounts, completely ignoring caller-supplied currency overrides or caller-supplied contradictory `destination_amount`.
+4. UI & FX Fail-Closed Boundary:
+   - On FX rate fetch failure, the UI clears exchange rate and derived destination amount, displays a clear error state, and blocks submission until a valid explicit rate exists.
+
+**Reason:**
+- Prevents corrupt or contradictory transfer records in the database.
+- Guarantees financial invariant preservation for cross-currency transfers.
+- Ensures archived accounts cannot be used for new financial transfers.
+
+**Consequences:**
+- Database enforced financial integrity for all transfers.
+- Zero caller authority over currency codes or conversion amounts in service API.
+- Fail closed UI prevents invalid cross-currency transfer creation.

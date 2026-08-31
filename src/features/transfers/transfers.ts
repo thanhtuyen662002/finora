@@ -3,6 +3,12 @@ import { compareExactDecimals, toExactDecimal } from '@/lib/money';
 import { convertExactAmount, toExactRate } from '@/lib/exchange-rate/fx-math';
 import type { TransferDetailRow, TransferRow } from '@/types/database';
 
+/**
+ * Canonical FX Contract:
+ * exchange_rate = destination currency units received per 1 source currency unit
+ * destination_amount = convertExactAmount(source_amount, exchange_rate)
+ */
+
 export type ExtendedTransfer = TransferRow & {
   fromAccountName?: string;
   fromAccountType?: string;
@@ -18,26 +24,28 @@ export type TransferInsertInput = {
   from_account_id: string;
   to_account_id: string;
   amount: string;
-  currency_code: string;
-  source_currency_code?: string;
-  destination_currency_code?: string;
-  destination_amount?: string;
   exchange_rate?: string;
   note?: string | null;
   occurred_on?: string;
+  // Optional caller fields ignored in favor of DB account truth
+  currency_code?: string;
+  source_currency_code?: string;
+  destination_currency_code?: string;
+  destination_amount?: string;
 };
 
 export type TransferUpdateInput = Partial<{
   from_account_id: string;
   to_account_id: string;
   amount: string;
+  exchange_rate: string;
+  note: string | null;
+  occurred_on: string;
+  // Optional caller fields ignored in favor of DB account truth
   currency_code: string;
   source_currency_code: string;
   destination_currency_code: string;
   destination_amount: string;
-  exchange_rate: string;
-  note: string | null;
-  occurred_on: string;
 }>;
 
 function validateAndNormalizeTransferAmount(amount: string): string {
@@ -115,28 +123,55 @@ export async function createTransfer(
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) throw new Error('Unauthorized');
 
+  if (!transfer.from_account_id || !transfer.to_account_id) {
+    throw new Error('Source and destination accounts are required');
+  }
+
   if (transfer.from_account_id === transfer.to_account_id) {
     throw new Error('Source and destination accounts must be different');
   }
 
+  // Load accounts under authenticated user's RLS scope
+  const { data: accounts, error: accError } = await supabase
+    .from('accounts')
+    .select('id, currency_code, is_archived, user_id')
+    .in('id', [transfer.from_account_id, transfer.to_account_id]);
+
+  if (accError || !accounts || accounts.length < 2) {
+    throw new Error('Source or destination account not found or access denied');
+  }
+
+  const fromAccount = accounts.find((a) => a.id === transfer.from_account_id);
+  const toAccount = accounts.find((a) => a.id === transfer.to_account_id);
+
+  if (!fromAccount || !toAccount) {
+    throw new Error('Source or destination account not found or access denied');
+  }
+
+  if (fromAccount.is_archived) {
+    throw new Error('Cannot create transfer from an archived account');
+  }
+
+  if (toAccount.is_archived) {
+    throw new Error('Cannot create transfer to an archived account');
+  }
+
   const normalizedAmount = validateAndNormalizeTransferAmount(transfer.amount);
-  const sourceCurrency = (transfer.source_currency_code || transfer.currency_code).toUpperCase().trim();
-  const destCurrency = (transfer.destination_currency_code || transfer.currency_code).toUpperCase().trim();
+  const sourceCurrency = fromAccount.currency_code.toUpperCase().trim();
+  const destCurrency = toAccount.currency_code.toUpperCase().trim();
 
-  let destAmount = normalizedAmount;
-  let exRate = '1.000000000000';
+  let destAmount: string;
+  let exRate: string;
 
-  if (sourceCurrency !== destCurrency) {
-    if (transfer.exchange_rate) {
-      exRate = toExactRate(transfer.exchange_rate);
+  if (sourceCurrency === destCurrency) {
+    destAmount = normalizedAmount;
+    exRate = '1.000000000000';
+  } else {
+    if (!transfer.exchange_rate) {
+      throw new Error('Cross-currency transfer requires an explicit exchange rate');
     }
-    if (transfer.destination_amount) {
-      destAmount = validateAndNormalizeTransferAmount(transfer.destination_amount);
-    } else if (transfer.exchange_rate) {
-      destAmount = convertExactAmount(normalizedAmount, exRate);
-    } else {
-      throw new Error('Cross-currency transfer requires exchange rate or destination amount');
-    }
+    exRate = toExactRate(transfer.exchange_rate);
+    destAmount = convertExactAmount(normalizedAmount, exRate);
   }
 
   const insertPayload = {
@@ -169,14 +204,6 @@ export async function updateTransfer(
 ): Promise<ExtendedTransfer> {
   const supabase = createClient();
 
-  if (
-    updates.from_account_id &&
-    updates.to_account_id &&
-    updates.from_account_id === updates.to_account_id
-  ) {
-    throw new Error('Source and destination accounts must be different');
-  }
-
   const existing = await getTransferExact(id);
 
   const fromAccountId = updates.from_account_id || existing.from_account_id;
@@ -186,20 +213,47 @@ export async function updateTransfer(
     throw new Error('Source and destination accounts must be different');
   }
 
-  const amount = updates.amount !== undefined ? validateAndNormalizeTransferAmount(updates.amount) : existing.amount;
-  const sourceCurrency = (updates.source_currency_code || updates.currency_code || existing.source_currency_code).toUpperCase().trim();
-  const destCurrency = (updates.destination_currency_code || existing.destination_currency_code).toUpperCase().trim();
+  const { data: accounts, error: accError } = await supabase
+    .from('accounts')
+    .select('id, currency_code, is_archived, user_id')
+    .in('id', [fromAccountId, toAccountId]);
 
-  let destAmount = updates.destination_amount !== undefined ? validateAndNormalizeTransferAmount(updates.destination_amount) : existing.destination_amount;
-  let exRate = updates.exchange_rate !== undefined ? toExactRate(updates.exchange_rate) : existing.exchange_rate;
+  if (accError || !accounts || accounts.length < 2) {
+    throw new Error('Source or destination account not found or access denied');
+  }
+
+  const fromAccount = accounts.find((a) => a.id === fromAccountId);
+  const toAccount = accounts.find((a) => a.id === toAccountId);
+
+  if (!fromAccount || !toAccount) {
+    throw new Error('Source or destination account not found or access denied');
+  }
+
+  if (updates.from_account_id && updates.from_account_id !== existing.from_account_id && fromAccount.is_archived) {
+    throw new Error('Cannot update transfer to an archived source account');
+  }
+
+  if (updates.to_account_id && updates.to_account_id !== existing.to_account_id && toAccount.is_archived) {
+    throw new Error('Cannot update transfer to an archived destination account');
+  }
+
+  const amount = updates.amount !== undefined ? validateAndNormalizeTransferAmount(updates.amount) : existing.amount;
+  const sourceCurrency = fromAccount.currency_code.toUpperCase().trim();
+  const destCurrency = toAccount.currency_code.toUpperCase().trim();
+
+  let destAmount: string;
+  let exRate: string;
 
   if (sourceCurrency === destCurrency) {
     destAmount = amount;
     exRate = '1.000000000000';
   } else {
-    if (updates.amount !== undefined && updates.destination_amount === undefined && updates.exchange_rate === undefined) {
-      destAmount = convertExactAmount(amount, exRate);
+    const rawRate = updates.exchange_rate !== undefined ? updates.exchange_rate : existing.exchange_rate;
+    if (!rawRate) {
+      throw new Error('Cross-currency transfer requires an explicit exchange rate');
     }
+    exRate = toExactRate(rawRate);
+    destAmount = convertExactAmount(amount, exRate);
   }
 
   const payload = {

@@ -163,10 +163,14 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
   const fetchRate = async (sourceCur: string, destCur: string, dateStr: string) => {
     if (sourceCur === destCur) {
       setExchangeRate('1.000000000000');
+      setErrorMsg('');
       return;
     }
     try {
       setFetchingFx(true);
+      setErrorMsg('');
+      setExchangeRate('');
+      setDestinationAmount('');
       const res = await fetch(`/api/fx/rate?from=${sourceCur}&to=${destCur}&date=${dateStr}`);
       if (res.ok) {
         const data = await res.json();
@@ -176,21 +180,26 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
           if (amount && isPositiveExactDecimal(amount)) {
             setDestinationAmount(convertExactAmount(amount, exactRate));
           }
+          return;
         }
       }
+      throw new Error(`Không thể lấy tỷ giá tự động (${sourceCur} → ${destCur}). Vui lòng nhập tỷ giá thủ công.`);
     } catch (err) {
       console.error('Error fetching FX rate:', err);
+      setExchangeRate('');
+      setDestinationAmount('');
+      setErrorMsg(err instanceof Error ? err.message : 'Không thể lấy tỷ giá tự động');
     } finally {
       setFetchingFx(false);
     }
   };
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
     if (open && isCrossCurrency && selectedFromAccount && selectedToAccount && !initialData) {
-      fetchRate(selectedFromAccount.currency_code, selectedToAccount.currency_code, occurredOn);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void fetchRate(selectedFromAccount.currency_code, selectedToAccount.currency_code, occurredOn);
     }
-    /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCrossCurrency, fromAccountId, toAccountId, occurredOn]);
 
   const handleFromAccountChange = (newFromId: string) => {

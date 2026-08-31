@@ -589,34 +589,44 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
-## Phase 8 — Pass B — Cross-Currency Transfers Implementation
-Pass B Cross-Currency Transfers implementation has been successfully completed in source code and verified:
+## Phase 8 — Pass B — Cross-Currency Transfers Integrity Corrective
+Pass B Cross-Currency Transfers Integrity Corrective has been completed in source code and verified:
 
-Implemented Cross-Currency Transfers:
-- Additive database migration `supabase/migrations/20260829000002_phase_8_cross_currency_transfers.sql` adding `source_currency_code`, `destination_currency_code`, `destination_amount`, and `exchange_rate` to `public.transfers` table and `public.transfer_details` view.
-- Updated database views and triggers to ensure account balance debit occurs in `source_currency_code` (`amount`) and credit occurs in `destination_currency_code` (`destination_amount`).
-- Extended transfer service layer `src/features/transfers/transfers.ts` with exact-money FX arithmetic using `convertExactAmount` and `toExactRate` without JS floating-point arithmetic.
-- Updated UI components `AddTransferModal.tsx`, `TransferItem.tsx`, and `TransferList.tsx` to handle cross-currency inputs, rate fetching, exact conversion calculations, search filters, and dual-currency badge display.
-- Preserved net-worth neutrality and historical exchange rate stability.
+Implemented Corrective Features:
+- Additive database migration `supabase/migrations/20260831142135_phase_8_cross_currency_transfer_integrity_corrective.sql` enforcing:
+  1. Legacy/source currency compatibility check constraint `chk_transfers_currency_compatibility` (`currency_code = source_currency_code`);
+  2. Same-currency invariant check constraint `chk_transfers_same_currency_invariant` (`destination_amount = amount AND exchange_rate = 1.000000000000`);
+  3. Cross-currency conversion consistency check constraint `chk_transfers_cross_currency_conversion` (`destination_amount = ROUND(amount * exchange_rate, 4)`);
+  4. Active account enforcement trigger `trg_check_transfer_accounts_active` on INSERT/UPDATE blocking archived accounts.
+- Hardened transfer service layer `src/features/transfers/transfers.ts`:
+  - Enforces Canonical FX Contract: `destination_amount = convertExactAmount(source_amount, exchange_rate)`;
+  - Queries `accounts` under user RLS scope and derives currencies from DB accounts, completely ignoring caller-supplied currency overrides or caller-supplied contradictory `destination_amount`;
+  - Enforces `is_archived` check on source and destination accounts upon transfer creation.
+- Enhanced UI `AddTransferModal.tsx` to fail closed on FX rate fetch failure, clearing rate and destination amount, displaying error message, and preventing submission with stale or default rate `1`.
+- Created dedicated test suite `tests/phase8-cross-currency-transfers.test.ts` with 36/36 passing scenarios.
+- Created dedicated source verifier `scripts/verify-phase8-pass-b-source.mjs` (22/22 checks PASS).
+- Created dedicated structural DB verifier `scripts/verify-phase8-pass-b-db.sql`.
+- Updated `docs/DECISIONS.md` (ADR-014) and `docs/DATABASE.md`.
 
 Verification:
-- `scripts/verify-phase8-source.mjs`: PASS (35/35 checks)
+- `scripts/verify-phase8-pass-b-source.mjs`: PASS (22/22 checks)
+- `tests/phase8-cross-currency-transfers.test.ts`: PASS (36/36 tests)
+- `typecheck`: PASS
 - `lint`: PASS
 - `build`: PASS
 
 ## Next Recommended Action
-Phase 8 Pass B Cross-Currency Transfers is complete in source code and fully verified.
-Next step: Proceed to Remote Database deployment / Phase 8 finalization when requested by project owner.
+Phase 8 Pass B Integrity Corrective is complete in source code and fully verified.
+Next step: Await user request for remote database deployment / phase completion gates.
 
 ```text
-PHASE_8_PASS_A_SOURCE_GATE=PASS_CODE_ONLY
-PHASE_8_REMOTE_DATABASE=PASS
-PHASE_8_STRUCTURAL_GATE=PASS
-PHASE_8_TWO_USER_RLS=PASS
-PHASE_8_UX_PERFORMANCE_HARDENING=PASS_CODE_ONLY
-PHASE_8_BASE_MODE_FINAL_CORRECTIVE=PASS_CODE_ONLY
-PHASE_8_LIVE_PERSISTENCE_SMOKE=PASS
+PHASE_8_PASS_A=PASS
+PHASE_8_LIVE_LOGO_THEME_RETEST=PASS
 PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS=PASS_CODE_ONLY
-PHASE_8_OVERALL=PASS_CODE_COMPLETE
+PHASE_8_PASS_B_REMOTE_DB=PENDING
+PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PENDING
+PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING
+PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING
+PHASE_8_OVERALL=PARTIAL
 PHASE_9_AUTHORIZED=false
 ```
