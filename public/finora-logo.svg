@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" fill="none">
+  <defs>
+    <!-- Ribbon Blue-Cyan Gradient -->
+    <linearGradient id="finora-ribbon-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="finora-ribbon-2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.7" />
+    </linearGradient>
+    <!-- Emerald Teal Dot Gradient -->
+    <linearGradient id="finora-dot" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+  </defs>
+
+  <!-- Ribbon Symbol 'F' -->
+  <g transform="translate(10, 10)">
+    <!-- Top Sweeping Ribbon Blade -->
+    <path d="M 25 15 C 45 5, 80 10, 95 30 C 105 45, 90 55, 65 52 C 45 50, 30 40, 25 15 Z" fill="url(#finora-ribbon-1)" />
+    <!-- Middle Swoosh -->
+    <path d="M 20 40 C 40 32, 70 38, 85 50 C 92 56, 80 65, 55 62 C 35 60, 22 52, 20 40 Z" fill="url(#finora-ribbon-2)" />
+    <!-- Main Upward Ribbon Body -->
+    <path d="M 18 80 C 12 55, 25 25, 50 15 C 32 30, 28 58, 38 82 C 32 88, 22 88, 18 80 Z" fill="url(#finora-ribbon-1)" />
+    <!-- Accent Teal Sphere at Bottom Left -->
+    <circle cx="28" cy="85" r="14" fill="url(#finora-dot)" />
+  </g>
+
+  <!-- Wordmark 'Finora' -->
+  <g transform="translate(125, 78)">
+    <text font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="64" letter-spacing="-1.5" fill="currentColor">
+      F<tspan fill="none">i</tspan>nora
+    </text>
+    <!-- Custom Dot for 'i' in Finora matching the teal accent -->
+    <circle cx="59.5" cy="-45" r="7" fill="url(#finora-dot)" />
+    <!-- Native 'i' stem -->
+    <rect x="54" y="-32" width="11" height="32" rx="3" fill="currentColor" />
+  </g>
+</svg>

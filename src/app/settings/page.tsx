@@ -36,6 +36,7 @@ import {
   updatePassword,
   signOut,
 } from '@/lib/auth';
+import { applyTheme } from '@/lib/theme';
 
 const SUPPORTED_CURRENCIES = [
   { value: 'VND', label: 'VND - Đồng Việt Nam (₫)' },
@@ -126,14 +127,7 @@ export default function SettingsPage() {
           if (settings.theme) {
             const savedTheme = settings.theme as 'light' | 'dark' | 'system';
             setTheme(savedTheme);
-            if (typeof window !== 'undefined') {
-              if (savedTheme === 'dark') document.documentElement.classList.add('dark');
-              else if (savedTheme === 'light') document.documentElement.classList.remove('dark');
-              else {
-                if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
-                else document.documentElement.classList.remove('dark');
-              }
-            }
+            applyTheme(savedTheme);
           }
 
           if (settings.auto_fx_enabled !== undefined) {
@@ -159,19 +153,7 @@ export default function SettingsPage() {
 
   const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
     setTheme(newTheme);
-    if (typeof window !== 'undefined') {
-      if (newTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else if (newTheme === 'light') {
-        document.documentElement.classList.remove('dark');
-      } else {
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      }
-    }
+    applyTheme(newTheme);
   };
 
   const handleSave = async (e: React.FormEvent) => {

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { FinoraLogo } from '@/components/ui/FinoraLogo';
 import {
   Card,
   CardContent,
@@ -83,20 +84,15 @@ export default function HomePage() {
       className="flex-1 flex flex-col justify-center items-center px-4 py-8 sm:py-12 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full space-y-8"
     >
       {/* Top Header Section */}
-      <div id="finora-header-section" className="text-center space-y-3 max-w-2xl mx-auto">
-        <div className="flex items-center justify-center gap-2">
-          <div className="h-10 w-10 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 flex items-center justify-center font-bold text-lg shadow-sm">
-            F
-          </div>
-          <span className="text-3xl font-bold tracking-tight text-foreground">
-            Finora
-          </span>
+      <div id="finora-header-section" className="text-center space-y-3 max-w-2xl mx-auto flex flex-col items-center">
+        <div className="flex items-center justify-center gap-3">
+          <FinoraLogo size="xl" />
           <Badge
             id="foundation-status-badge"
             variant="default"
             className="gap-1 px-2.5 py-0.5 text-xs font-semibold uppercase font-mono"
           >
-            Phase 2: Auth + RLS
+            Phase 8 Complete
           </Badge>
         </div>
         <p className="text-base text-muted-foreground leading-relaxed">

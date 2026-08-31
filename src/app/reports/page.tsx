@@ -220,6 +220,29 @@ export default function ReportsPage() {
         </div>
       )}
 
+      {/* Consolidated BASE Mode Unavailability Banner */}
+      {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' && (
+        <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 text-amber-800 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-semibold text-sm">Báo cáo tổng hợp ({data.baseCurrency}) tạm thời chưa khả dụng</h4>
+              <p className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+                Một số giao dịch ngoại tệ trong kỳ chưa có tỷ giá lịch sử đã lưu. Vui lòng chuyển sang xem từng loại tiền tệ đơn lẻ.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleCurrencyChange(data.availableCurrencies.find(c => c !== 'BASE') || 'VND')}
+            className="border-amber-300 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/50 shrink-0 text-xs font-semibold"
+          >
+            Xem tiền tệ đơn lẻ
+          </Button>
+        </div>
+      )}
+
       {/* Analytics High Level Cards for selected currency */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
         <Card className="bg-card border">
@@ -232,12 +255,12 @@ export default function ReportsPage() {
             </div>
             <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
-                ? 'Không khả dụng'
+                ? '—'
                 : formatExactMoney(summary.totalIncome, displayCurrency)}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
-                ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+                ? 'Thiếu tỷ giá quy đổi'
                 : `${data.dateRangeLabel} (${summary.transactionCount} giao dịch)`}
             </span>
           </CardContent>
@@ -253,12 +276,12 @@ export default function ReportsPage() {
             </div>
             <p className="text-2xl font-bold text-foreground">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
-                ? 'Không khả dụng'
+                ? '—'
                 : formatExactMoney(summary.totalExpense, displayCurrency)}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
-                ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+                ? 'Thiếu tỷ giá quy đổi'
                 : data.dateRangeLabel}
             </span>
           </CardContent>
@@ -274,12 +297,12 @@ export default function ReportsPage() {
             </div>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
-                ? 'Không khả dụng'
+                ? '—'
                 : formatExactMoney(summary.netSavings, displayCurrency, { showSign: true })}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
-                ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
+                ? 'Thiếu tỷ giá quy đổi'
                 : summary.savingRatePercent
                 ? `Tỷ lệ tiết kiệm đạt ${summary.savingRatePercent}%`
                 : 'Không có thu nhập trong kỳ'}
@@ -287,12 +310,6 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
-
-      {data.baseHistorical.status === 'UNAVAILABLE' && (
-        <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/50 text-xs text-amber-700 dark:text-amber-300">
-          Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
-        </div>
-      )}
       {/* Full Width Cash Flow Chart */}
       <Card>
         <CardHeader>

@@ -20,9 +20,11 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
+import { FinoraLogo } from '@/components/ui/FinoraLogo';
 import { cn } from '@/lib/utils';
 import { getCurrentUserContext, signOut } from '@/lib/auth';
 import { resolveDisplayIdentity } from '@/lib/auth/identity';
+import { applyTheme } from '@/lib/theme';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -62,6 +64,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           if (settings) {
             if (settings.base_currency) setBaseCurrency(settings.base_currency);
             if (settings.locale) setLocale(settings.locale);
+            if (settings.theme) applyTheme(settings.theme as 'light' | 'dark' | 'system');
           }
 
           setIsLoaded(true);
@@ -147,18 +150,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       <aside className="hidden md:flex flex-col w-64 shrink-0 border-r bg-card h-screen sticky top-0 z-30 overflow-y-auto">
         {/* Brand Header */}
         <div className="p-5 border-b flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center space-x-2.5">
-            <div className="h-9 w-9 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 flex items-center justify-center font-bold tracking-wider text-base shadow-xs">
-              F
-            </div>
-            <div>
-              <span className="text-lg font-bold tracking-tight text-foreground block leading-tight">
-                Finora
-              </span>
-              <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
-                Personal Finance OS
-              </span>
-            </div>
+          <Link href="/dashboard">
+            <FinoraLogo size="md" showSubtitle />
           </Link>
         </div>
 
@@ -240,13 +233,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Mobile Top Header */}
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-card sticky top-0 z-30">
-        <Link href="/dashboard" className="flex items-center space-x-2">
-          <div className="h-7 w-7 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 flex items-center justify-center font-bold text-sm">
-            F
-          </div>
-          <span className="font-bold text-base tracking-tight text-foreground">
-            Finora
-          </span>
+        <Link href="/dashboard">
+          <FinoraLogo size="sm" />
         </Link>
 
         <div className="flex items-center space-x-2">
@@ -317,10 +305,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   <SheetContent side="left" className="w-[85%] max-w-sm p-0 flex flex-col h-full">
                     <SheetHeader className="p-5 border-b text-left shrink-0">
                       <SheetTitle className="flex items-center space-x-2.5">
-                        <div className="h-8 w-8 rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 flex items-center justify-center font-bold tracking-wider text-sm shadow-xs">
-                          F
-                        </div>
-                        <span className="font-bold text-lg tracking-tight">Finora</span>
+                        <FinoraLogo size="md" />
                       </SheetTitle>
                     </SheetHeader>
 

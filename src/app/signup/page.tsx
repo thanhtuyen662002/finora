@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { FinoraLogo } from '@/components/ui/FinoraLogo';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -125,14 +126,9 @@ function SignUpForm() {
     <div className="min-h-screen flex flex-col justify-center items-center p-4 bg-muted/30">
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold text-xl shadow-md">
-            F
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Finora
-          </h1>
-          <p className="text-sm text-muted-foreground">
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <FinoraLogo size="xl" />
+          <p className="text-sm text-muted-foreground pt-1">
             Tạo tài khoản tài chính cá nhân an toàn & riêng tư.
           </p>
         </div>
