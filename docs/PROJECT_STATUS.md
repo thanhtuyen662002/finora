@@ -589,34 +589,29 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
-## Phase 8 — Pass B — Cross-Currency Transfers Integrity Corrective
-Pass B Cross-Currency Transfers Integrity Corrective has been completed in source code and verified:
+## Phase 8 — Pass B — Remote-Gate Readiness Final Corrective
+Remote-Gate Readiness Final Corrective has been completed in source code and fully verified:
 
 Implemented Corrective Features:
-- Additive database migration `supabase/migrations/20260831142135_phase_8_cross_currency_transfer_integrity_corrective.sql` enforcing:
-  1. Legacy/source currency compatibility check constraint `chk_transfers_currency_compatibility` (`currency_code = source_currency_code`);
-  2. Same-currency invariant check constraint `chk_transfers_same_currency_invariant` (`destination_amount = amount AND exchange_rate = 1.000000000000`);
-  3. Cross-currency conversion consistency check constraint `chk_transfers_cross_currency_conversion` (`destination_amount = ROUND(amount * exchange_rate, 4)`);
-  4. Active account enforcement trigger `trg_check_transfer_accounts_active` on INSERT/UPDATE blocking archived accounts.
-- Hardened transfer service layer `src/features/transfers/transfers.ts`:
-  - Enforces Canonical FX Contract: `destination_amount = convertExactAmount(source_amount, exchange_rate)`;
-  - Queries `accounts` under user RLS scope and derives currencies from DB accounts, completely ignoring caller-supplied currency overrides or caller-supplied contradictory `destination_amount`;
-  - Enforces `is_archived` check on source and destination accounts upon transfer creation.
-- Enhanced UI `AddTransferModal.tsx` to fail closed on FX rate fetch failure, clearing rate and destination amount, displaying error message, and preventing submission with stale or default rate `1`.
-- Created dedicated test suite `tests/phase8-cross-currency-transfers.test.ts` with 36/36 passing scenarios.
-- Created dedicated source verifier `scripts/verify-phase8-pass-b-source.mjs` (22/22 checks PASS).
-- Created dedicated structural DB verifier `scripts/verify-phase8-pass-b-db.sql`.
+- Additive security hardening migration `supabase/migrations/20260831144154_phase_8_transfer_trigger_security_hardening.sql`:
+  - Replaces `check_transfer_accounts_active` function with `SECURITY INVOKER` (removing `SECURITY DEFINER`).
+  - Preserved original historical migrations byte-identical: `20260829000002` (`fbe5fefed202fcdc9f9bc48fb590aa11deba4e79`) and `20260831142135` (`5721bdff4ebe8d2850a6c0fe73eeb6bb66580a18`).
+- Created pure domain module `src/features/transfers/domain.ts` containing transfer validation and exact math normalization logic.
+- Cleaned public type contract in `src/features/transfers/transfers.ts`: `TransferInsertInput` and `TransferUpdateInput` omit caller `currency_code`, `source_currency_code`, `destination_currency_code`, and `destination_amount` authority.
+- Refactored executable domain test suite `tests/phase8-cross-currency-transfers.test.ts` executing 24 production domain scenarios and 2 pending remote gate markers.
+- Hardened structural DB verifier `scripts/verify-phase8-pass-b-db.sql` auditing `prosecdef`, `relrowsecurity`, `auth.uid() = user_id`, table privileges for `anon`, composite FKs, `security_invoker` views, and `pg_get_constraintdef`.
+- Comprehensive source verifier `scripts/verify-phase8-pass-b-source.mjs` verifying all 19 source, migration SHA, security, and brand asset constraints (19/19 PASS).
 - Updated `docs/DECISIONS.md` (ADR-014) and `docs/DATABASE.md`.
 
 Verification:
-- `scripts/verify-phase8-pass-b-source.mjs`: PASS (22/22 checks)
-- `tests/phase8-cross-currency-transfers.test.ts`: PASS (36/36 tests)
+- `scripts/verify-phase8-pass-b-source.mjs`: PASS (19/19 checks)
+- `tests/phase8-cross-currency-transfers.test.ts`: PASS (24 domain tests + 2 pending markers)
 - `typecheck`: PASS
 - `lint`: PASS
 - `build`: PASS
 
 ## Next Recommended Action
-Phase 8 Pass B Integrity Corrective is complete in source code and fully verified.
+Phase 8 Pass B Remote-Gate Readiness Final Corrective is complete in source code and fully verified.
 Next step: Await user request for remote database deployment / phase completion gates.
 
 ```text

@@ -27,11 +27,6 @@ export type TransferInsertInput = {
   exchange_rate?: string;
   note?: string | null;
   occurred_on?: string;
-  // Optional caller fields ignored in favor of DB account truth
-  currency_code?: string;
-  source_currency_code?: string;
-  destination_currency_code?: string;
-  destination_amount?: string;
 };
 
 export type TransferUpdateInput = Partial<{
@@ -41,11 +36,6 @@ export type TransferUpdateInput = Partial<{
   exchange_rate: string;
   note: string | null;
   occurred_on: string;
-  // Optional caller fields ignored in favor of DB account truth
-  currency_code: string;
-  source_currency_code: string;
-  destination_currency_code: string;
-  destination_amount: string;
 }>;
 
 function validateAndNormalizeTransferAmount(amount: string): string {

@@ -1,7 +1,7 @@
 # Finora — Database
 
 ## Status
-**Database implementation:** PHASE_4_TRANSACTIONS (Schema defined, corrective pass ready)
+**Database implementation:** PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS (Schema defined, source-gate ready, remote deployment pending)
 
 This document records the data model, tables, relationships, and invariants implemented in Finora. Executable Supabase migrations under `supabase/migrations/` are the authoritative schema source of truth.
 
@@ -283,6 +283,10 @@ By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, 
 3. `supabase/migrations/20260828000002_phase_4_transactions.sql` — Phase 4: Transactions table, composite FKs, updated_at trigger, derived `account_balances` and `transaction_details` views with `security_invoker = true`, RLS policies, least-privilege column grants.
 4. `supabase/migrations/20260828000003_phase_5_transfers.sql` — Phase 5: Transfers table, composite source and destination FKs, distinct accounts constraint, updated derived `account_balances` view with pre-aggregation, `transfer_details` view with `security_invoker = true`, RLS policies, least-privilege column grants.
 5. `supabase/migrations/20260829000000_phase_7_budgets_goals_recurring.sql` — Phase 7: Budgets, Goals, and Recurring items tables, exact money constraints, composite FKs, derived `budget_progress`, `goal_details`, `recurring_details` views with `security_invoker = true`, 9 exact RLS policies (no delete), least-privilege column grants.
+6. `supabase/migrations/20260829000001_phase_8_fx.sql` — Phase 8 Pass A: FX snapshots and exchange rates infrastructure.
+7. `supabase/migrations/20260829000002_phase_8_cross_currency_transfers.sql` — Phase 8 Pass B: Cross-currency transfer columns, composite FKs, and exact math check constraints.
+8. `supabase/migrations/20260831142135_phase_8_cross_currency_transfer_integrity_corrective.sql` — Phase 8 Pass B Integrity Corrective: Currency compatibility constraint, same-currency rate/amount invariant, cross-currency exact rounding conversion constraint, and active-account trigger.
+9. `supabase/migrations/20260831144154_phase_8_transfer_trigger_security_hardening.sql` — Phase 8 Pass B Trigger Security Hardening: Replaces `check_transfer_accounts_active` function with `SECURITY INVOKER`.
 
 ## Phase 8: Multi-Currency FX
 - **transaction_fx_snapshots**: Stores immutable point-in-time exact-decimal FX records for transactions.
