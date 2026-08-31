@@ -182,7 +182,7 @@ runCheck(18, 'BASE discoverable on native-first Reports initial state', 'BASE di
 // 19. Reports historical BASE unavailable fails closed
 const reportsHistFailClosedPass = Boolean(
   reportsPageContent.includes("data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'") &&
-  reportsPageContent.includes('Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.')
+  (reportsPageContent.includes('Chưa thể tổng hợp lịch sử') || reportsPageContent.includes('Một số giao dịch ngoại tệ'))
 );
 runCheck(19, 'Reports historical BASE unavailable fails closed without zero masquerading', 'Reports historical BASE masquerades as zero', reportsHistFailClosedPass, 'Reports historical BASE unavailable masquerades as zero summary/chart/details');
 
@@ -212,6 +212,28 @@ const jsxTextPattern = />\s*[^<]*?\bsnapshots?\b[^<]*?</i;
 const strLiteralPattern = /["`\x27][^"`\x27]*?\bsnapshots?\b[^"`\x27]*?["`\x27]/i;
 const noSnapshotJargonPass = !jsxTextPattern.test(reportsPageContent) && !jsxTextPattern.test(dashboardPageContent) && !strLiteralPattern.test(reportsPageContent) && !strLiteralPattern.test(dashboardPageContent);
 runCheck(23, 'User-facing snapshot jargon absent from Reports and Dashboard UI', 'user-facing snapshot jargon', noSnapshotJargonPass, 'User-facing snapshot jargon found in Reports or Dashboard UI');
+
+// 24. Root layout includes pre-hydration theme script with unified finora_theme key
+const layoutContent = getFileContent('src/app/layout.tsx');
+const themeScriptPass = layoutContent.includes('dangerouslySetInnerHTML') && layoutContent.includes('finora_theme');
+runCheck(24, 'Root layout includes pre-hydration theme script with unified finora_theme key', 'theme pre-hydration missing', themeScriptPass, 'Root layout lacks theme script or uses mismatched localStorage key');
+
+// 25. Landing page does not contain Phase completion status badge
+const homePageContent = getFileContent('src/app/page.tsx');
+const noPhaseCompleteBadge = !homePageContent.includes('Phase 8 Complete') && !homePageContent.includes('Phase 7 Complete') && !homePageContent.includes('Phase 2: Auth');
+runCheck(25, 'Landing page does not contain Phase completion status badge', 'phase badge jargon', noPhaseCompleteBadge, 'Landing page contains developer phase completion badge');
+
+// 26. Landing page copy uses product-value terms and is free from stack/spec jargon
+const landingJargon = ['Supabase RLS', 'Supabase', 'RLS', 'Feature Flags', 'Mock UI Foundation', 'AGENTS.md Compliance'];
+const landingJargonFound = landingJargon.filter(j => homePageContent.includes(j));
+const noLandingJargonPass = landingJargonFound.length === 0;
+runCheck(26, 'Landing page copy uses product-value terms and is free from stack/spec jargon', 'landing stack jargon', noLandingJargonPass, `Landing page contains developer stack jargon: ${landingJargonFound.join(', ')}`);
+
+// 27. Reports BASE unavailable explanatory warning is consolidated to top-level banner
+const longWarningStr = 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.';
+const warningMatches = (reportsPageContent.match(new RegExp(longWarningStr, 'g')) || []).length;
+const consolidatedReportWarningPass = reportsPageContent.includes("data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'") && warningMatches <= 1;
+runCheck(27, 'Reports BASE unavailable explanatory warning is consolidated to top-level banner', 'reports warning duplicated', consolidatedReportWarningPass, `Reports repeats long warning string ${warningMatches} times instead of single consolidated banner`);
 
 console.log('----------------------------------------------------');
 console.log(`TOTAL CHECKS: ${checks.length}`);

@@ -329,8 +329,8 @@ export default function ReportsPage() {
         </CardHeader>
         <CardContent>
           {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
-            <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
-              Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Dữ liệu tổng hợp chưa sẵn sàng.
             </div>
           ) : (
             <CashFlowChart data={data.cashFlow} currency={displayCurrency} />
@@ -348,13 +348,13 @@ export default function ReportsPage() {
                 Cơ cấu chi tiêu theo danh mục
               </CardTitle>
               <CardDescription>
-                Phân bổ chi tiêu thực tế trong kỳ ({data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? 'Không khả dụng' : formatExactMoney(summary.totalExpense, displayCurrency)}).
+                Phân bổ chi tiêu thực tế trong kỳ ({data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? '—' : formatExactMoney(summary.totalExpense, displayCurrency)}).
               </CardDescription>
             </CardHeader>
             <CardContent>
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
-                <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
-                  Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  Dữ liệu tổng hợp chưa sẵn sàng.
                 </div>
               ) : (
                 <CategoryDonutChart
@@ -456,8 +456,8 @@ export default function ReportsPage() {
         </CardHeader>
         <CardContent>
           {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
-            <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
-              Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Dữ liệu tổng hợp chưa sẵn sàng.
             </div>
           ) : (
             <TransactionList

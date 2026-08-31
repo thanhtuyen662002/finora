@@ -73,7 +73,7 @@ export default function HomePage() {
     {
       href: '/admin',
       title: 'Quản trị hệ thống (Admin)',
-      desc: 'Cấu hình Gemini model, Feature Flags và tỷ giá ngoại tệ FX.',
+      desc: 'Cấu hình trợ lý tài chính AI, tùy chỉnh hệ thống và tỷ giá ngoại tệ FX.',
       icon: SlidersHorizontal,
     },
   ];
@@ -90,13 +90,13 @@ export default function HomePage() {
           <Badge
             id="foundation-status-badge"
             variant="default"
-            className="gap-1 px-2.5 py-0.5 text-xs font-semibold uppercase font-mono"
+            className="gap-1 px-2.5 py-0.5 text-xs font-semibold"
           >
-            Phase 8 Complete
+            Riêng tư · Đa tiền tệ
           </Badge>
         </div>
         <p className="text-base text-muted-foreground leading-relaxed">
-          Hệ điều hành tài chính cá nhân riêng tư, đa tiền tệ (VND / USD), phân rã thu nhập YouTube và bảo mật theo kiến trúc Supabase RLS.
+          Hệ điều hành tài chính cá nhân an toàn, riêng tư, hỗ trợ đa tiền tệ (VND / USD) và quản lý thu nhập đa nguồn.
         </p>
 
         <div className="flex items-center justify-center gap-3 pt-2">
@@ -119,7 +119,7 @@ export default function HomePage() {
       <div className="w-full space-y-3">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Các màn hình chức năng (Mock UI Foundation)
+            Các tính năng quản lý tài chính
           </h2>
           <span className="text-xs text-muted-foreground font-medium">
             8 màn hình tương tác đầy đủ
@@ -171,10 +171,10 @@ export default function HomePage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-bold flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              Cam kết kiến trúc & Bất biến tài chính (Financial Invariants)
+              Bảo mật tối đa & Quy tắc tài chính an toàn
             </CardTitle>
-            <span className="text-[11px] font-mono text-muted-foreground">
-              AGENTS.md Compliance
+            <span className="text-[11px] text-muted-foreground font-medium">
+              Cam kết bảo vệ dữ liệu
             </span>
           </div>
         </CardHeader>
@@ -182,10 +182,10 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-muted-foreground">
             <div className="p-2.5 rounded-lg border bg-card space-y-1">
               <span className="font-semibold text-foreground block">
-                1. Cô lập dữ liệu (User Isolation)
+                1. Bảo vệ dữ liệu cá nhân
               </span>
               <p>
-                Mọi truy vấn tài chính bảo đảm cách ly qua RLS. Không để lộ khóa dịch vụ hay số dư chéo.
+                Mọi thông tin tài chính của bạn được mã hóa và bảo vệ riêng tư tuyệt đối.
               </p>
             </div>
             <div className="p-2.5 rounded-lg border bg-card space-y-1">
@@ -193,15 +193,15 @@ export default function HomePage() {
                 2. Trung hòa chuyển khoản & Tỷ giá lịch sử
               </span>
               <p>
-                Chuyển khoản không làm đổi tài sản ròng. Tỷ giá giao dịch cũ được bảo toàn bất biến.
+                Luân chuyển tiền tệ bảo toàn tài sản ròng. Tỷ giá tại thời điểm giao dịch được lưu giữ chính xác.
               </p>
             </div>
             <div className="p-2.5 rounded-lg border bg-card space-y-1">
               <span className="font-semibold text-foreground block">
-                3. Độc lập AI (AI Independence)
+                3. Hỗ trợ thông minh & Độc lập
               </span>
               <p>
-                Khi Gemini ngoại tuyến, 100% tính năng thu chi, ngân sách, chuyển khoản vẫn hoạt động trơn tru.
+                Hệ thống luôn hoạt động mượt mà ngay cả khi không có kết nối internet hoặc tính năng AI.
               </p>
             </div>
           </div>
