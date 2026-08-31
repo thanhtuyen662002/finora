@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   description:
     "A private-first, multi-currency personal finance web application designed to help you understand what you own, where your money goes, and track your financial growth.",
   icons: {
-    icon: "/finora-icon.svg",
-    shortcut: "/finora-icon.svg",
-    apple: "/finora-icon.svg",
+    icon: "/brand/finora-icon.png",
+    shortcut: "/brand/finora-icon.png",
+    apple: "/brand/finora-icon.png",
   },
 };
 

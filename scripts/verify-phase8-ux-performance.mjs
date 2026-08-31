@@ -235,6 +235,59 @@ const warningMatches = (reportsPageContent.match(new RegExp(longWarningStr, 'g')
 const consolidatedReportWarningPass = reportsPageContent.includes("data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'") && warningMatches <= 1;
 runCheck(27, 'Reports BASE unavailable explanatory warning is consolidated to top-level banner', 'reports warning duplicated', consolidatedReportWarningPass, `Reports repeats long warning string ${warningMatches} times instead of single consolidated banner`);
 
+// 28. All 3 exact PNG brand assets exist in public/brand/
+const darkLogoExists = fs.existsSync(path.resolve(process.cwd(), 'public/brand/finora-logo-dark.png'));
+const lightLogoExists = fs.existsSync(path.resolve(process.cwd(), 'public/brand/finora-logo-light.png'));
+const iconLogoExists = fs.existsSync(path.resolve(process.cwd(), 'public/brand/finora-icon.png'));
+const allPngAssetsExistPass = darkLogoExists && lightLogoExists && iconLogoExists;
+runCheck(28, 'Exact PNG brand assets exist in public/brand/', 'missing brand png assets', allPngAssetsExistPass, 'One or more required PNG brand assets are missing from public/brand/');
+
+// 29. FinoraLogo component consumes exact PNG assets
+const logoComponentContent = getFileContent('src/components/ui/FinoraLogo.tsx');
+const consumesPngAssetsPass = logoComponentContent.includes('/brand/finora-logo-dark.png') &&
+  logoComponentContent.includes('/brand/finora-logo-light.png') &&
+  logoComponentContent.includes('/brand/finora-icon.png');
+runCheck(29, 'FinoraLogo component consumes exact PNG assets', 'logo component missing png', consumesPngAssetsPass, 'FinoraLogo does not reference all three brand PNG paths');
+
+// 30. FinoraLogo contains no handcrafted brand SVG elements
+const noHandcraftedSvgPass = !logoComponentContent.includes('<svg') &&
+  !logoComponentContent.includes('<path') &&
+  !logoComponentContent.includes('<circle') &&
+  !logoComponentContent.includes('linearGradient');
+runCheck(30, 'FinoraLogo contains no handcrafted brand SVG elements', 'handcrafted logo svg present', noHandcraftedSvgPass, 'FinoraLogo still contains handcrafted SVG geometry or gradients');
+
+// 31. Old SVG runtime references removed from layout and source
+const appShellContent = getFileContent('src/components/layout/AppShell.tsx');
+const forgotPageContent = getFileContent('src/app/forgot-password/page.tsx');
+const loginPageContent = getFileContent('src/app/login/page.tsx');
+const resetPageContent = getFileContent('src/app/reset-password/page.tsx');
+const signupPageContent = getFileContent('src/app/signup/page.tsx');
+
+const noOldSvgReferencesPass = !layoutContent.includes('/finora-icon.svg') &&
+  !layoutContent.includes('/finora-logo.svg') &&
+  !logoComponentContent.includes('/finora-icon.svg') &&
+  !logoComponentContent.includes('/finora-logo.svg');
+runCheck(31, 'Runtime references to old SVG assets removed', 'old svg references present', noOldSvgReferencesPass, 'Runtime references to old /finora-icon.svg or /finora-logo.svg still exist');
+
+// 32. Layout metadata icons use exact PNG icon
+const layoutIconPngPass = layoutContent.includes('/brand/finora-icon.png');
+runCheck(32, 'Layout metadata icons reference /brand/finora-icon.png', 'layout icon png missing', layoutIconPngPass, 'Layout metadata does not reference /brand/finora-icon.png');
+
+// 33. FinoraLogo integration points preserved across AppShell, auth, and landing
+const integrationPointsPass = appShellContent.includes('FinoraLogo') &&
+  homePageContent.includes('FinoraLogo') &&
+  loginPageContent.includes('FinoraLogo') &&
+  signupPageContent.includes('FinoraLogo') &&
+  forgotPageContent.includes('FinoraLogo') &&
+  resetPageContent.includes('FinoraLogo');
+runCheck(33, 'FinoraLogo integration points preserved across AppShell and auth/landing', 'brand integration missing', integrationPointsPass, 'FinoraLogo is missing from one or more required integration routes');
+
+// 34. Root layout pre-hydration theme script remains present and intact
+const themeScriptPreservedPass = layoutContent.includes('dangerouslySetInnerHTML') &&
+  layoutContent.includes('finora_theme') &&
+  layoutContent.includes('document.documentElement.classList.add(\'dark\')');
+runCheck(34, 'Root layout pre-hydration theme script remains present and intact', 'theme prehydration broken', themeScriptPreservedPass, 'Root layout prehydration theme script was modified or removed');
+
 console.log('----------------------------------------------------');
 console.log(`TOTAL CHECKS: ${checks.length}`);
 console.log(`PASSED: ${passedCount}`);
