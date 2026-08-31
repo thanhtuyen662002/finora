@@ -16,6 +16,11 @@ export const TransferItem: React.FC<TransferItemProps> = ({
   onClick,
   compact = false,
 }) => {
+  const sourceCurrency = transfer.source_currency_code || transfer.currency_code;
+  const destCurrency = transfer.destination_currency_code || transfer.currency_code;
+  const isCrossCurrency = sourceCurrency !== destCurrency;
+  const destAmount = transfer.destination_amount || transfer.amount;
+
   return (
     <div
       onClick={onClick}
@@ -45,20 +50,38 @@ export const TransferItem: React.FC<TransferItemProps> = ({
                 ĐÃ HỦY
               </span>
             )}
-            {transfer.currency_code !== 'VND' && (
-              <CurrencyBadge currency={transfer.currency_code} />
+            {!isCrossCurrency && sourceCurrency !== 'VND' && (
+              <CurrencyBadge currency={sourceCurrency} />
+            )}
+            {isCrossCurrency && (
+              <div className="flex items-center space-x-1">
+                <CurrencyBadge currency={sourceCurrency} />
+                <span className="text-[10px] text-muted-foreground">→</span>
+                <CurrencyBadge currency={destCurrency} />
+              </div>
             )}
           </div>
           <p className="text-xs text-muted-foreground truncate mt-0.5">
-            {transfer.note ? transfer.note : 'Chuyển tiền nội bộ'}
+            {transfer.note ? transfer.note : isCrossCurrency ? `Chuyển ngoại tệ (Tỷ giá: ${transfer.exchange_rate})` : 'Chuyển tiền nội bộ'}
           </p>
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="flex items-center justify-end space-x-1">
-          <span className="text-sm sm:text-base font-semibold text-indigo-600 dark:text-indigo-400">
-            {formatMoney(transfer.amount, transfer.currency_code)}
-          </span>
+        <div className="flex flex-col items-end">
+          {isCrossCurrency ? (
+            <>
+              <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                {formatMoney(transfer.amount, sourceCurrency)}
+              </span>
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                → {formatMoney(destAmount, destCurrency)}
+              </span>
+            </>
+          ) : (
+            <span className="text-sm sm:text-base font-semibold text-indigo-600 dark:text-indigo-400">
+              {formatMoney(transfer.amount, sourceCurrency)}
+            </span>
+          )}
         </div>
         <div className="flex items-center justify-end space-x-1.5 mt-0.5">
           <span className="text-[11px] text-muted-foreground">

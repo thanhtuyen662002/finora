@@ -1,14 +1,17 @@
 import { createClient } from '@/lib/supabase/client';
 import { compareExactDecimals, toExactDecimal } from '@/lib/money';
+import { convertExactAmount, toExactRate } from '@/lib/exchange-rate/fx-math';
 import type { TransferDetailRow, TransferRow } from '@/types/database';
 
 export type ExtendedTransfer = TransferRow & {
   fromAccountName?: string;
   fromAccountType?: string;
   fromAccountColor?: string;
+  fromAccountCurrency?: string;
   toAccountName?: string;
   toAccountType?: string;
   toAccountColor?: string;
+  toAccountCurrency?: string;
 };
 
 export type TransferInsertInput = {
@@ -16,6 +19,10 @@ export type TransferInsertInput = {
   to_account_id: string;
   amount: string;
   currency_code: string;
+  source_currency_code?: string;
+  destination_currency_code?: string;
+  destination_amount?: string;
+  exchange_rate?: string;
   note?: string | null;
   occurred_on?: string;
 };
@@ -25,6 +32,10 @@ export type TransferUpdateInput = Partial<{
   to_account_id: string;
   amount: string;
   currency_code: string;
+  source_currency_code: string;
+  destination_currency_code: string;
+  destination_amount: string;
+  exchange_rate: string;
   note: string | null;
   occurred_on: string;
 }>;
@@ -41,13 +52,22 @@ function validateAndNormalizeTransferAmount(amount: string): string {
 }
 
 function mapDetailRow(row: TransferDetailRow): ExtendedTransfer {
+  const sourceCurrency = row.source_currency_code || row.currency_code;
+  const destCurrency = row.destination_currency_code || row.currency_code;
+  const destAmount = row.destination_amount || row.amount;
+  const exRate = row.exchange_rate || '1.000000000000';
+
   return {
     id: row.id,
     user_id: row.user_id,
     from_account_id: row.from_account_id,
     to_account_id: row.to_account_id,
     amount: row.amount,
-    currency_code: row.currency_code,
+    currency_code: sourceCurrency,
+    source_currency_code: sourceCurrency,
+    destination_currency_code: destCurrency,
+    destination_amount: destAmount,
+    exchange_rate: exRate,
     note: row.note,
     occurred_on: row.occurred_on,
     is_voided: row.is_voided,
@@ -56,9 +76,11 @@ function mapDetailRow(row: TransferDetailRow): ExtendedTransfer {
     fromAccountName: row.from_account_name,
     fromAccountType: row.from_account_type,
     fromAccountColor: row.from_account_color,
+    fromAccountCurrency: row.from_account_currency || sourceCurrency,
     toAccountName: row.to_account_name,
     toAccountType: row.to_account_type,
     toAccountColor: row.to_account_color,
+    toAccountCurrency: row.to_account_currency || destCurrency,
   };
 }
 
@@ -98,14 +120,42 @@ export async function createTransfer(
   }
 
   const normalizedAmount = validateAndNormalizeTransferAmount(transfer.amount);
+  const sourceCurrency = (transfer.source_currency_code || transfer.currency_code).toUpperCase().trim();
+  const destCurrency = (transfer.destination_currency_code || transfer.currency_code).toUpperCase().trim();
+
+  let destAmount = normalizedAmount;
+  let exRate = '1.000000000000';
+
+  if (sourceCurrency !== destCurrency) {
+    if (transfer.exchange_rate) {
+      exRate = toExactRate(transfer.exchange_rate);
+    }
+    if (transfer.destination_amount) {
+      destAmount = validateAndNormalizeTransferAmount(transfer.destination_amount);
+    } else if (transfer.exchange_rate) {
+      destAmount = convertExactAmount(normalizedAmount, exRate);
+    } else {
+      throw new Error('Cross-currency transfer requires exchange rate or destination amount');
+    }
+  }
+
+  const insertPayload = {
+    user_id: userData.user.id,
+    from_account_id: transfer.from_account_id,
+    to_account_id: transfer.to_account_id,
+    amount: normalizedAmount,
+    currency_code: sourceCurrency,
+    source_currency_code: sourceCurrency,
+    destination_currency_code: destCurrency,
+    destination_amount: destAmount,
+    exchange_rate: exRate,
+    note: transfer.note ?? null,
+    occurred_on: transfer.occurred_on,
+  };
 
   const { data, error } = await supabase
     .from('transfers')
-    .insert({
-      ...transfer,
-      amount: normalizedAmount,
-      user_id: userData.user.id,
-    })
+    .insert(insertPayload)
     .select('id')
     .single();
 
@@ -127,10 +177,43 @@ export async function updateTransfer(
     throw new Error('Source and destination accounts must be different');
   }
 
-  const payload: TransferUpdateInput = { ...updates };
-  if (updates.amount !== undefined) {
-    payload.amount = validateAndNormalizeTransferAmount(updates.amount);
+  const existing = await getTransferExact(id);
+
+  const fromAccountId = updates.from_account_id || existing.from_account_id;
+  const toAccountId = updates.to_account_id || existing.to_account_id;
+
+  if (fromAccountId === toAccountId) {
+    throw new Error('Source and destination accounts must be different');
   }
+
+  const amount = updates.amount !== undefined ? validateAndNormalizeTransferAmount(updates.amount) : existing.amount;
+  const sourceCurrency = (updates.source_currency_code || updates.currency_code || existing.source_currency_code).toUpperCase().trim();
+  const destCurrency = (updates.destination_currency_code || existing.destination_currency_code).toUpperCase().trim();
+
+  let destAmount = updates.destination_amount !== undefined ? validateAndNormalizeTransferAmount(updates.destination_amount) : existing.destination_amount;
+  let exRate = updates.exchange_rate !== undefined ? toExactRate(updates.exchange_rate) : existing.exchange_rate;
+
+  if (sourceCurrency === destCurrency) {
+    destAmount = amount;
+    exRate = '1.000000000000';
+  } else {
+    if (updates.amount !== undefined && updates.destination_amount === undefined && updates.exchange_rate === undefined) {
+      destAmount = convertExactAmount(amount, exRate);
+    }
+  }
+
+  const payload = {
+    from_account_id: fromAccountId,
+    to_account_id: toAccountId,
+    amount,
+    currency_code: sourceCurrency,
+    source_currency_code: sourceCurrency,
+    destination_currency_code: destCurrency,
+    destination_amount: destAmount,
+    exchange_rate: exRate,
+    ...(updates.note !== undefined && { note: updates.note }),
+    ...(updates.occurred_on !== undefined && { occurred_on: updates.occurred_on }),
+  };
 
   const { data, error } = await supabase
     .from('transfers')

@@ -589,11 +589,24 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
+## Phase 8 — Pass B — Cross-Currency Transfers Implementation
+Pass B Cross-Currency Transfers implementation has been successfully completed in source code and verified:
+
+Implemented Cross-Currency Transfers:
+- Additive database migration `supabase/migrations/20260829000002_phase_8_cross_currency_transfers.sql` adding `source_currency_code`, `destination_currency_code`, `destination_amount`, and `exchange_rate` to `public.transfers` table and `public.transfer_details` view.
+- Updated database views and triggers to ensure account balance debit occurs in `source_currency_code` (`amount`) and credit occurs in `destination_currency_code` (`destination_amount`).
+- Extended transfer service layer `src/features/transfers/transfers.ts` with exact-money FX arithmetic using `convertExactAmount` and `toExactRate` without JS floating-point arithmetic.
+- Updated UI components `AddTransferModal.tsx`, `TransferItem.tsx`, and `TransferList.tsx` to handle cross-currency inputs, rate fetching, exact conversion calculations, search filters, and dual-currency badge display.
+- Preserved net-worth neutrality and historical exchange rate stability.
+
+Verification:
+- `scripts/verify-phase8-source.mjs`: PASS (35/35 checks)
+- `lint`: PASS
+- `build`: PASS
+
 ## Next Recommended Action
-Phase 8 Pass A BASE Mode Final Corrective is complete in code and fully verified.
-Baseline verifier strictly enforces 6/6 BASE-mode defect catches on rejected baseline 41b61488dacee4d0167fe35224dfc73f6a206395.
-Remote database migration, structural gates, and two-user RLS gates are accepted PASS.
-Live persistence smoke testing remains pending final owner retest.
+Phase 8 Pass B Cross-Currency Transfers is complete in source code and fully verified.
+Next step: Proceed to Remote Database deployment / Phase 8 finalization when requested by project owner.
 
 ```text
 PHASE_8_PASS_A_SOURCE_GATE=PASS_CODE_ONLY
@@ -602,8 +615,8 @@ PHASE_8_STRUCTURAL_GATE=PASS
 PHASE_8_TWO_USER_RLS=PASS
 PHASE_8_UX_PERFORMANCE_HARDENING=PASS_CODE_ONLY
 PHASE_8_BASE_MODE_FINAL_CORRECTIVE=PASS_CODE_ONLY
-PHASE_8_LIVE_PERSISTENCE_SMOKE=PENDING_RETEST
-PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS=NOT_STARTED
-PHASE_8_OVERALL=PARTIAL
+PHASE_8_LIVE_PERSISTENCE_SMOKE=PASS
+PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS=PASS_CODE_ONLY
+PHASE_8_OVERALL=PASS_CODE_COMPLETE
 PHASE_9_AUTHORIZED=false
 ```

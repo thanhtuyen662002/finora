@@ -62,12 +62,14 @@ export const TransferList: React.FC<TransferListProps> = ({
         const fromName = (t.fromAccountName || '').toLowerCase();
         const toName = (t.toAccountName || '').toLowerCase();
         const note = (t.note || '').toLowerCase();
-        const currency = (t.currency_code || '').toLowerCase();
+        const sourceCurrency = (t.source_currency_code || t.currency_code || '').toLowerCase();
+        const destCurrency = (t.destination_currency_code || t.currency_code || '').toLowerCase();
         if (
           !fromName.includes(query) &&
           !toName.includes(query) &&
           !note.includes(query) &&
-          !currency.includes(query)
+          !sourceCurrency.includes(query) &&
+          !destCurrency.includes(query)
         ) {
           return false;
         }

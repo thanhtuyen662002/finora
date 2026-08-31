@@ -256,6 +256,10 @@ export interface Database {
           to_account_id: string;
           amount: string;
           currency_code: string;
+          source_currency_code: string;
+          destination_currency_code: string;
+          destination_amount: string;
+          exchange_rate: string;
           note: string | null;
           occurred_on: string;
           is_voided: boolean;
@@ -269,6 +273,10 @@ export interface Database {
           to_account_id: string;
           amount: string;
           currency_code: string;
+          source_currency_code?: string;
+          destination_currency_code?: string;
+          destination_amount?: string;
+          exchange_rate?: string;
           note?: string | null;
           occurred_on?: string;
           is_voided?: boolean;
@@ -282,6 +290,10 @@ export interface Database {
           to_account_id?: string;
           amount?: string;
           currency_code?: string;
+          source_currency_code?: string;
+          destination_currency_code?: string;
+          destination_amount?: string;
+          exchange_rate?: string;
           note?: string | null;
           occurred_on?: string;
           is_voided?: boolean;
@@ -495,6 +507,10 @@ export interface Database {
           to_account_id: string;
           amount: string;
           currency_code: string;
+          source_currency_code: string;
+          destination_currency_code: string;
+          destination_amount: string;
+          exchange_rate: string;
           note: string | null;
           occurred_on: string;
           is_voided: boolean;
@@ -503,9 +519,11 @@ export interface Database {
           from_account_name: string;
           from_account_type: string;
           from_account_color: string;
+          from_account_currency?: string;
           to_account_name: string;
           to_account_type: string;
           to_account_color: string;
+          to_account_currency?: string;
         };
         Relationships: [];
       };

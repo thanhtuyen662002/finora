@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { ArrowRightLeft, AlertCircle, CheckCircle2, RotateCcw, Ban } from 'lucide-react';
+import { ArrowRightLeft, AlertCircle, CheckCircle2, RotateCcw, Ban, RefreshCw } from 'lucide-react';
 import { MoneyInput } from './MoneyInput';
 import { AccountRow } from '@/types/database';
 import {
@@ -23,6 +23,7 @@ import {
 } from '@/features/transfers';
 import { getAccounts } from '@/features/accounts/accounts';
 import { isPositiveExactDecimal, toExactDecimal } from '@/lib/money';
+import { convertExactAmount, toExactRate } from '@/lib/exchange-rate/fx-math';
 
 interface AddTransferModalProps {
   open: boolean;
@@ -43,6 +44,7 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
 }) => {
   const [internalAccounts, setInternalAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchingFx, setFetchingFx] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -67,13 +69,14 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
   const [fromAccountId, setFromAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [amount, setAmount] = useState('');
+  const [exchangeRate, setExchangeRate] = useState('1.000000000000');
+  const [destinationAmount, setDestinationAmount] = useState('');
   const [note, setNote] = useState('');
   const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().substring(0, 10));
 
-  // Determine available from-accounts
+  // Available from-accounts
   const availableFromAccounts = useMemo(() => {
     if (initialData) {
-      // In edit mode: allow active accounts PLUS the historical from_account if archived
       return accounts.filter((a) => !a.is_archived || a.id === initialData.from_account_id);
     }
     return accounts.filter((a) => !a.is_archived);
@@ -84,25 +87,32 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
     return accounts.find((a) => a.id === fromAccountId);
   }, [accounts, fromAccountId]);
 
-  // Determine available to-accounts (same currency, distinct from fromAccount)
+  // Available to-accounts (any distinct account, archived allowed in edit mode if matching initialData)
   const availableToAccounts = useMemo(() => {
-    if (!selectedFromAccount) return [];
-    const sourceCurrency = selectedFromAccount.currency_code;
+    if (!fromAccountId) return [];
 
     if (initialData) {
-      // In edit mode: allow active same-currency accounts (except source) PLUS historical to_account if archived
       return accounts.filter(
         (a) =>
           a.id !== fromAccountId &&
-          a.currency_code === sourceCurrency &&
           (!a.is_archived || a.id === initialData.to_account_id)
       );
     }
 
-    return accounts.filter(
-      (a) => !a.is_archived && a.id !== fromAccountId && a.currency_code === sourceCurrency
+    return accounts.filter((a) => !a.is_archived && a.id !== fromAccountId);
+  }, [accounts, fromAccountId, initialData]);
+
+  const selectedToAccount = useMemo(() => {
+    return accounts.find((a) => a.id === toAccountId);
+  }, [accounts, toAccountId]);
+
+  const isCrossCurrency = useMemo(() => {
+    return (
+      selectedFromAccount &&
+      selectedToAccount &&
+      selectedFromAccount.currency_code !== selectedToAccount.currency_code
     );
-  }, [accounts, fromAccountId, selectedFromAccount, initialData]);
+  }, [selectedFromAccount, selectedToAccount]);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
@@ -115,6 +125,10 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
       setFromAccountId(initialData.from_account_id);
       setToAccountId(initialData.to_account_id);
       setAmount(initialData.amount);
+      const exRate = initialData.exchange_rate || '1.000000000000';
+      const destAmt = initialData.destination_amount || initialData.amount;
+      setExchangeRate(exRate);
+      setDestinationAmount(destAmt);
       setNote(initialData.note || '');
       setOccurredOn(initialData.occurred_on || new Date().toISOString().substring(0, 10));
     } else {
@@ -124,38 +138,61 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
         : '';
 
       if (!initialFrom && activeAccounts.length > 0) {
-        // Prefer an account that has at least one other same-currency account
-        const accWithPair = activeAccounts.find((a) =>
-          activeAccounts.some((other) => other.id !== a.id && other.currency_code === a.currency_code)
-        );
-        initialFrom = accWithPair ? accWithPair.id : activeAccounts[0].id;
+        initialFrom = activeAccounts[0].id;
       }
 
       setFromAccountId(initialFrom);
 
-      // Find compatible destination account
       if (initialFrom) {
-        const fromAcc = accounts.find((a) => a.id === initialFrom);
-        if (fromAcc) {
-          const compatibleTo = activeAccounts.find(
-            (a) => a.id !== initialFrom && a.currency_code === fromAcc.currency_code
-          );
-          setToAccountId(compatibleTo ? compatibleTo.id : '');
-        } else {
-          setToAccountId('');
-        }
+        const compatibleTo = activeAccounts.find((a) => a.id !== initialFrom);
+        setToAccountId(compatibleTo ? compatibleTo.id : '');
       } else {
         setToAccountId('');
       }
 
       setAmount('');
+      setExchangeRate('1.000000000000');
+      setDestinationAmount('');
       setNote('');
       setOccurredOn(new Date().toISOString().substring(0, 10));
     }
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [open, initialData, accounts, preselectedFromAccountId]);
 
-  // Handle change in from-account
+  // Auto-fetch FX rate when cross-currency is detected or accounts/dates change
+  const fetchRate = async (sourceCur: string, destCur: string, dateStr: string) => {
+    if (sourceCur === destCur) {
+      setExchangeRate('1.000000000000');
+      return;
+    }
+    try {
+      setFetchingFx(true);
+      const res = await fetch(`/api/fx/rate?from=${sourceCur}&to=${destCur}&date=${dateStr}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.rate) {
+          const exactRate = toExactRate(data.rate);
+          setExchangeRate(exactRate);
+          if (amount && isPositiveExactDecimal(amount)) {
+            setDestinationAmount(convertExactAmount(amount, exactRate));
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching FX rate:', err);
+    } finally {
+      setFetchingFx(false);
+    }
+  };
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+    if (open && isCrossCurrency && selectedFromAccount && selectedToAccount && !initialData) {
+      fetchRate(selectedFromAccount.currency_code, selectedToAccount.currency_code, occurredOn);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  }, [open, isCrossCurrency, fromAccountId, toAccountId, occurredOn]);
+
   const handleFromAccountChange = (newFromId: string) => {
     setFromAccountId(newFromId);
     const newFromAcc = accounts.find((a) => a.id === newFromId);
@@ -164,19 +201,34 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
       return;
     }
 
-    // Check if current toAccountId is still compatible
-    const isToStillValid = availableToAccounts.some(
-      (a) => a.id === toAccountId && a.id !== newFromId && a.currency_code === newFromAcc.currency_code
-    );
-
-    if (!isToStillValid) {
+    if (toAccountId === newFromId) {
       const firstValidTo = accounts.find(
-        (a) =>
-          (!a.is_archived || (initialData && a.id === initialData.to_account_id)) &&
-          a.id !== newFromId &&
-          a.currency_code === newFromAcc.currency_code
+        (a) => (!a.is_archived || (initialData && a.id === initialData.to_account_id)) && a.id !== newFromId
       );
       setToAccountId(firstValidTo ? firstValidTo.id : '');
+    }
+  };
+
+  const handleAmountChange = (val: string) => {
+    setAmount(val);
+    if (isCrossCurrency && val && isPositiveExactDecimal(val) && exchangeRate) {
+      try {
+        setDestinationAmount(convertExactAmount(val, exchangeRate));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const handleExchangeRateChange = (val: string) => {
+    setExchangeRate(val);
+    if (isCrossCurrency && amount && isPositiveExactDecimal(amount) && val) {
+      try {
+        const exactRate = toExactRate(val);
+        setDestinationAmount(convertExactAmount(amount, exactRate));
+      } catch (err) {
+        // user typing intermediate rate
+      }
     }
   };
 
@@ -207,16 +259,22 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
       return;
     }
 
-    if (fromAcc.currency_code !== toAcc.currency_code) {
-      setErrorMsg(
-        'Chuyển tiền khác loại tiền tệ sẽ được hỗ trợ trong Phase 8. Vui lòng chọn 2 tài khoản cùng loại tiền tệ.'
-      );
-      return;
-    }
-
     if (!isPositiveExactDecimal(amount)) {
       setErrorMsg('Số tiền phải là số dương hợp lệ (tối đa 4 chữ số thập phân)');
       return;
+    }
+
+    if (isCrossCurrency) {
+      if (!destinationAmount || !isPositiveExactDecimal(destinationAmount)) {
+        setErrorMsg('Số tiền nhận phải là số dương hợp lệ');
+        return;
+      }
+      try {
+        toExactRate(exchangeRate);
+      } catch (err) {
+        setErrorMsg('Tỷ giá chuyển đổi không hợp lệ (tối đa 12 chữ số thập phân)');
+        return;
+      }
     }
 
     if (note && note.length > 1000) {
@@ -227,13 +285,27 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
     try {
       setLoading(true);
       const exactAmount = toExactDecimal(amount);
+      const sourceCurrency = fromAcc.currency_code;
+      const destCurrency = toAcc.currency_code;
+
+      let finalDestAmount = exactAmount;
+      let finalExRate = '1.000000000000';
+
+      if (sourceCurrency !== destCurrency) {
+        finalExRate = toExactRate(exchangeRate);
+        finalDestAmount = toExactDecimal(destinationAmount);
+      }
 
       if (initialData) {
         await updateTransfer(initialData.id, {
           from_account_id: fromAccountId,
           to_account_id: toAccountId,
           amount: exactAmount,
-          currency_code: fromAcc.currency_code,
+          currency_code: sourceCurrency,
+          source_currency_code: sourceCurrency,
+          destination_currency_code: destCurrency,
+          destination_amount: finalDestAmount,
+          exchange_rate: finalExRate,
           note: note.trim() || null,
           occurred_on: occurredOn,
         });
@@ -242,7 +314,11 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
           from_account_id: fromAccountId,
           to_account_id: toAccountId,
           amount: exactAmount,
-          currency_code: fromAcc.currency_code,
+          currency_code: sourceCurrency,
+          source_currency_code: sourceCurrency,
+          destination_currency_code: destCurrency,
+          destination_amount: finalDestAmount,
+          exchange_rate: finalExRate,
           note: note.trim() || null,
           occurred_on: occurredOn,
         });
@@ -303,18 +379,18 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
     }
   };
 
-  const hasCompatibleDestinations = availableToAccounts.length > 0;
+  const hasDestinationAccounts = availableToAccounts.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <div className="flex items-center space-x-2 text-primary">
             <ArrowRightLeft className="h-5 w-5" />
             <DialogTitle>{initialData ? 'Sửa chuyển tiền' : 'Chuyển tiền giữa các tài khoản'}</DialogTitle>
           </div>
           <DialogDescription>
-            Chuyển tiền nội bộ giữa các tài khoản cùng loại tiền tệ. Không làm thay đổi tổng tài sản ròng.
+            Chuyển tiền nội bộ giữa các tài khoản cùng hoặc khác loại tiền tệ. Bảo toàn tài sản ròng.
           </DialogDescription>
         </DialogHeader>
 
@@ -361,10 +437,10 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
                   id="to-account"
                   value={toAccountId}
                   onChange={(e) => setToAccountId(e.target.value)}
-                  disabled={loading || !hasCompatibleDestinations}
+                  disabled={loading || !hasDestinationAccounts}
                 >
                   <option value="" disabled>
-                    {hasCompatibleDestinations ? '-- Chọn tài khoản --' : '-- Không có tài khoản cùng loại tiền --'}
+                    {hasDestinationAccounts ? '-- Chọn tài khoản --' : '-- Không có tài khoản khác --'}
                   </option>
                   {availableToAccounts.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -375,18 +451,11 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
               </div>
             </div>
 
-            {selectedFromAccount && !hasCompatibleDestinations && (
-              <div className="p-3 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-500/20">
-                Chưa có tài khoản đích nào khác sử dụng loại tiền <strong>{selectedFromAccount.currency_code}</strong>.
-                Chuyển tiền khác loại tiền tệ (đa ngoại tệ) sẽ được hỗ trợ trong Phase 8.
-              </div>
-            )}
-
-            {/* Amount & Currency Display */}
+            {/* Source Amount */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="transfer-amount" className="text-xs font-semibold">
-                  Số tiền chuyển <span className="text-destructive">*</span>
+                  Số tiền chuyển (Nguồn) <span className="text-destructive">*</span>
                 </Label>
                 {selectedFromAccount && (
                   <span className="text-xs font-medium text-muted-foreground">
@@ -400,7 +469,7 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
                   currencyCode={selectedFromAccount ? selectedFromAccount.currency_code : 'VND'}
                   placeholder={selectedFromAccount?.currency_code === 'VND' ? '50.000' : '0.00'}
                   value={amount}
-                  onChange={(val) => setAmount(val)}
+                  onChange={handleAmountChange}
                   disabled={loading}
                   className="pr-16 text-lg font-bold"
                 />
@@ -409,6 +478,60 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Cross-Currency Section */}
+            {isCrossCurrency && selectedFromAccount && selectedToAccount && (
+              <div className="p-3 bg-muted/30 border rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                    Chuyển đổi ngoại tệ ({selectedFromAccount.currency_code} → {selectedToAccount.currency_code})
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fetchRate(selectedFromAccount.currency_code, selectedToAccount.currency_code, occurredOn)}
+                    disabled={fetchingFx || loading}
+                    className="h-6 px-2 text-[11px]"
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${fetchingFx ? 'animate-spin' : ''}`} />
+                    Tải tỷ giá
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="exchange-rate" className="text-[11px] font-semibold text-muted-foreground">
+                      Tỷ giá quy đổi (1 {selectedFromAccount.currency_code} =)
+                    </Label>
+                    <Input
+                      id="exchange-rate"
+                      type="text"
+                      value={exchangeRate}
+                      onChange={(e) => handleExchangeRateChange(e.target.value)}
+                      placeholder="25500.000000000000"
+                      disabled={loading || fetchingFx}
+                      className="text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="destination-amount" className="text-[11px] font-semibold text-muted-foreground">
+                      Số tiền thực nhận ({selectedToAccount.currency_code})
+                    </Label>
+                    <MoneyInput
+                      id="destination-amount"
+                      currencyCode={selectedToAccount.currency_code}
+                      placeholder="0.00"
+                      value={destinationAmount}
+                      onChange={(val) => setDestinationAmount(val)}
+                      disabled={loading}
+                      className="text-xs font-bold text-emerald-600 dark:text-emerald-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Date */}
             <div className="space-y-1.5">
@@ -487,7 +610,7 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
               </Button>
               <Button
                 type="submit"
-                disabled={loading || !hasCompatibleDestinations}
+                disabled={loading || !hasDestinationAccounts}
               >
                 {loading ? 'Đang lưu...' : initialData ? 'Cập nhật' : 'Xác nhận chuyển'}
               </Button>
