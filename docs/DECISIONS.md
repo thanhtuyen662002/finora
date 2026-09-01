@@ -285,22 +285,28 @@ Consequences:
 **Decision:**
 1. **Attribution Metadata Only:** Income sources (`public.income_sources`) and streams (`public.income_source_streams`) are purely organizational metadata and attribution dimensions. They do NOT own financial balances, aggregated totals, or intrinsic currency authority.
 2. **Authoritative Ledger Unchanged:** `public.transactions` remains the single authoritative financial ledger for all realized income and expense. Phase 9 does NOT create a secondary financial ledger or duplicate transaction records.
-3. **Derived Financial Aggregations:** Income source totals and breakdowns are always derived at query time from active (`is_voided = false`), non-archived transaction records using exact decimal arithmetic.
+3. **Derived Financial Aggregations & Archive Non-Destructiveness:** Income source totals and breakdowns are derived at query time from realized `type = 'INCOME'` and `is_voided = false` transactions using exact decimal arithmetic. Archiving an income source or stream (`is_archived = true`) strictly prevents new or updated transaction attributions to that entity but does NOT retroactively remove, alter, or erase historical realized income records from financial reporting (`ARCHIVE_DOES_NOT_ERASE_HISTORY=true`). Historical attribution remains readable.
 4. **Financial Neutrality:** Creating, updating, renaming, or archiving an income source or stream produces zero delta to account balances, net worth, income totals, expense totals, or historical FX snapshots (`ACCOUNT_BALANCE_DELTA=0`, `NET_WORTH_DELTA=0`, `INCOME_TOTAL_DELTA=0`, `EXPENSE_TOTAL_DELTA=0`, `FX_SNAPSHOT_DELTA=0`).
-5. **Generic Streams Model:** Streams are generic sub-sources (e.g., YouTube channels, freelance clients, investment brokers) without provider-specific database tables or schemas.
-6. **Transaction Invariants & Composite Ownership:**
+5. **Database-Derived Ownership & Insertability Invariant:** Both `public.income_sources` and `public.income_source_streams` define `user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE`. The authenticated client contract strictly omits `user_id` on INSERT, eliminating client-side user ID authority (`CLIENT_USER_ID_AUTHORITY=false`, `DATABASE_DERIVED_USER_ID=true`). Authenticated role has NO INSERT or UPDATE privilege on `user_id`.
+6. **Canonical RLS & Column Privilege Model:**
+   - Both tables enforce canonical RLS policies using `(SELECT auth.uid()) = user_id` for SELECT, INSERT (`WITH CHECK`), and UPDATE (`USING` and `WITH CHECK`). No DELETE policy exists.
+   - Column privileges are strictly allowlisted: `income_sources` INSERT `(name, type)`, UPDATE `(name, type, is_archived)`; `income_source_streams` INSERT `(income_source_id, name)`, UPDATE `(name, is_archived)`. Stream parent `income_source_id` is immutable after creation (`STREAM_PARENT_IMMUTABLE=true`).
+7. **Reuse of Production Updated-At Function:** Schema reuses existing `public.handle_updated_at()` (`SECURITY INVOKER`, `SET search_path = ''`) via BEFORE UPDATE triggers on both tables (`REUSE_PUBLIC_HANDLE_UPDATED_AT=true`, `NEW_UPDATED_AT_FUNCTION=false`).
+8. **Generic Streams Model:** Streams are generic sub-sources (e.g., YouTube channels, freelance clients, investment brokers) without provider-specific database tables or schemas.
+9. **Transaction Invariants & Composite Ownership:**
    - Transaction attribution is optional and restricted strictly to `type = 'INCOME'`.
    - `type = 'EXPENSE'` transactions must have NULL `income_source_id` and NULL `income_source_stream_id`.
    - Setting `income_source_stream_id` strictly requires a non-NULL `income_source_id`.
    - Multi-column composite foreign keys enforce that sources and streams belong to the same user and that the stream belongs to the referenced source, with `ON DELETE RESTRICT`.
-7. **Active Attribution Enforcement:** A `BEFORE INSERT OR UPDATE OF type, income_source_id, income_source_stream_id ON public.transactions` trigger (`SECURITY INVOKER`, `SET search_path = ''`) enforces that new attributions cannot target archived sources or streams (`is_archived = true`), while preserving historical read access and unrelated transaction updates.
-8. **Multi-Currency & FX Architecture Reuse:** Income source reporting reuses the accepted Phase 8 FX engine and `transaction_fx_snapshots`. Multi-currency native aggregations avoid scalar addition across distinct currencies. BASE valuation mode reuses existing snapshot-driven conversion without introducing a separate FX provider.
-9. **Platform & AI Decoupling:** External platform synchronization (YouTube API, AdSense API, OAuth) and AI assistant features remain strictly out of scope for Phase 9.
+10. **Active Attribution Enforcement:** A `BEFORE INSERT OR UPDATE OF type, income_source_id, income_source_stream_id ON public.transactions` trigger (`SECURITY INVOKER`, `SET search_path = ''`) enforces that new attributions cannot target archived sources or streams (`is_archived = true`), while preserving historical read access and unrelated transaction updates.
+11. **Multi-Currency & FX Architecture Reuse:** Income source reporting reuses the accepted Phase 8 FX engine and `transaction_fx_snapshots`. Multi-currency native aggregations avoid scalar addition across distinct currencies. BASE valuation mode reuses existing snapshot-driven conversion without introducing a separate FX provider.
+12. **Platform & AI Decoupling:** External platform synchronization (YouTube API, AdSense API, OAuth) and AI assistant features remain strictly out of scope for Phase 9.
 
 **Reason:**
 - Preserves the integrity of the ledger model where transactions and accounts are the sole sources of financial truth.
 - Eliminates synchronization drift between cached aggregates and real transactions.
 - Ensures composite referential integrity and strict tenant isolation at the database level.
+- Eliminates client-side spoofing and invalid client parameter authority by deriving ownership directly from JWT claims.
 - Keeps Finora's core financial engine independent of external platform APIs and LLMs.
 
 **Consequences:**

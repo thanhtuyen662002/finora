@@ -76,10 +76,13 @@ check(8, "EXPENSE_ATTRIBUTION_PROHIBITED: Contract enforces attribution prohibit
   contractContent.includes('income_source_stream_id IS NULL')
 );
 
-// 9. Stream requires source
-check(9, "STREAM_REQUIRES_SOURCE: Contract enforces stream attribution strictly requires source attribution",
-  contractContent.includes('income_source_stream_id IS NULL') ||
-  contractContent.includes('income_source_id IS NOT NULL')
+// 9. Stream requires source (fixed deterministic check - strictly requires both sides of the invariant)
+const streamHierarchyCheck =
+  contractContent.includes('income_source_stream_id IS NULL') &&
+  contractContent.includes('income_source_id IS NOT NULL') &&
+  contractContent.includes('Stream Hierarchy Invariant');
+check(9, "STREAM_REQUIRES_SOURCE_VERIFIER_STRICT: Contract enforces stream attribution strictly requires source attribution",
+  streamHierarchyCheck
 );
 
 // 10. Composite ownership FKs & ON DELETE RESTRICT
@@ -196,6 +199,89 @@ const governancePass =
   lastStatusBlock.includes('PHASE_10_AUTHORIZED=false');
 
 check(21, "PROJECT_STATUS_GOVERNANCE: docs/PROJECT_STATUS.md reflects authoritative Phase 9 contract governance baseline", governancePass);
+
+// 22. USER_ID_DEFAULT_AUTH_UID_DEFINED
+check(22, "USER_ID_DEFAULT_AUTH_UID_DEFINED: Both tables specify user_id uuid NOT NULL DEFAULT auth.uid()",
+  contractContent.includes("user_id` (uuid, not null, default `auth.uid()`") &&
+  contractContent.includes("DATABASE_DERIVED_USER_ID=true")
+);
+
+// 23. CLIENT_USER_ID_INSERT_FORBIDDEN
+check(23, "CLIENT_USER_ID_INSERT_FORBIDDEN: Client has no user_id authority and authenticated role is denied user_id mutation",
+  contractContent.includes("CLIENT_USER_ID_AUTHORITY=false") &&
+  contractContent.includes("authenticated cannot INSERT user_id") &&
+  contractContent.includes("authenticated cannot UPDATE user_id")
+);
+
+// 24. CANONICAL_RLS_SELECT_AUTH_UID
+check(24, "CANONICAL_RLS_SELECT_AUTH_UID: RLS SELECT policy specifies USING ((SELECT auth.uid()) = user_id)",
+  contractContent.includes("USING ((SELECT auth.uid()) = user_id)")
+);
+
+// 25. CANONICAL_RLS_INSERT_AUTH_UID
+check(25, "CANONICAL_RLS_INSERT_AUTH_UID: RLS INSERT policy specifies WITH CHECK ((SELECT auth.uid()) = user_id)",
+  contractContent.includes("WITH CHECK ((SELECT auth.uid()) = user_id)")
+);
+
+// 26. CANONICAL_RLS_UPDATE_AUTH_UID
+check(26, "CANONICAL_RLS_UPDATE_AUTH_UID: RLS UPDATE policy specifies USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id)",
+  contractContent.includes("USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id)")
+);
+
+// 27. SOURCE_INSERT_ALLOWLIST_EXACT
+check(27, "SOURCE_INSERT_ALLOWLIST_EXACT: income_sources INSERT allowlist is strictly (name, type)",
+  contractContent.includes("INSERT allowlist exact: `(name, type)`") ||
+  contractContent.includes("INSERT allowlist exact: `(name, type)`")
+);
+
+// 28. SOURCE_UPDATE_ALLOWLIST_EXACT
+check(28, "SOURCE_UPDATE_ALLOWLIST_EXACT: income_sources UPDATE allowlist is strictly (name, type, is_archived)",
+  contractContent.includes("UPDATE allowlist exact: `(name, type, is_archived)`")
+);
+
+// 29. STREAM_INSERT_ALLOWLIST_EXACT
+check(29, "STREAM_INSERT_ALLOWLIST_EXACT: income_source_streams INSERT allowlist is strictly (income_source_id, name)",
+  contractContent.includes("INSERT allowlist exact: `(income_source_id, name)`")
+);
+
+// 30. STREAM_UPDATE_ALLOWLIST_EXACT
+check(30, "STREAM_UPDATE_ALLOWLIST_EXACT: income_source_streams UPDATE allowlist is strictly (name, is_archived)",
+  contractContent.includes("UPDATE allowlist exact: `(name, is_archived)`")
+);
+
+// 31. STREAM_PARENT_IMMUTABLE
+check(31, "STREAM_PARENT_IMMUTABLE: stream parent income_source_id is immutable after creation",
+  contractContent.includes("STREAM_PARENT_IMMUTABLE=true") &&
+  contractContent.includes("is immutable after stream creation")
+);
+
+// 32. HANDLE_UPDATED_AT_REUSED
+check(32, "HANDLE_UPDATED_AT_REUSED: Contract mandates reusing public.handle_updated_at() with zero duplicates",
+  contractContent.includes("REUSE_PUBLIC_HANDLE_UPDATED_AT=true") &&
+  contractContent.includes("NEW_UPDATED_AT_FUNCTION=false") &&
+  contractContent.includes("public.handle_updated_at()")
+);
+
+// 33. UPDATED_AT_TRIGGER_REQUIRED
+check(33, "UPDATED_AT_TRIGGER_REQUIRED: Contract requires BEFORE UPDATE triggers executing public.handle_updated_at()",
+  contractContent.includes("updated_at trigger -> `public.handle_updated_at()`") &&
+  contractContent.includes("income_sources") &&
+  contractContent.includes("income_source_streams")
+);
+
+// 34. ARCHIVE_DOES_NOT_ERASE_HISTORY
+check(34, "ARCHIVE_DOES_NOT_ERASE_HISTORY: Contract & ADR-015 specify archive does not erase historical realized income",
+  contractContent.includes("ARCHIVE_DOES_NOT_ERASE_HISTORY=true") &&
+  decisionsContent.includes("ARCHIVE_DOES_NOT_ERASE_HISTORY=true") &&
+  contractContent.includes("MUST NOT remove, alter, or erase historical realized income")
+);
+
+// 35. STALE_NON_ARCHIVED_TRANSACTION_WORDING_ABSENT
+const staleWordingFound = decisionsContent.includes("non-archived transaction records") ||
+  contractContent.includes("non-archived transaction records");
+check(35, "STALE_NON_ARCHIVED_TRANSACTION_WORDING_ABSENT: Stale wording regarding non-archived transactions is removed",
+  !staleWordingFound
+);
 
 console.log(`\n----------------------------------------------------`);
 console.log(`TOTAL CHECKS: ${total}`);

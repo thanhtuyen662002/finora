@@ -64,7 +64,7 @@ Phase 9 defines two user-owned tables and updates `public.transactions` and `pub
 ### A. Table `public.income_sources`
 Represents high-level logical sources of income.
 - `id` (uuid, primary key, default `gen_random_uuid()`)
-- `user_id` (uuid, not null, references `auth.users(id)` ON DELETE CASCADE)
+- `user_id` (uuid, not null, default `auth.uid()`, references `auth.users(id)` ON DELETE CASCADE)
 - `name` (text, not null, check length 1..200)
 - `type` (text, not null, check in (`'SALARY'`, `'YOUTUBE'`, `'FREELANCE'`, `'INVESTMENT'`, `'OTHER'`))
 - `is_archived` (boolean, not null, default false)
@@ -77,7 +77,7 @@ Represents high-level logical sources of income.
 ### B. Table `public.income_source_streams`
 Represents optional sub-sources/channels underneath a primary income source.
 - `id` (uuid, primary key, default `gen_random_uuid()`)
-- `user_id` (uuid, not null, references `auth.users(id)` ON DELETE CASCADE)
+- `user_id` (uuid, not null, default `auth.uid()`, references `auth.users(id)` ON DELETE CASCADE)
 - `income_source_id` (uuid, not null)
 - `name` (text, not null, check length 1..200)
 - `is_archived` (boolean, not null, default false)
@@ -88,7 +88,14 @@ Represents optional sub-sources/channels underneath a primary income source.
 - `UNIQUE (id, income_source_id, user_id)` (required for composite attribution foreign keys)
 - Composite Foreign Key: `FOREIGN KEY (income_source_id, user_id) REFERENCES public.income_sources(id, user_id) ON DELETE RESTRICT`
 
-### C. Generic Sub-Source Model
+### C. Database-Derived Ownership & Insertability Invariant
+- `CLIENT_USER_ID_AUTHORITY=false`
+- `DATABASE_DERIVED_USER_ID=true`
+- Authenticated client INSERT statements strictly omit `user_id`. The database derives ownership directly from the authenticated JWT session via `DEFAULT auth.uid()`.
+- Client applications are not required to call `getUser()` merely to send user UUIDs into source/stream creation payloads.
+- Authenticated role is strictly denied INSERT and UPDATE privileges on `user_id`.
+
+### D. Generic Sub-Source Model
 Streams are generic and modular across all source types:
 - YouTube: Channel A, Channel B, Channel C
 - Freelance: Client X, Client Y
@@ -143,7 +150,10 @@ Phase 9 adds optional attribution columns to `public.transactions`:
 ## 6. Active Attribution & Archive Enforcement
 
 1. **Soft Archive Only:** Hard deletes are prohibited on sources and streams.
-2. **Historical Readability:** Historical transactions referencing archived sources or streams must continue to resolve names and metadata without disruption.
+2. **Historical Readability & Non-Destructive Archive (`ARCHIVE_DOES_NOT_ERASE_HISTORY=true`):**
+   - Income source totals are derived from realized `type = 'INCOME'` and `is_voided = false` transactions.
+   - Archiving an income source or stream (`is_archived = true`) MUST NOT remove, alter, or erase historical realized income from financial reporting.
+   - Historical transactions referencing archived sources or streams must continue to resolve names and metadata without disruption.
 3. **Fail-Closed New Attribution:** New transactions or updates that assign an archived source or stream (`is_archived = true`) must be rejected.
 4. **Trigger Specification:**
    - Enforced via a `BEFORE INSERT OR UPDATE OF type, income_source_id, income_source_stream_id ON public.transactions` trigger.
@@ -152,7 +162,22 @@ Phase 9 adds optional attribution columns to `public.transactions`:
 
 ---
 
-## 7. Multi-Currency & FX Contract
+## 7. Updated-At Timestamp Contract
+
+1. **Reuse Existing Function:** Production already possesses the accepted timestamp function:
+   ```sql
+   public.handle_updated_at()
+   ```
+   with verified characteristics: `SECURITY INVOKER`, `SET search_path = ''`, `NEW.updated_at = pg_catalog.now()`.
+2. **Contract Invariants:**
+   - `REUSE_PUBLIC_HANDLE_UPDATED_AT=true`
+   - `NEW_UPDATED_AT_FUNCTION=false`
+   - Do NOT create duplicate updated-at functions or triggers with different signatures.
+3. **Trigger Attachment:** Phase 9 attaches BEFORE UPDATE triggers on `public.income_sources` and `public.income_source_streams` executing `public.handle_updated_at()`.
+
+---
+
+## 8. Multi-Currency & FX Contract
 
 1. **No Scalar Addition Across Currencies:** Native-currency reporting must group amounts by their authoritative transaction `currency_code` (e.g. $100\text{ USD}$ and $2,000,000\text{ VND}$ are reported separately, never summed as $2,000,100$).
 2. **Phase 8 FX Architecture Reuse:** When BASE currency valuation is selected, calculations reuse `public.transaction_fx_snapshots` and the Phase 8 FX service. No secondary FX provider or source-level conversion rates shall exist.
@@ -160,7 +185,7 @@ Phase 9 adds optional attribution columns to `public.transactions`:
 
 ---
 
-## 8. View Compatibility Lock (`public.transaction_details`)
+## 9. View Compatibility Lock (`public.transaction_details`)
 
 Production `public.transaction_details` has an immutable 17-column prefix:
 ```text
@@ -194,7 +219,7 @@ The view must be defined with `WITH (security_invoker = true)`. Reordering, remo
 
 ---
 
-## 9. Exact-Money Boundary & Arithmetic
+## 10. Exact-Money Boundary & Arithmetic
 
 1. `transaction_details.amount` is cast to exact string `text` to prevent JavaScript IEEE 754 precision loss at the API/JSON boundary.
 2. Financial aggregations must use exact decimal helpers (`convertExactAmount`, scaled BigInt arithmetic).
@@ -203,7 +228,7 @@ The view must be defined with `WITH (security_invoker = true)`. Reordering, remo
 
 ---
 
-## 10. Analytics & Reporting Dimensions
+## 11. Analytics & Reporting Dimensions
 
 Income source analytics must answer: "How much income came from each source and stream over a given period?"
 - **Dimensions:** Source, Stream, Period (`1M`, `3M`, `6M`, `1Y`, `ALL`), Currency.
@@ -212,47 +237,78 @@ Income source analytics must answer: "How much income came from each source and 
 
 ---
 
-## 11. Security & RLS Policy Contract
+## 12. Security & RLS Policy Contract
 
 Both `public.income_sources` and `public.income_source_streams` must enable Row Level Security (RLS).
 
-### Policy Matrix
-- `SELECT`: `auth.uid() = user_id`
-- `INSERT`: `WITH CHECK (auth.uid() = user_id)`
-- `UPDATE`: `USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)`
+### Canonical RLS Policy Matrix
+Enforces ownership via the optimized Supabase/PostgreSQL pattern:
+- `SELECT`: `USING ((SELECT auth.uid()) = user_id)`
+- `INSERT`: `WITH CHECK ((SELECT auth.uid()) = user_id)`
+- `UPDATE`: `USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id)`
 - `DELETE`: Explicitly absent (no DELETE policy; authenticated users cannot hard-delete rows)
 
-### Privilege Grant Matrix
+### Exact Column Privilege Allowlist Contract
 - `anon` / `PUBLIC`: Zero privileges (`REVOKE ALL`).
-- `authenticated`: Table-level `SELECT`, column-specific `INSERT` and `UPDATE` allowlists. No client authority over `id`, `user_id`, `created_at`, or `updated_at`.
+- `authenticated` on `public.income_sources`:
+  - `TABLE SELECT`
+  - INSERT allowlist exact: `(name, type)`
+  - UPDATE allowlist exact: `(name, type, is_archived)`
+  - Authenticated MUST NOT INSERT or UPDATE: `id`, `user_id`, `created_at`, `updated_at`
+  - `is_archived` defaults to `false` and is not user-supplied during initial INSERT.
+- `authenticated` on `public.income_source_streams`:
+  - `TABLE SELECT`
+  - INSERT allowlist exact: `(income_source_id, name)`
+  - UPDATE allowlist exact: `(name, is_archived)`
+  - Authenticated MUST NOT INSERT or UPDATE: `id`, `user_id`, `created_at`, `updated_at`
+  - `STREAM_PARENT_IMMUTABLE=true`: `income_source_id` is immutable after stream creation from the authenticated client contract.
 
 ---
 
-## 12. Verification Gates & Execution Requirements
+## 13. Verification Gates & Execution Requirements
 
 ### A. Two-User Runtime Verification Matrix
 Future Phase 9 implementation must satisfy the following automated two-user runtime test suite:
-1. User A creates income source: PASS
-2. User B creates income source: PASS
-3. User A reads own source: PASS
-4. User B cannot read User A source: PASS
-5. User B cannot update User A source: PASS
-6. User A creates income stream: PASS
-7. User B cannot read or update User A stream: PASS
-8. Cross-user source attribution rejected by FK: PASS
-9. Cross-user stream attribution rejected by FK: PASS
-10. Stream/source mismatch attribution rejected by composite FK: PASS
-11. Expense transaction with income source attribution rejected by CHECK: PASS
-12. New attribution referencing archived source rejected by trigger: PASS
-13. New attribution referencing archived stream rejected by trigger: PASS
-14. Historical transaction referencing archived source remains readable: PASS
-15. Source/stream archiving exhibits zero financial balance drift: PASS
+1. User A authenticated INSERT source WITHOUT user_id: PASS
+2. Inserted source user_id == auth.uid(): PASS
+3. User B authenticated INSERT source WITHOUT user_id: PASS
+4. Inserted source user_id == auth.uid(): PASS
+5. authenticated explicit user_id injection attempt: REJECTED
+6. User A authenticated INSERT stream WITHOUT user_id: PASS
+7. Inserted stream user_id == auth.uid(): PASS
+8. authenticated explicit stream user_id injection: REJECTED
+9. authenticated stream parent reassignment after creation: REJECTED
+10. User A reads own source: PASS
+11. User B cannot read User A source: PASS
+12. User B cannot update User A source: PASS
+13. User A creates income stream: PASS
+14. User B cannot read or update User A stream: PASS
+15. Cross-user source attribution rejected by FK: PASS
+16. Cross-user stream attribution rejected by FK: PASS
+17. Stream/source mismatch attribution rejected by composite FK: PASS
+18. Expense transaction with income source attribution rejected by CHECK: PASS
+19. New attribution referencing archived source rejected by trigger: PASS
+20. New attribution referencing archived stream rejected by trigger: PASS
+21. Historical transaction referencing archived source remains readable: PASS
+22. Source/stream archiving exhibits zero financial balance drift: PASS
 
 ### B. Structural Catalog Verifier
 A dedicated structural verifier must prove:
+- `income_sources.user_id` default = `auth.uid()`
+- `income_source_streams.user_id` default = `auth.uid()`
+- authenticated cannot INSERT user_id (`CLIENT_USER_ID_INSERT_FORBIDDEN`)
+- authenticated cannot UPDATE user_id
+- authenticated `income_sources` INSERT allowlist exact: `(name, type)`
+- authenticated `income_sources` UPDATE allowlist exact: `(name, type, is_archived)`
+- authenticated `income_source_streams` INSERT allowlist exact: `(income_source_id, name)`
+- authenticated `income_source_streams` UPDATE allowlist exact: `(name, is_archived)`
+- stream `income_source_id` not client-updatable (`STREAM_PARENT_IMMUTABLE=true`)
+- `income_sources` updated_at trigger -> `public.handle_updated_at()`
+- `income_source_streams` updated_at trigger -> `public.handle_updated_at()`
+- `REUSE_PUBLIC_HANDLE_UPDATED_AT=true`, `NEW_UPDATED_AT_FUNCTION=false`
+- Canonical RLS policies with `(SELECT auth.uid()) = user_id` for SELECT, INSERT, UPDATE; NO DELETE policy.
 - Tables and views exist with exact column definitions.
 - RLS enabled on all user-owned tables.
-- Exact SELECT, INSERT, UPDATE policies; NO DELETE policy.
 - Absence of `anon`/`PUBLIC` privileges.
 - Composite UNIQUE constraints and FKs with `ON DELETE RESTRICT`.
 - CHECK constraints on transaction type and stream-source hierarchy.
@@ -269,7 +325,7 @@ Phase 9 must not alter applied Phase 8 migration files:
 
 ---
 
-## 13. Explicit Phase 9 Non-Goals
+## 14. Explicit Phase 9 Non-Goals
 
 The following capabilities are explicitly out of scope for Phase 9 and must not be implemented:
 - YouTube OAuth, YouTube Data/Analytics API, AdSense API, automatic revenue synchronization.
@@ -282,7 +338,7 @@ The following capabilities are explicitly out of scope for Phase 9 and must not 
 
 ---
 
-## 14. Governance Status
+## 15. Governance Status
 
 ```text
 PHASE_8_OVERALL=PASS
