@@ -229,7 +229,7 @@ BEGIN
     WHERE tgname = 'trg_check_transfer_accounts_active'
       AND tgrelid = 'public.transfers'::regclass
       AND (tgtype & 1) = 1    -- FOR EACH ROW
-      AND (tgtype & 2) = 0    -- BEFORE
+      AND (tgtype & 2) = 2    -- BEFORE
       AND (tgtype & 4) = 4    -- INSERT
       AND (tgtype & 16) = 16; -- UPDATE
 

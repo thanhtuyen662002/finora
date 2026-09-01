@@ -125,10 +125,11 @@ check(19, "Structural DB verifier validates constraint definitions via pg_get_co
 // 20. Structural DB verifier validates trigger timing, events, and orientation
 const triggerSemanticsValid = dbVerifierContent.includes('trg_check_transfer_accounts_active') &&
   dbVerifierContent.includes('(tgtype & 1) = 1') &&
-  dbVerifierContent.includes('(tgtype & 2) = 0') &&
+  dbVerifierContent.includes('(tgtype & 2) = 2') &&
+  !dbVerifierContent.includes('(tgtype & 2) = 0') &&
   dbVerifierContent.includes('(tgtype & 4) = 4') &&
   dbVerifierContent.includes('(tgtype & 16) = 16');
-check(20, "Structural DB verifier validates trigger timing (BEFORE), events (INSERT, UPDATE), and row-level orientation", triggerSemanticsValid);
+check(20, "Structural DB verifier validates trigger timing (BEFORE), events (INSERT, UPDATE), and row-level orientation with correct bitmasks", triggerSemanticsValid);
 
 // 21. Transfer mutation input contract in src/features/transfers/transfers.ts does not expose currency_code
 const transferServiceContent = fs.readFileSync('src/features/transfers/transfers.ts', 'utf8');

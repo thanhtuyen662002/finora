@@ -660,8 +660,34 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
+## Phase 8 — Pass B — Trigger Bitmask Verifier Final Corrective
+Corrected trigger bitmask assertion in `scripts/verify-phase8-pass-b-db.sql` and updated regression checks.
+
+Implemented Corrective:
+- Fixed PostgreSQL trigger bitmask assertion in `scripts/verify-phase8-pass-b-db.sql`:
+  - `AND (tgtype & 2) = 2 -- BEFORE` (correcting `(tgtype & 2) = 0` which falsely failed valid BEFORE triggers).
+  - Preserved `(tgtype & 1) = 1` (FOR EACH ROW), `(tgtype & 4) = 4` (INSERT), and `(tgtype & 16) = 16` (UPDATE).
+- Updated regression test in `scripts/verify-phase8-pass-b-source.mjs`:
+  - Enforces `(tgtype & 2) = 2` and explicitly rejects `(tgtype & 2) = 0`.
+- Preserved pending additive migration `supabase/migrations/20260831150000_phase_8_transfer_trigger_search_path_hardening.sql` intact.
+- Preserved historical applied migration locks:
+  - `20260829000002` (`e046ea3f62aaa76f00295e68126ca29a48bfaa9b`)
+  - `20260831142135` (`5721bdff4ebe8d2850a6c0fe73eeb6bb66580a18`)
+  - `20260831144154` (`3ee23b513bcd65182afa613084dda8fbf5b40293`)
+
+Verification:
+- `scripts/verify-phase8-pass-b-source.mjs`: PASS (30/30 checks)
+- `scripts/verify-phase8-source.mjs`: PASS (35/35 checks)
+- `scripts/verify-phase8-ux-performance.mjs`: PASS (34/34 checks)
+- `tests/phase8-math.test.ts`: PASS
+- `tests/phase8-base-mode.test.ts`: PASS
+- `tests/phase8-cross-currency-transfers.test.ts`: PASS (24 domain tests + 2 pending markers)
+- `typecheck`: PASS
+- `lint`: PASS
+- `build`: PASS
+
 ## Next Recommended Action
-Phase 8 Pass B Structural Gate Final Hardening Corrective is complete in source code.
+Phase 8 Pass B Trigger Bitmask Verifier Final Corrective is complete in source code.
 Awaiting user deployment of pending search_path hardening migration (`20260831150000`) to Supabase project.
 
 ```text
