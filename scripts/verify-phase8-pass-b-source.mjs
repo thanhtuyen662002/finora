@@ -407,6 +407,31 @@ const closureReceiptAuthPass =
   closureReceiptContent.includes('PHASE_9_AUTHORIZED=true');
 check(58, "PHASE_8_CLOSURE_RECEIPT_FINAL_AUTHORIZATION: Closure receipt records full PASS and Phase 9 authorization", closureReceiptAuthPass);
 
+// 59. CLOSURE_RECEIPT_PRECISION_FACTS
+const precisionFactsValid =
+  closureReceiptContent.includes('numeric(20,4)') &&
+  closureReceiptContent.includes('numeric(30,12)') &&
+  !closureReceiptContent.includes('numeric(18,4)') &&
+  !closureReceiptContent.includes('numeric(18,12)');
+check(59, "CLOSURE_RECEIPT_PRECISION_FACTS: Closure receipt accurately specifies numeric(20,4) and numeric(30,12) without stale precision strings", precisionFactsValid);
+
+// 60. CLOSURE_RECEIPT_CHECK_NAMES
+const checkNamesValid =
+  closureReceiptContent.includes('chk_transfers_cross_currency_conversion') &&
+  closureReceiptContent.includes('chk_transfers_same_currency_invariant') &&
+  closureReceiptContent.includes('chk_transfers_currency_compatibility') &&
+  !closureReceiptContent.includes('chk_transfers_conversion_rate') &&
+  !closureReceiptContent.includes('chk_transfers_same_currency_rate_and_dest');
+check(60, "CLOSURE_RECEIPT_CHECK_NAMES: Closure receipt accurately specifies production CHECK constraint names and rejects stale identifiers", checkNamesValid);
+
+// 61. CLOSURE_RECEIPT_FK_NAMES
+const fkNamesValid =
+  closureReceiptContent.includes('transfers_from_account_fkey') &&
+  closureReceiptContent.includes('transfers_to_account_fkey') &&
+  !closureReceiptContent.includes('fk_transfers_source_account_currency') &&
+  !closureReceiptContent.includes('fk_transfers_destination_account_currency');
+check(61, "CLOSURE_RECEIPT_FK_NAMES: Closure receipt accurately specifies production FK names and rejects stale identifiers", fkNamesValid);
+
 console.log(`\nPHASE_8_PASS_B_RUNTIME_HARNESS_SOURCE=PASS`);
 console.log(`PHASE_8_PASS_B_SOURCE_CHECK_COUNT: ${passed}/${total}`);
 

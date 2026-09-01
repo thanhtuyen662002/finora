@@ -47,11 +47,11 @@ Production migration chain:
 ## Remote database structural gate
 
 Accepted structural facts:
-- `transfers` exact numeric precision = PASS (`numeric(18,4)` amounts, `numeric(18,12)` rate)
-- Cross-currency conversion CHECK = PASS (`chk_transfers_conversion_rate`)
-- Same-currency invariant CHECK = PASS (`chk_transfers_same_currency_rate_and_dest`)
+- `transfers` exact numeric precision = PASS (amount = `numeric(20,4)`, destination_amount = `numeric(20,4)`, exchange_rate = `numeric(30,12)`)
+- Cross-currency conversion CHECK = PASS (`chk_transfers_cross_currency_conversion`)
+- Same-currency invariant CHECK = PASS (`chk_transfers_same_currency_invariant`)
 - Currency compatibility CHECK = PASS (`chk_transfers_currency_compatibility`)
-- Composite user/currency account FKs = PASS (`fk_transfers_source_account_currency`, `fk_transfers_destination_account_currency`)
+- Composite user/currency account FKs = PASS (`transfers_from_account_fkey`, `transfers_to_account_fkey`)
 - Foreign key deletion semantics = `ON DELETE RESTRICT` (PASS)
 - Row Level Security (RLS) enabled on `public.transfers` = PASS
 - Authenticated SELECT policy with `auth.uid() = user_id` = PASS
@@ -117,8 +117,8 @@ Owner-attested live authenticated cross-currency transfer executed via deployed 
   - Profiles query: HTTP 200
   - User settings query: HTTP 200
 - Exact balance verification:
-  - Source USD account: opening `20.0000` - transfer `10.0000` = `10.0000` (MATCH)
-  - Destination VND account: opening `0.0000` - net transactions `50000.0000` + transfer `260440.0000` = `210440.0000` (MATCH)
+  - Source USD account: opening_balance = `20.0000` - outgoing transfer `10.0000` = `10.0000` (MATCH)
+  - Destination VND account: opening_balance = `0.0000`, existing net_transactions = `-50000.0000`, incoming transfer = `260440.0000`, expected/current balance = `210440.0000` (account_balances = `210440.0000`, MATCH = true)
 
 ```text
 LIVE_AUTHENTICATED_CREATE=PASS
