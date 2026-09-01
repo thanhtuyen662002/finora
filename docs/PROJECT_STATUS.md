@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 8 — Multi-Currency + FX
-- **Phase status:** PHASE_8_PASS_A_BASE_MODE_FINAL_CORRECTIVE_AND_BRAND_THEME_POLISH
+- **Current phase:** Phase 8 — Multi-Currency + FX (CLOSED)
+- **Phase status:** PHASE_8_CLOSED_PHASE_9_AUTHORIZED
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -34,6 +34,8 @@
 - **Phase 6 source receipt:** `docs/receipts/PHASE_6_SOURCE_GATE.md`
 - **Phase 6 closure receipt SHA:** `d10b541e66c5dd950d1dde3e84d8922c07d695fe`
 - **Phase 6 closure receipt:** `docs/receipts/PHASE_6_CLOSURE.md`
+- **Accepted Phase 8 pre-closure implementation SHA:** `0294c5faaa751b950aae152e1ec1789ff5b32891`
+- **Phase 8 closure receipt:** `docs/receipts/PHASE_8_CLOSURE.md`
 
 ## Phase 2 Accepted Baseline
 
@@ -730,8 +732,17 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
+## Phase 8 — Multi-Currency + FX — Final Closure Receipt
+
+Phase 8 is CLOSED.
+Reopen Phase 8 only if a concrete regression is found.
+
+Accepted pre-closure implementation SHA: `0294c5faaa751b950aae152e1ec1789ff5b32891`
+Closure receipt: `docs/receipts/PHASE_8_CLOSURE.md`
+
 ## Next Recommended Action
-Execute `scripts/verify-phase8-pass-b-runtime.sql` against remote Supabase project to verify the Authenticated Two-User Runtime Gate.
+Phase 9 is authorized for contract definition and subsequent implementation.
+Phase 9 implementation has not started in this closure task.
 
 ```text
 PHASE_8_PASS_A=PASS
@@ -741,8 +752,11 @@ PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS
 PHASE_8_PASS_B_CATALOG_STRUCTURAL_ASSERTIONS=PASS
 PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS
 PHASE_8_PASS_B_SECURITY_ADVISOR_PASS_B_SCOPE=PASS
-PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING
-PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING
-PHASE_8_OVERALL=PARTIAL
-PHASE_9_AUTHORIZED=false
+PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS
+PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS
+PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS
+PHASE_8_PASS_B=PASS
+PHASE_8_OVERALL=PASS
+FINORA_PHASE_8=PASS
+PHASE_9_AUTHORIZED=true
 ```

@@ -138,19 +138,23 @@ const hasGovernancePass =
   lastTextBlock.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
   lastTextBlock.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
   lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING') &&
-  lastTextBlock.includes('PHASE_8_OVERALL=PARTIAL') &&
-  lastTextBlock.includes('PHASE_9_AUTHORIZED=false') &&
-  !lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
-  !lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
-  !lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
-check(27, "PROJECT_STATUS governance truthful current block", hasGovernancePass);
+  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B=PASS') &&
+  lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
+  lastTextBlock.includes('FINORA_PHASE_8=PASS') &&
+  lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
+check(27, "PROJECT_STATUS governance truthful final closure block", hasGovernancePass);
 
 const adr = fs.readFileSync('docs/DECISIONS.md', 'utf-8');
 const dbDocs = fs.readFileSync('docs/DATABASE.md', 'utf-8');
 check(28, "ADR-013 and DATABASE docs exist with required semantics", adr.includes('ADR-013') && dbDocs.includes('transaction_fx_snapshots'));
-check(29, "Phase 9 remains unauthorized", lastTextBlock.includes('PHASE_9_AUTHORIZED=false') && !lastTextBlock.includes('PHASE_9_AUTHORIZED=true'));
+check(29, "Phase 8 closure receipt exists with accepted SHA and Phase 9 authorized",
+  fs.existsSync('docs/receipts/PHASE_8_CLOSURE.md') &&
+  fs.readFileSync('docs/receipts/PHASE_8_CLOSURE.md', 'utf8').includes('0294c5faaa751b950aae152e1ec1789ff5b32891') &&
+  lastTextBlock.includes('PHASE_9_AUTHORIZED=true')
+);
 
 check(30, "Pre-migration explicit-select of auto_fx_enabled is forbidden", !reportEngine.includes("select('base_currency, timezone, auto_fx_enabled')"));
 

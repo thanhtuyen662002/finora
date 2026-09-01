@@ -158,16 +158,26 @@ check(25, "ADR-014 recorded in docs/DECISIONS.md", decisionsContent.includes('AD
 const dbDocsContent = fs.readFileSync('docs/DATABASE.md', 'utf8');
 check(26, "DATABASE.md documents transfer table constraints and triggers", dbDocsContent.includes('chk_transfers_same_currency_invariant'));
 
-// 27. PROJECT_STATUS.md contains runtime-pending governance status
+// 27. PROJECT_STATUS.md contains final closure governance status
 const statusContent = fs.readFileSync('docs/PROJECT_STATUS.md', 'utf8');
 const textBlocks = [...statusContent.matchAll(/```text([\s\S]*?)```/g)];
 const lastTextBlock = textBlocks.length > 0 ? textBlocks[textBlocks.length - 1][1].trim() : '';
-const governanceStatusValid = lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
+const governanceStatusValid =
+  lastTextBlock.includes('PHASE_8_PASS_A=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_REMOTE_MIGRATIONS=PASS') &&
   lastTextBlock.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
-  lastTextBlock.includes('PHASE_8_OVERALL=PARTIAL') &&
-  lastTextBlock.includes('PHASE_9_AUTHORIZED=false');
-check(27, "PROJECT_STATUS.md contains verified structural and pending runtime governance status", governanceStatusValid);
+  lastTextBlock.includes('PHASE_8_PASS_B_CATALOG_STRUCTURAL_ASSERTIONS=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_SECURITY_ADVISOR_PASS_B_SCOPE=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B=PASS') &&
+  lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
+  lastTextBlock.includes('FINORA_PHASE_8=PASS') &&
+  lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
+check(27, "PROJECT_STATUS.md contains verified final closure governance status", governanceStatusValid);
 
 // 28. Brand PNG assets sha256 hashes match regression locks
 const iconBuf = fs.readFileSync('public/brand/finora-icon.png');
@@ -376,6 +386,26 @@ check(55, "DELETE_REJECTION_CAUSE_VALIDATED: DELETE authority test validates exa
 // 56. UNEXPECTED_ERROR_FALSE_PASS_PREVENTED
 const unexpectedErrorsReraised = (runtimeHarnessContent.match(/RAISE;/g) || []).length >= 6;
 check(56, "UNEXPECTED_ERROR_FALSE_PASS_PREVENTED: Unexpected exception classes are re-raised to prevent false PASS", unexpectedErrorsReraised);
+
+// 57. PHASE_8_CLOSURE_RECEIPT_EXISTS
+const closureReceiptPath = 'docs/receipts/PHASE_8_CLOSURE.md';
+const closureReceiptExists = fs.existsSync(closureReceiptPath);
+const closureReceiptContent = closureReceiptExists ? fs.readFileSync(closureReceiptPath, 'utf8') : '';
+check(57, "PHASE_8_CLOSURE_RECEIPT_EXISTS: docs/receipts/PHASE_8_CLOSURE.md exists and contains accepted implementation SHA",
+  closureReceiptExists &&
+  closureReceiptContent.includes('0294c5faaa751b950aae152e1ec1789ff5b32891')
+);
+
+// 58. PHASE_8_CLOSURE_RECEIPT_FINAL_AUTHORIZATION
+const closureReceiptAuthPass =
+  closureReceiptContent.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  closureReceiptContent.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
+  closureReceiptContent.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
+  closureReceiptContent.includes('PHASE_8_PASS_B=PASS') &&
+  closureReceiptContent.includes('PHASE_8_OVERALL=PASS') &&
+  closureReceiptContent.includes('FINORA_PHASE_8=PASS') &&
+  closureReceiptContent.includes('PHASE_9_AUTHORIZED=true');
+check(58, "PHASE_8_CLOSURE_RECEIPT_FINAL_AUTHORIZATION: Closure receipt records full PASS and Phase 9 authorization", closureReceiptAuthPass);
 
 console.log(`\nPHASE_8_PASS_B_RUNTIME_HARNESS_SOURCE=PASS`);
 console.log(`PHASE_8_PASS_B_SOURCE_CHECK_COUNT: ${passed}/${total}`);

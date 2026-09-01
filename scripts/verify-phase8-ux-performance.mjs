@@ -168,13 +168,13 @@ const projectStatusPass =
   lastTextBlock.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
   lastTextBlock.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
   lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING') &&
-  lastTextBlock.includes('PHASE_8_OVERALL=PARTIAL') &&
-  lastTextBlock.includes('PHASE_9_AUTHORIZED=false') &&
-  !lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
-  !lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
-  !lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
+  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B=PASS') &&
+  lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
+  lastTextBlock.includes('FINORA_PHASE_8=PASS') &&
+  lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
 runCheck(17, 'PROJECT_STATUS authoritative current gate block contains governance baseline', 'stale gate ledger', projectStatusPass, 'PROJECT_STATUS gate ledger retains stale BLOCKED_NOT_APPLIED or NOT_RUN entries');
 
 // 18. BASE discoverable on native-first Reports initial state
