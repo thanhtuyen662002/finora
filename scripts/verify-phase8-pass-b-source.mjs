@@ -158,9 +158,16 @@ check(25, "ADR-014 recorded in docs/DECISIONS.md", decisionsContent.includes('AD
 const dbDocsContent = fs.readFileSync('docs/DATABASE.md', 'utf8');
 check(26, "DATABASE.md documents transfer table constraints and triggers", dbDocsContent.includes('chk_transfers_same_currency_invariant'));
 
-// 27. PROJECT_STATUS.md contains remote-pending governance status
+// 27. PROJECT_STATUS.md contains runtime-pending governance status
 const statusContent = fs.readFileSync('docs/PROJECT_STATUS.md', 'utf8');
-check(27, "PROJECT_STATUS.md contains remote-pending status", statusContent.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PENDING'));
+const textBlocks = [...statusContent.matchAll(/```text([\s\S]*?)```/g)];
+const lastTextBlock = textBlocks.length > 0 ? textBlocks[textBlocks.length - 1][1].trim() : '';
+const governanceStatusValid = lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
+  lastTextBlock.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
+  lastTextBlock.includes('PHASE_8_OVERALL=PARTIAL') &&
+  lastTextBlock.includes('PHASE_9_AUTHORIZED=false');
+check(27, "PROJECT_STATUS.md contains verified structural and pending runtime governance status", governanceStatusValid);
 
 // 28. Brand PNG assets sha256 hashes match regression locks
 const iconBuf = fs.readFileSync('public/brand/finora-icon.png');
@@ -228,7 +235,91 @@ const accountBalMatches = p5AccountBalCols.length === 4 &&
 
 check(30, "account_balances view in Phase 8 preserves exact 4-column Phase 5 structure", accountBalMatches);
 
-console.log(`\nPHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE_SOURCE=PASS`);
+// 31. Runtime harness file scripts/verify-phase8-pass-b-runtime.sql exists
+const runtimeHarnessPath = 'scripts/verify-phase8-pass-b-runtime.sql';
+const runtimeHarnessContent = fs.existsSync(runtimeHarnessPath) ? fs.readFileSync(runtimeHarnessPath, 'utf8') : '';
+check(31, "RUNTIME_HARNESS_EXISTS: scripts/verify-phase8-pass-b-runtime.sql exists", Boolean(runtimeHarnessContent));
+
+// 32. Runtime harness uses transactional encapsulation (BEGIN; ... ROLLBACK;)
+const isTransactional = runtimeHarnessContent.startsWith('BEGIN;') || runtimeHarnessContent.includes('\nBEGIN;');
+const endsWithRollback = runtimeHarnessContent.includes('ROLLBACK;') && !runtimeHarnessContent.includes('COMMIT;');
+check(32, "RUNTIME_TRANSACTION_ISOLATION: Harness executes strictly inside transaction ending with ROLLBACK", isTransactional && endsWithRollback);
+
+// 33. Runtime harness binds two distinct auth users
+const bindsTwoUsers = runtimeHarnessContent.includes('auth.users') &&
+  runtimeHarnessContent.includes('v_user_a') &&
+  runtimeHarnessContent.includes('v_user_b') &&
+  runtimeHarnessContent.includes('cardinality(v_users)');
+check(33, "RUNTIME_TWO_USER_BINDING: Harness queries and binds two distinct auth.users safely", bindsTwoUsers);
+
+// 34. Runtime harness switches role and validates auth.uid()
+const switchesRoleAndUid = (runtimeHarnessContent.includes('SET LOCAL ROLE authenticated') || runtimeHarnessContent.includes('EXECUTE \'SET LOCAL ROLE authenticated\'')) &&
+  runtimeHarnessContent.includes('request.jwt.claim.sub') &&
+  runtimeHarnessContent.includes('auth.uid()');
+check(34, "RUNTIME_AUTH_SWITCH: Harness switches to authenticated role and verifies auth.uid()", switchesRoleAndUid);
+
+// 35. Runtime harness tests same-currency transfer and transfer_details view
+const testsSameCurrency = runtimeHarnessContent.includes('RUNTIME_SAME_CURRENCY=PASS') &&
+  runtimeHarnessContent.includes('public.transfers') &&
+  runtimeHarnessContent.includes('public.transfer_details');
+check(35, "RUNTIME_SAME_CURRENCY_TEST: Harness tests same-currency transfer in table and view", testsSameCurrency);
+
+// 36. Runtime harness tests cross-currency transfer and dual-currency balance effects
+const testsCrossCurrency = runtimeHarnessContent.includes('RUNTIME_USD_TO_VND=PASS') &&
+  runtimeHarnessContent.includes('RUNTIME_DUAL_CURRENCY_BALANCES=PASS') &&
+  runtimeHarnessContent.includes('public.account_balances');
+check(36, "RUNTIME_CROSS_CURRENCY_TEST: Harness tests cross-currency transfer and dual-currency balance impacts", testsCrossCurrency);
+
+// 37. Runtime harness tests void and restore lifecycle
+const testsVoidRestore = runtimeHarnessContent.includes('RUNTIME_VOID=PASS') &&
+  runtimeHarnessContent.includes('RUNTIME_RESTORE=PASS') &&
+  runtimeHarnessContent.includes('is_voided = true') &&
+  runtimeHarnessContent.includes('is_voided = false');
+check(37, "RUNTIME_VOID_RESTORE_TEST: Harness validates void and restore state transitions and balance rollbacks", testsVoidRestore);
+
+// 38. Runtime harness tests historical FX stability
+const testsHistoricalFx = runtimeHarnessContent.includes('RUNTIME_HISTORICAL_FX_STABLE=PASS') &&
+  runtimeHarnessContent.includes('exchange_rate') &&
+  runtimeHarnessContent.includes('destination_amount');
+check(38, "RUNTIME_HISTORICAL_FX_TEST: Harness asserts historical exchange rate and destination amount remain immutable", testsHistoricalFx);
+
+// 39. Runtime harness tests cross-user SELECT isolation
+const testsCrossUserSelect = runtimeHarnessContent.includes('RUNTIME_USER_B_CANNOT_READ_A=PASS') &&
+  runtimeHarnessContent.includes('public.transfers') &&
+  runtimeHarnessContent.includes('public.transfer_details');
+check(39, "RUNTIME_CROSS_USER_SELECT: Harness proves USER_B cannot read USER_A transfer in table or view", testsCrossUserSelect);
+
+// 40. Runtime harness tests cross-user UPDATE isolation
+const testsCrossUserUpdate = runtimeHarnessContent.includes('RUNTIME_USER_B_CANNOT_UPDATE_A=PASS') &&
+  runtimeHarnessContent.includes('ROW_COUNT');
+check(40, "RUNTIME_CROSS_USER_UPDATE: Harness proves USER_B cannot mutate USER_A transfer", testsCrossUserUpdate);
+
+// 41. Runtime harness tests cross-user account insertion denial
+const testsCrossUserAccount = runtimeHarnessContent.includes('RUNTIME_CROSS_USER_ACCOUNT_REJECTED=PASS') &&
+  runtimeHarnessContent.includes('v_acc_a_usd') &&
+  runtimeHarnessContent.includes('v_user_b');
+check(41, "RUNTIME_CROSS_USER_ACCOUNT_INSERT: Harness proves USER_B cannot create transfer on USER_A account", testsCrossUserAccount);
+
+// 42. Runtime harness tests DELETE authority rejection
+const testsNoDelete = runtimeHarnessContent.includes('RUNTIME_DELETE_REJECTED=PASS') &&
+  runtimeHarnessContent.includes('DELETE FROM public.transfers');
+check(42, "RUNTIME_NO_DELETE: Harness proves authenticated role cannot DELETE transfers", testsNoDelete);
+
+// 43. Runtime harness tests negative database integrity matrix
+const testsNegativeMatrix = runtimeHarnessContent.includes('RUNTIME_BAD_SAME_CURRENCY_RATE_REJECTED=PASS') &&
+  runtimeHarnessContent.includes('RUNTIME_BAD_SAME_CURRENCY_DESTINATION_REJECTED=PASS') &&
+  runtimeHarnessContent.includes('RUNTIME_BAD_CROSS_CURRENCY_DESTINATION_REJECTED=PASS') &&
+  runtimeHarnessContent.includes('RUNTIME_ACCOUNT_CURRENCY_MISMATCH_REJECTED=PASS') &&
+  runtimeHarnessContent.includes('RUNTIME_SAME_ACCOUNT_REJECTED=PASS') &&
+  runtimeHarnessContent.includes('RUNTIME_ARCHIVED_ACCOUNT_REJECTED=PASS');
+check(43, "RUNTIME_NEGATIVE_INTEGRITY: Harness tests complete negative matrix of invalid transfers and archived accounts", testsNegativeMatrix);
+
+// 44. Runtime harness tests transfer/transaction isolation
+const testsTxIsolation = runtimeHarnessContent.includes('RUNTIME_TRANSFER_DOES_NOT_CREATE_TRANSACTION=PASS') &&
+  runtimeHarnessContent.includes('public.transactions');
+check(44, "RUNTIME_TX_ISOLATION: Harness validates transfers do not mutate or create records in transactions table", testsTxIsolation);
+
+console.log(`\nPHASE_8_PASS_B_RUNTIME_HARNESS_SOURCE=PASS`);
 console.log(`PHASE_8_PASS_B_SOURCE_CHECK_COUNT: ${passed}/${total}`);
 
 if (passed !== total) {

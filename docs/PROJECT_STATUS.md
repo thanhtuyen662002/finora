@@ -686,17 +686,41 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
+## Phase 8 — Pass B — Authenticated Two-User Runtime Gate Harness
+Created transactional SQL verification harness `scripts/verify-phase8-pass-b-runtime.sql` and updated source verifiers to validate RLS policies, dual-currency balances, void/restore lifecycle, and negative constraints under authenticated PostgreSQL roles.
+
+Implemented:
+- Transactional test harness `scripts/verify-phase8-pass-b-runtime.sql` wrapped in `BEGIN; ... ROLLBACK;`:
+  - Dynamically discovers 2 real users from `auth.users` without hardcoding UUIDs or leaking PII.
+  - Provisions fixture accounts with `__PHASE8_RUNTIME_GATE__` prefix for USER_A and USER_B.
+  - Simulates authenticated role sessions using `SET LOCAL ROLE authenticated` and `request.jwt.claim.sub`.
+  - Asserts same-currency transfer persistence and `public.transfer_details` view querying.
+  - Asserts cross-currency transfer persistence (USD -> VND) and verifies exact dual-currency balance deductions and additions in `public.account_balances`.
+  - Asserts voiding (`is_voided = true`) and restoring (`is_voided = false`) with exact balance rollbacks and immutable historical FX preservation.
+  - Enforces cross-user isolation: proves USER_B cannot SELECT or UPDATE USER_A transfers, and cannot create transfers referencing USER_A accounts.
+  - Enforces absence of DELETE authority on `public.transfers` for authenticated users.
+  - Evaluates complete negative integrity matrix (bad same-currency rate, inconsistent destination amount, account currency mismatch, same account, archived account).
+  - Confirms transfers do not alter `public.transactions` table.
+- Updated `scripts/verify-phase8-pass-b-source.mjs` with 44 deterministic checks validating runtime harness structure and governance status (44/44 PASS).
+
+Verification:
+- `scripts/verify-phase8-pass-b-source.mjs`: PASS (44/44 checks)
+- `tests/phase8-cross-currency-transfers.test.ts`: PASS (24 domain tests + 2 pending markers)
+- `typecheck`: PASS
+- `lint`: PASS
+- `build`: PASS
+
 ## Next Recommended Action
-Phase 8 Pass B Trigger Bitmask Verifier Final Corrective is complete in source code.
-Awaiting user deployment of pending search_path hardening migration (`20260831150000`) to Supabase project.
+Execute `scripts/verify-phase8-pass-b-runtime.sql` against remote Supabase project to verify the Authenticated Two-User Runtime Gate.
 
 ```text
 PHASE_8_PASS_A=PASS
 PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY
 PHASE_8_PASS_B_REMOTE_MIGRATIONS=PASS
+PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS
 PHASE_8_PASS_B_CATALOG_STRUCTURAL_ASSERTIONS=PASS
-PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PENDING
-PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PENDING
+PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS
+PHASE_8_PASS_B_SECURITY_ADVISOR_PASS_B_SCOPE=PASS
 PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING
 PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING
 PHASE_8_OVERALL=PARTIAL
