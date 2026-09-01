@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 8 — Multi-Currency + FX (CLOSED)
-- **Phase status:** PHASE_8_CLOSED_PHASE_9_AUTHORIZED
+- **Current phase:** Phase 9 — Income Sources & Revenue Attribution
+- **Phase status:** PHASE_9_CONTRACT_DEFINED_IMPLEMENTATION_PENDING
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -740,10 +740,6 @@ Reopen Phase 8 only if a concrete regression is found.
 Accepted pre-closure implementation SHA: `0294c5faaa751b950aae152e1ec1789ff5b32891`
 Closure receipt: `docs/receipts/PHASE_8_CLOSURE.md`
 
-## Next Recommended Action
-Phase 9 is authorized for contract definition and subsequent implementation.
-Phase 9 implementation has not started in this closure task.
-
 ```text
 PHASE_8_PASS_A=PASS
 PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY
@@ -759,4 +755,45 @@ PHASE_8_PASS_B=PASS
 PHASE_8_OVERALL=PASS
 FINORA_PHASE_8=PASS
 PHASE_9_AUTHORIZED=true
+```
+
+## Phase 9 — Income Sources & Revenue Attribution — Contract Definition
+
+The authoritative contract for Phase 9 has been defined and locked in `docs/PHASE_9_CONTRACT.md`.
+Architectural decision recorded in `docs/DECISIONS.md` as `ADR-015`.
+
+Contract specifications established:
+1. Income sources and streams are pure attribution metadata, not an authoritative financial ledger.
+2. Zero-delta financial invariant: `ACCOUNT_BALANCE_DELTA=0`, `NET_WORTH_DELTA=0`, `INCOME_TOTAL_DELTA=0`, `EXPENSE_TOTAL_DELTA=0`, `FX_SNAPSHOT_DELTA=0`.
+3. Mandatory composite ownership FKs (`ON DELETE RESTRICT`) preventing cross-user and stream-source mismatch attribution.
+4. Active attribution trigger enforcing soft-archived entities cannot be attached to new or updated transactions.
+5. Strict 17-column prefix lock preserved on `public.transaction_details` view; Phase 9 columns strictly appended at positions 18-22.
+6. Exact-money arithmetic enforced; floats prohibited in all financial paths.
+7. Phase 8 FX engine and `transaction_fx_snapshots` reused without secondary providers.
+8. Generic stream hierarchy without platform-specific tables (`youtube_channels` forbidden).
+9. YouTube API / AdSense external synchronization explicitly marked out of scope.
+10. Two-user runtime test matrix and structural gate defined.
+11. Phase 8 migration blobs locked.
+
+Phase 9 implementation has NOT started in this contract task.
+
+## Next Recommended Action
+Audit and accept the Phase 9 contract before implementation.
+
+```text
+PHASE_8_OVERALL=PASS
+FINORA_PHASE_8=PASS
+
+PHASE_9_AUTHORIZED=true
+PHASE_9_SCOPE=INCOME_SOURCES_REVENUE_ATTRIBUTION
+PHASE_9_CONTRACT=PASS_CODE_ONLY
+PHASE_9_IMPLEMENTATION_AUTHORIZED=false
+PHASE_9_SOURCE_GATE=PENDING
+PHASE_9_REMOTE_DATABASE=PENDING
+PHASE_9_STRUCTURAL_GATE=PENDING
+PHASE_9_TWO_USER_RLS=PENDING
+PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING
+PHASE_9_OVERALL=PARTIAL
+
+PHASE_10_AUTHORIZED=false
 ```

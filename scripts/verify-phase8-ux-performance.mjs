@@ -161,20 +161,20 @@ runCheck(16, 'Phase 7 and Phase 8 migration blobs match authority SHAs', 'migrat
 // 17. PROJECT_STATUS authoritative gate block truthful
 const projectStatusContent = getFileContent('docs/PROJECT_STATUS.md');
 const textBlocks = [...projectStatusContent.matchAll(/```text([\s\S]*?)```/g)];
-const lastTextBlock = textBlocks.length > 0 ? textBlocks[textBlocks.length - 1][1].trim() : '';
+const phase8Block = textBlocks.map(b => b[1].trim()).find(b => b.includes('PHASE_8_PASS_A=PASS')) || '';
 
 const projectStatusPass =
-  lastTextBlock.includes('PHASE_8_PASS_A=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B=PASS') &&
-  lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
-  lastTextBlock.includes('FINORA_PHASE_8=PASS') &&
-  lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
+  phase8Block.includes('PHASE_8_PASS_A=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
+  phase8Block.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B=PASS') &&
+  phase8Block.includes('PHASE_8_OVERALL=PASS') &&
+  phase8Block.includes('FINORA_PHASE_8=PASS') &&
+  phase8Block.includes('PHASE_9_AUTHORIZED=true');
 runCheck(17, 'PROJECT_STATUS authoritative current gate block contains governance baseline', 'stale gate ledger', projectStatusPass, 'PROJECT_STATUS gate ledger retains stale BLOCKED_NOT_APPLIED or NOT_RUN entries');
 
 // 18. BASE discoverable on native-first Reports initial state

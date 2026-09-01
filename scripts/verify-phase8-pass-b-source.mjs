@@ -161,22 +161,22 @@ check(26, "DATABASE.md documents transfer table constraints and triggers", dbDoc
 // 27. PROJECT_STATUS.md contains final closure governance status
 const statusContent = fs.readFileSync('docs/PROJECT_STATUS.md', 'utf8');
 const textBlocks = [...statusContent.matchAll(/```text([\s\S]*?)```/g)];
-const lastTextBlock = textBlocks.length > 0 ? textBlocks[textBlocks.length - 1][1].trim() : '';
+const phase8Block = textBlocks.map(b => b[1].trim()).find(b => b.includes('PHASE_8_PASS_A=PASS')) || '';
 const governanceStatusValid =
-  lastTextBlock.includes('PHASE_8_PASS_A=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_REMOTE_MIGRATIONS=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_CATALOG_STRUCTURAL_ASSERTIONS=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_SECURITY_ADVISOR_PASS_B_SCOPE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
-  lastTextBlock.includes('PHASE_8_PASS_B=PASS') &&
-  lastTextBlock.includes('PHASE_8_OVERALL=PASS') &&
-  lastTextBlock.includes('FINORA_PHASE_8=PASS') &&
-  lastTextBlock.includes('PHASE_9_AUTHORIZED=true');
+  phase8Block.includes('PHASE_8_PASS_A=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY') &&
+  phase8Block.includes('PHASE_8_PASS_B_REMOTE_MIGRATIONS=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_CATALOG_STRUCTURAL_ASSERTIONS=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_SECURITY_ADVISOR_PASS_B_SCOPE=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_VOID_RESTORE_RUNTIME=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PASS') &&
+  phase8Block.includes('PHASE_8_PASS_B=PASS') &&
+  phase8Block.includes('PHASE_8_OVERALL=PASS') &&
+  phase8Block.includes('FINORA_PHASE_8=PASS') &&
+  phase8Block.includes('PHASE_9_AUTHORIZED=true');
 check(27, "PROJECT_STATUS.md contains verified final closure governance status", governanceStatusValid);
 
 // 28. Brand PNG assets sha256 hashes match regression locks
