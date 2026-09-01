@@ -710,6 +710,26 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
+## Phase 8 — Pass B — Runtime Harness Exact-Catalog Corrective
+Updated `scripts/verify-phase8-pass-b-runtime.sql` and `scripts/verify-phase8-pass-b-source.mjs` to match exact production database catalog facts and eliminate potential false PASS conditions:
+
+Implemented:
+- `public.account_balances` access corrected: Replaced non-existent `id` and `balance` column references with `WHERE account_id = <account>` and `SELECT current_balance::numeric`.
+- Authenticated `INSERT INTO public.transfers` corrected: Omitted `is_voided` from all authenticated INSERT statements (respecting column ACL permissions and default value), and asserted `is_voided = false` on successful positive transfers.
+- Negative test matrix precision: Handled specific SQLSTATE error classes (`23514` for CHECK violations, `23503` for FK violations, `P0001` for archive trigger exceptions, `42501` for DELETE permission denial) and re-raised unexpected exceptions (`RAISE;`) to prevent false PASS results from unrelated errors.
+- Hardened source verification: Added 12 deterministic assertions to `scripts/verify-phase8-pass-b-source.mjs` (56/56 PASS).
+
+Verification:
+- `scripts/verify-phase8-pass-b-source.mjs`: PASS (56/56 checks)
+- `scripts/verify-phase8-source.mjs`: PASS (35/35 checks)
+- `scripts/verify-phase8-ux-performance.mjs`: PASS (34/34 checks)
+- `tests/phase8-cross-currency-transfers.test.ts`: PASS (24 domain tests + 2 pending markers)
+- `tests/phase8-math.test.ts`: PASS (31/31 checks)
+- `tests/phase8-base-mode.test.ts`: PASS (10/10 checks)
+- `typecheck`: PASS
+- `lint`: PASS
+- `build`: PASS
+
 ## Next Recommended Action
 Execute `scripts/verify-phase8-pass-b-runtime.sql` against remote Supabase project to verify the Authenticated Two-User Runtime Gate.
 

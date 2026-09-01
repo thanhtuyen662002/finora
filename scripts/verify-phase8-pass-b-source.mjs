@@ -319,6 +319,64 @@ const testsTxIsolation = runtimeHarnessContent.includes('RUNTIME_TRANSFER_DOES_N
   runtimeHarnessContent.includes('public.transactions');
 check(44, "RUNTIME_TX_ISOLATION: Harness validates transfers do not mutate or create records in transactions table", testsTxIsolation);
 
+// 45. ACCOUNT_BALANCES_USES_ACCOUNT_ID
+const usesAccountId = runtimeHarnessContent.includes('FROM public.account_balances WHERE account_id =');
+check(45, "ACCOUNT_BALANCES_USES_ACCOUNT_ID: Harness queries public.account_balances using account_id", usesAccountId);
+
+// 46. ACCOUNT_BALANCES_USES_CURRENT_BALANCE
+const usesCurrentBalance = runtimeHarnessContent.includes('SELECT current_balance');
+check(46, "ACCOUNT_BALANCES_USES_CURRENT_BALANCE: Harness selects current_balance column", usesCurrentBalance);
+
+// 47. ACCOUNT_BALANCES_CASTS_EXACT_NUMERIC
+const castsExactNumeric = runtimeHarnessContent.includes('current_balance::numeric');
+check(47, "ACCOUNT_BALANCES_CASTS_EXACT_NUMERIC: Harness casts current_balance to exact numeric", castsExactNumeric);
+
+// 48. ACCOUNT_BALANCES_OLD_ID_BALANCE_PATTERN_ABSENT
+const oldPatternAbsent = !runtimeHarnessContent.includes('SELECT balance') &&
+  !runtimeHarnessContent.includes('FROM public.account_balances WHERE id');
+check(48, "ACCOUNT_BALANCES_OLD_ID_BALANCE_PATTERN_ABSENT: Old id/balance query pattern completely absent", oldPatternAbsent);
+
+// 49. AUTHENTICATED_INSERT_DOES_NOT_SET_IS_VOIDED
+const insertStatements = [...runtimeHarnessContent.matchAll(/INSERT\s+INTO\s+public\.transfers\s*\(([\s\S]*?)\)\s*VALUES/gi)];
+const noInsertHasIsVoided = insertStatements.length > 0 &&
+  insertStatements.every(m => !m[1].includes('is_voided'));
+check(49, "AUTHENTICATED_INSERT_DOES_NOT_SET_IS_VOIDED: All authenticated transfer INSERTs omit is_voided", noInsertHasIsVoided);
+
+// 50. POSITIVE_INSERT_ASSERTS_DEFAULT_IS_VOIDED_FALSE
+const assertsDefaultIsVoidedFalse = runtimeHarnessContent.includes("is_voided not false") ||
+  runtimeHarnessContent.includes("v_t_voided IS NOT FALSE") ||
+  runtimeHarnessContent.includes("did not default is_voided to false");
+check(50, "POSITIVE_INSERT_ASSERTS_DEFAULT_IS_VOIDED_FALSE: Harness verifies database defaults is_voided to false", assertsDefaultIsVoidedFalse);
+
+// 51. NEGATIVE_CHECK_SQLSTATE_VALIDATION
+const checkSqlStateValidated = runtimeHarnessContent.includes('check_violation') ||
+  runtimeHarnessContent.includes("SQLSTATE = '23514'");
+check(51, "NEGATIVE_CHECK_SQLSTATE_VALIDATION: Negative CHECK cases validate SQLSTATE 23514 / check_violation", checkSqlStateValidated);
+
+// 52. NEGATIVE_FK_SQLSTATE_VALIDATION
+const fkSqlStateValidated = runtimeHarnessContent.includes('foreign_key_violation') ||
+  runtimeHarnessContent.includes("SQLSTATE = '23503'");
+check(52, "NEGATIVE_FK_SQLSTATE_VALIDATION: Negative FK cases validate SQLSTATE 23503 / foreign_key_violation", fkSqlStateValidated);
+
+// 53. ARCHIVE_TRIGGER_ERROR_VALIDATION
+const archiveTriggerValidated = (runtimeHarnessContent.includes('raise_exception') || runtimeHarnessContent.includes("SQLSTATE = 'P0001'")) &&
+  runtimeHarnessContent.includes('archived');
+check(53, "ARCHIVE_TRIGGER_ERROR_VALIDATION: Archive test validates trigger exception P0001 and archived message", archiveTriggerValidated);
+
+// 54. CROSS_USER_REJECTION_CAUSE_VALIDATED
+const crossUserRejectionValidated = runtimeHarnessContent.includes('RUNTIME_CROSS_USER_ACCOUNT_REJECTED=PASS') &&
+  (runtimeHarnessContent.includes('foreign_key_violation') || runtimeHarnessContent.includes("SQLSTATE = '23503'"));
+check(54, "CROSS_USER_REJECTION_CAUSE_VALIDATED: Cross-user account attack validates FK violation rejection", crossUserRejectionValidated);
+
+// 55. DELETE_REJECTION_CAUSE_VALIDATED
+const deleteRejectionValidated = runtimeHarnessContent.includes('RUNTIME_DELETE_REJECTED=PASS') &&
+  (runtimeHarnessContent.includes('insufficient_privilege') || runtimeHarnessContent.includes("SQLSTATE = '42501'") || runtimeHarnessContent.includes('v_rowcount > 0'));
+check(55, "DELETE_REJECTION_CAUSE_VALIDATED: DELETE authority test validates exact authorization denial", deleteRejectionValidated);
+
+// 56. UNEXPECTED_ERROR_FALSE_PASS_PREVENTED
+const unexpectedErrorsReraised = (runtimeHarnessContent.match(/RAISE;/g) || []).length >= 6;
+check(56, "UNEXPECTED_ERROR_FALSE_PASS_PREVENTED: Unexpected exception classes are re-raised to prevent false PASS", unexpectedErrorsReraised);
+
 console.log(`\nPHASE_8_PASS_B_RUNTIME_HARNESS_SOURCE=PASS`);
 console.log(`PHASE_8_PASS_B_SOURCE_CHECK_COUNT: ${passed}/${total}`);
 

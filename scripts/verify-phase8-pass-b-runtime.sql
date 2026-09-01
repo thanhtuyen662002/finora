@@ -36,7 +36,7 @@ DECLARE
     v_t_voided BOOLEAN;
     v_note_check TEXT;
 
-    -- Balance snapshots
+    -- Balance snapshots (Exact NUMERIC arithmetic)
     v_bal_a_usd_before NUMERIC(20,4);
     v_bal_a_vnd_before NUMERIC(20,4);
     v_bal_a_usd_after NUMERIC(20,4);
@@ -128,6 +128,7 @@ BEGIN
 
     ----------------------------------------------------------------------------
     -- 4. USER_A Positive Case: Same-Currency Transfer (USD -> USD)
+    -- Must omit is_voided on authenticated INSERT and prove default is_voided=false
     ----------------------------------------------------------------------------
     INSERT INTO public.transfers (
         user_id,
@@ -140,8 +141,7 @@ BEGIN
         exchange_rate,
         destination_amount,
         note,
-        occurred_on,
-        is_voided
+        occurred_on
     ) VALUES (
         v_user_a,
         v_acc_a_usd,
@@ -153,9 +153,13 @@ BEGIN
         1.000000000000,
         25.0000,
         '__PHASE8_RUNTIME_GATE__ same-currency transfer test',
-        CURRENT_DATE,
-        false
+        CURRENT_DATE
     ) RETURNING id INTO v_transfer_same_id;
+
+    SELECT is_voided INTO v_t_voided FROM public.transfers WHERE id = v_transfer_same_id;
+    IF v_t_voided IS NOT FALSE THEN
+        RAISE EXCEPTION 'Same-currency transfer did not default is_voided to false';
+    END IF;
 
     SELECT count(*) INTO v_check_count
     FROM public.transfers
@@ -175,9 +179,10 @@ BEGIN
 
     ----------------------------------------------------------------------------
     -- 5. Record Balances and Execute Cross-Currency Transfer (USD -> VND)
+    -- Queries public.account_balances using account_id and current_balance::numeric
     ----------------------------------------------------------------------------
-    SELECT balance INTO v_bal_a_usd_before FROM public.account_balances WHERE id = v_acc_a_usd;
-    SELECT balance INTO v_bal_a_vnd_before FROM public.account_balances WHERE id = v_acc_a_vnd;
+    SELECT current_balance::numeric INTO v_bal_a_usd_before FROM public.account_balances WHERE account_id = v_acc_a_usd;
+    SELECT current_balance::numeric INTO v_bal_a_vnd_before FROM public.account_balances WHERE account_id = v_acc_a_vnd;
 
     INSERT INTO public.transfers (
         user_id,
@@ -190,8 +195,7 @@ BEGIN
         exchange_rate,
         destination_amount,
         note,
-        occurred_on,
-        is_voided
+        occurred_on
     ) VALUES (
         v_user_a,
         v_acc_a_usd,
@@ -203,8 +207,7 @@ BEGIN
         25000.000000000000,
         250000.0000,
         '__PHASE8_RUNTIME_GATE__ cross-currency transfer test',
-        CURRENT_DATE,
-        false
+        CURRENT_DATE
     ) RETURNING id INTO v_transfer_cross_id;
 
     SELECT amount, source_currency_code, destination_currency_code, exchange_rate, destination_amount, currency_code, is_voided
@@ -214,7 +217,7 @@ BEGIN
 
     IF v_t_amount <> 10.0000 OR v_t_src_curr <> 'USD' OR v_t_dst_curr <> 'VND' OR
        v_t_rate <> 25000.000000000000 OR v_t_dst_amt <> 250000.0000 OR v_t_curr <> 'USD' OR v_t_voided IS NOT FALSE THEN
-        RAISE EXCEPTION 'Cross-currency transfer values mismatch in public.transfers';
+        RAISE EXCEPTION 'Cross-currency transfer values mismatch or is_voided not false in public.transfers';
     END IF;
 
     RAISE NOTICE 'RUNTIME_USD_TO_VND=PASS';
@@ -222,8 +225,8 @@ BEGIN
     ----------------------------------------------------------------------------
     -- 6. Dual-Currency Balance Effect
     ----------------------------------------------------------------------------
-    SELECT balance INTO v_bal_a_usd_after FROM public.account_balances WHERE id = v_acc_a_usd;
-    SELECT balance INTO v_bal_a_vnd_after FROM public.account_balances WHERE id = v_acc_a_vnd;
+    SELECT current_balance::numeric INTO v_bal_a_usd_after FROM public.account_balances WHERE account_id = v_acc_a_usd;
+    SELECT current_balance::numeric INTO v_bal_a_vnd_after FROM public.account_balances WHERE account_id = v_acc_a_vnd;
 
     IF (v_bal_a_usd_before - v_bal_a_usd_after) <> 10.0000 THEN
         RAISE EXCEPTION 'A_USD balance decrease mismatch: expected 10.0000, got %', (v_bal_a_usd_before - v_bal_a_usd_after);
@@ -253,8 +256,8 @@ BEGIN
         RAISE EXCEPTION 'Transfer void failed in public.transfer_details view';
     END IF;
 
-    SELECT balance INTO v_bal_a_usd_voided FROM public.account_balances WHERE id = v_acc_a_usd;
-    SELECT balance INTO v_bal_a_vnd_voided FROM public.account_balances WHERE id = v_acc_a_vnd;
+    SELECT current_balance::numeric INTO v_bal_a_usd_voided FROM public.account_balances WHERE account_id = v_acc_a_usd;
+    SELECT current_balance::numeric INTO v_bal_a_vnd_voided FROM public.account_balances WHERE account_id = v_acc_a_vnd;
 
     IF v_bal_a_usd_voided <> v_bal_a_usd_before THEN
         RAISE EXCEPTION 'A_USD balance when voided did not restore to before state (expected %, got %)', v_bal_a_usd_before, v_bal_a_usd_voided;
@@ -280,8 +283,8 @@ BEGIN
         RAISE EXCEPTION 'Transfer restore failed in public.transfers';
     END IF;
 
-    SELECT balance INTO v_bal_a_usd_restored FROM public.account_balances WHERE id = v_acc_a_usd;
-    SELECT balance INTO v_bal_a_vnd_restored FROM public.account_balances WHERE id = v_acc_a_vnd;
+    SELECT current_balance::numeric INTO v_bal_a_usd_restored FROM public.account_balances WHERE account_id = v_acc_a_usd;
+    SELECT current_balance::numeric INTO v_bal_a_vnd_restored FROM public.account_balances WHERE account_id = v_acc_a_vnd;
 
     IF v_bal_a_usd_restored <> v_bal_a_usd_after THEN
         RAISE EXCEPTION 'A_USD balance after restore mismatch (expected %, got %)', v_bal_a_usd_after, v_bal_a_usd_restored;
@@ -358,8 +361,7 @@ BEGIN
             exchange_rate,
             destination_amount,
             note,
-            occurred_on,
-            is_voided
+            occurred_on
         ) VALUES (
             v_user_b,
             v_acc_a_usd,
@@ -371,14 +373,18 @@ BEGIN
             1.000000000000,
             10.0000,
             'Cross-user account attack',
-            CURRENT_DATE,
-            false
+            CURRENT_DATE
         );
         RAISE EXCEPTION 'SECURITY BREACH: USER_B created transfer referencing USER_A account';
     EXCEPTION
-        WHEN OTHERS THEN
-            IF SQLERRM LIKE '%SECURITY BREACH%' THEN RAISE; END IF;
+        WHEN foreign_key_violation THEN -- SQLSTATE 23503
             RAISE NOTICE 'RUNTIME_CROSS_USER_ACCOUNT_REJECTED=PASS';
+        WHEN OTHERS THEN
+            IF SQLSTATE = '23503' THEN
+                RAISE NOTICE 'RUNTIME_CROSS_USER_ACCOUNT_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
     ----------------------------------------------------------------------------
@@ -401,9 +407,14 @@ BEGIN
         END IF;
         RAISE NOTICE 'RUNTIME_DELETE_REJECTED=PASS';
     EXCEPTION
-        WHEN OTHERS THEN
-            IF SQLERRM LIKE '%SECURITY BREACH%' THEN RAISE; END IF;
+        WHEN insufficient_privilege THEN -- SQLSTATE 42501
             RAISE NOTICE 'RUNTIME_DELETE_REJECTED=PASS';
+        WHEN OTHERS THEN
+            IF SQLSTATE = '42501' THEN
+                RAISE NOTICE 'RUNTIME_DELETE_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
     -- Verify transfer still exists in database
@@ -413,108 +424,148 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------------------
-    -- 10. Negative DB Integrity Matrix (Subtransaction protected)
+    -- 10. Negative DB Integrity Matrix (Subtransaction protected with exact SQLSTATE)
     ----------------------------------------------------------------------------
-    -- A. Same currency bad rate
+    -- A. Same currency bad rate (Expected CHECK violation SQLSTATE 23514)
     BEGIN
         INSERT INTO public.transfers (
             user_id, from_account_id, to_account_id, amount,
             currency_code, source_currency_code, destination_currency_code,
-            exchange_rate, destination_amount, note, occurred_on, is_voided
+            exchange_rate, destination_amount, note, occurred_on
         ) VALUES (
             v_user_a, v_acc_a_usd, v_acc_a_usd_2, 10.0000,
             'USD', 'USD', 'USD', 25000.000000000000, 10.0000,
-            'Bad same currency rate', CURRENT_DATE, false
+            'Bad same currency rate', CURRENT_DATE
         );
         RAISE EXCEPTION 'FAILED: Bad same currency rate was accepted';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%FAILED:%' THEN RAISE; END IF;
-        RAISE NOTICE 'RUNTIME_BAD_SAME_CURRENCY_RATE_REJECTED=PASS';
+    EXCEPTION
+        WHEN check_violation THEN -- SQLSTATE 23514
+            RAISE NOTICE 'RUNTIME_BAD_SAME_CURRENCY_RATE_REJECTED=PASS';
+        WHEN OTHERS THEN
+            IF SQLSTATE = '23514' THEN
+                RAISE NOTICE 'RUNTIME_BAD_SAME_CURRENCY_RATE_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
-    -- B. Same currency contradictory destination amount
+    -- B. Same currency contradictory destination amount (Expected CHECK violation SQLSTATE 23514)
     BEGIN
         INSERT INTO public.transfers (
             user_id, from_account_id, to_account_id, amount,
             currency_code, source_currency_code, destination_currency_code,
-            exchange_rate, destination_amount, note, occurred_on, is_voided
+            exchange_rate, destination_amount, note, occurred_on
         ) VALUES (
             v_user_a, v_acc_a_usd, v_acc_a_usd_2, 10.0000,
             'USD', 'USD', 'USD', 1.000000000000, 20.0000,
-            'Bad same currency destination amount', CURRENT_DATE, false
+            'Bad same currency destination amount', CURRENT_DATE
         );
         RAISE EXCEPTION 'FAILED: Bad same currency destination amount was accepted';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%FAILED:%' THEN RAISE; END IF;
-        RAISE NOTICE 'RUNTIME_BAD_SAME_CURRENCY_DESTINATION_REJECTED=PASS';
+    EXCEPTION
+        WHEN check_violation THEN -- SQLSTATE 23514
+            RAISE NOTICE 'RUNTIME_BAD_SAME_CURRENCY_DESTINATION_REJECTED=PASS';
+        WHEN OTHERS THEN
+            IF SQLSTATE = '23514' THEN
+                RAISE NOTICE 'RUNTIME_BAD_SAME_CURRENCY_DESTINATION_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
-    -- C. Cross-currency contradictory destination amount
+    -- C. Cross-currency contradictory destination amount (Expected CHECK violation SQLSTATE 23514)
     BEGIN
         INSERT INTO public.transfers (
             user_id, from_account_id, to_account_id, amount,
             currency_code, source_currency_code, destination_currency_code,
-            exchange_rate, destination_amount, note, occurred_on, is_voided
+            exchange_rate, destination_amount, note, occurred_on
         ) VALUES (
             v_user_a, v_acc_a_usd, v_acc_a_vnd, 10.0000,
             'USD', 'USD', 'VND', 25000.000000000000, 200000.0000,
-            'Bad cross currency destination amount', CURRENT_DATE, false
+            'Bad cross currency destination amount', CURRENT_DATE
         );
         RAISE EXCEPTION 'FAILED: Bad cross currency destination amount was accepted';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%FAILED:%' THEN RAISE; END IF;
-        RAISE NOTICE 'RUNTIME_BAD_CROSS_CURRENCY_DESTINATION_REJECTED=PASS';
+    EXCEPTION
+        WHEN check_violation THEN -- SQLSTATE 23514
+            RAISE NOTICE 'RUNTIME_BAD_CROSS_CURRENCY_DESTINATION_REJECTED=PASS';
+        WHEN OTHERS THEN
+            IF SQLSTATE = '23514' THEN
+                RAISE NOTICE 'RUNTIME_BAD_CROSS_CURRENCY_DESTINATION_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
-    -- D. Account currency mismatch (account USD but claiming source VND)
+    -- D. Account currency mismatch (account USD but claiming source VND) (Expected FK violation SQLSTATE 23503)
     BEGIN
         INSERT INTO public.transfers (
             user_id, from_account_id, to_account_id, amount,
             currency_code, source_currency_code, destination_currency_code,
-            exchange_rate, destination_amount, note, occurred_on, is_voided
+            exchange_rate, destination_amount, note, occurred_on
         ) VALUES (
             v_user_a, v_acc_a_usd, v_acc_a_vnd, 10.0000,
             'VND', 'VND', 'VND', 1.000000000000, 10.0000,
-            'Account currency mismatch', CURRENT_DATE, false
+            'Account currency mismatch', CURRENT_DATE
         );
         RAISE EXCEPTION 'FAILED: Account currency mismatch was accepted';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%FAILED:%' THEN RAISE; END IF;
-        RAISE NOTICE 'RUNTIME_ACCOUNT_CURRENCY_MISMATCH_REJECTED=PASS';
+    EXCEPTION
+        WHEN foreign_key_violation THEN -- SQLSTATE 23503
+            RAISE NOTICE 'RUNTIME_ACCOUNT_CURRENCY_MISMATCH_REJECTED=PASS';
+        WHEN OTHERS THEN
+            IF SQLSTATE = '23503' THEN
+                RAISE NOTICE 'RUNTIME_ACCOUNT_CURRENCY_MISMATCH_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
-    -- E. Same account transfer
+    -- E. Same account transfer (Expected CHECK violation SQLSTATE 23514)
     BEGIN
         INSERT INTO public.transfers (
             user_id, from_account_id, to_account_id, amount,
             currency_code, source_currency_code, destination_currency_code,
-            exchange_rate, destination_amount, note, occurred_on, is_voided
+            exchange_rate, destination_amount, note, occurred_on
         ) VALUES (
             v_user_a, v_acc_a_usd, v_acc_a_usd, 10.0000,
             'USD', 'USD', 'USD', 1.000000000000, 10.0000,
-            'Same account transfer', CURRENT_DATE, false
+            'Same account transfer', CURRENT_DATE
         );
         RAISE EXCEPTION 'FAILED: Same account transfer was accepted';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%FAILED:%' THEN RAISE; END IF;
-        RAISE NOTICE 'RUNTIME_SAME_ACCOUNT_REJECTED=PASS';
+    EXCEPTION
+        WHEN check_violation THEN -- SQLSTATE 23514
+            RAISE NOTICE 'RUNTIME_SAME_ACCOUNT_REJECTED=PASS';
+        WHEN OTHERS THEN
+            IF SQLSTATE = '23514' THEN
+                RAISE NOTICE 'RUNTIME_SAME_ACCOUNT_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
-    -- F. Archived account transfer
+    -- F. Archived account transfer (Expected raise_exception SQLSTATE P0001 from trigger)
     BEGIN
         INSERT INTO public.transfers (
             user_id, from_account_id, to_account_id, amount,
             currency_code, source_currency_code, destination_currency_code,
-            exchange_rate, destination_amount, note, occurred_on, is_voided
+            exchange_rate, destination_amount, note, occurred_on
         ) VALUES (
             v_user_a, v_acc_a_archived_usd, v_acc_a_usd_2, 10.0000,
             'USD', 'USD', 'USD', 1.000000000000, 10.0000,
-            'Archived account transfer', CURRENT_DATE, false
+            'Archived account transfer', CURRENT_DATE
         );
         RAISE EXCEPTION 'FAILED: Archived account transfer was accepted';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%FAILED:%' THEN RAISE; END IF;
-        RAISE NOTICE 'RUNTIME_ARCHIVED_ACCOUNT_REJECTED=PASS';
+    EXCEPTION
+        WHEN raise_exception THEN -- SQLSTATE P0001
+            IF SQLERRM ILIKE '%archived%' THEN
+                RAISE NOTICE 'RUNTIME_ARCHIVED_ACCOUNT_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
+        WHEN OTHERS THEN
+            IF SQLSTATE = 'P0001' AND SQLERRM ILIKE '%archived%' THEN
+                RAISE NOTICE 'RUNTIME_ARCHIVED_ACCOUNT_REJECTED=PASS';
+            ELSE
+                RAISE;
+            END IF;
     END;
 
     ----------------------------------------------------------------------------
