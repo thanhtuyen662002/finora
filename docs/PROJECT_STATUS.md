@@ -631,14 +631,45 @@ Verification:
 - `lint`: PASS
 - `build`: PASS
 
+## Phase 8 — Pass B — Structural Gate Final Hardening Corrective
+Hardened public.check_transfer_accounts_active() trigger function and modernized structural database verifier with robust catalog semantics.
+
+Implemented Corrective:
+- Created additive migration `supabase/migrations/20260831150000_phase_8_transfer_trigger_search_path_hardening.sql`:
+  - `ALTER FUNCTION public.check_transfer_accounts_active() SET search_path TO '';`
+  - Eliminates `function_search_path_mutable` advisor finding while preserving `SECURITY INVOKER` execution mode.
+- Preserved applied historical migrations intact:
+  - `20260829000002` (`e046ea3f62aaa76f00295e68126ca29a48bfaa9b`)
+  - `20260831142135` (`5721bdff4ebe8d2850a6c0fe73eeb6bb66580a18`)
+  - `20260831144154` (`3ee23b513bcd65182afa613084dda8fbf5b40293`)
+- Modernized `scripts/verify-phase8-pass-b-db.sql`:
+  - Validates function configuration: `prosecdef=false`, `security_invoker=true`, empty `search_path` (`proconfig`), archive guard body.
+  - Replaced fragile string matching for RLS policies with catalog semantics on `public.transfers` validating separate SELECT (USING), INSERT (WITH CHECK), and UPDATE (USING + WITH CHECK) policies for `auth.uid() = user_id`, while asserting absence of DELETE policy.
+  - Validates trigger semantics: `trg_check_transfer_accounts_active` configured as `BEFORE INSERT OR UPDATE FOR EACH ROW`.
+  - Audits composite FKs with `ON DELETE RESTRICT`, column numeric precision, constraint definitions, anon privileges, and view `security_invoker`.
+- Updated comprehensive source verifier `scripts/verify-phase8-pass-b-source.mjs` with 30 deterministic assertions (30/30 PASS).
+
+Verification:
+- `scripts/verify-phase8-pass-b-source.mjs`: PASS (30/30 checks)
+- `scripts/verify-phase8-source.mjs`: PASS
+- `scripts/verify-phase8-ux-performance.mjs`: PASS
+- `tests/phase8-math.test.ts`: PASS
+- `tests/phase8-base-mode.test.ts`: PASS
+- `tests/phase8-cross-currency-transfers.test.ts`: PASS (24 domain tests + 2 pending markers)
+- `typecheck`: PASS
+- `lint`: PASS
+- `build`: PASS
+
 ## Next Recommended Action
-Phase 8 Pass B View Compatibility Corrective is complete in source code.
-Awaiting user deployment of pending Pass B migrations to Supabase project.
+Phase 8 Pass B Structural Gate Final Hardening Corrective is complete in source code.
+Awaiting user deployment of pending search_path hardening migration (`20260831150000`) to Supabase project.
 
 ```text
 PHASE_8_PASS_A=PASS
 PHASE_8_PASS_B_SOURCE=PASS_CODE_ONLY
-PHASE_8_PASS_B_REMOTE_DB=PENDING
+PHASE_8_PASS_B_REMOTE_MIGRATIONS=PASS
+PHASE_8_PASS_B_CATALOG_STRUCTURAL_ASSERTIONS=PASS
+PHASE_8_PASS_B_SEARCH_PATH_CORRECTIVE=PENDING
 PHASE_8_PASS_B_STRUCTURAL_REMOTE_GATE=PENDING
 PHASE_8_PASS_B_TWO_USER_RLS_RUNTIME=PENDING
 PHASE_8_PASS_B_LIVE_PERSISTENCE_SMOKE=PENDING

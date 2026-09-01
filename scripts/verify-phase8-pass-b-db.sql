@@ -7,6 +7,7 @@ DECLARE
     v_fsrc TEXT;
     v_sec_invoker BOOLEAN;
     v_prosecdef BOOLEAN;
+    v_proconfig TEXT[];
     v_relrowsecurity BOOLEAN;
     v_count INT;
 BEGIN
@@ -99,7 +100,7 @@ BEGIN
     FROM pg_constraint
     WHERE conname = 'transfers_from_account_fkey' AND conrelid = 'public.transfers'::regclass;
 
-    IF v_cdef IS NULL OR v_cdef NOT ILIKE '%from_account_id, user_id, source_currency_code%REFERENCES accounts(id, user_id, currency_code)%' THEN
+    IF v_cdef IS NULL OR v_cdef NOT ILIKE '%from_account_id, user_id, source_currency_code%REFERENCES accounts(id, user_id, currency_code)%' OR v_cdef NOT ILIKE '%ON DELETE RESTRICT%' THEN
         RAISE EXCEPTION 'transfers_from_account_fkey composite FK definition mismatch: %', v_cdef;
     END IF;
 
@@ -107,7 +108,7 @@ BEGIN
     FROM pg_constraint
     WHERE conname = 'transfers_to_account_fkey' AND conrelid = 'public.transfers'::regclass;
 
-    IF v_cdef IS NULL OR v_cdef NOT ILIKE '%to_account_id, user_id, destination_currency_code%REFERENCES accounts(id, user_id, currency_code)%' THEN
+    IF v_cdef IS NULL OR v_cdef NOT ILIKE '%to_account_id, user_id, destination_currency_code%REFERENCES accounts(id, user_id, currency_code)%' OR v_cdef NOT ILIKE '%ON DELETE RESTRICT%' THEN
         RAISE EXCEPTION 'transfers_to_account_fkey composite FK definition mismatch: %', v_cdef;
     END IF;
 
@@ -120,16 +121,68 @@ BEGIN
         RAISE EXCEPTION 'public.transfers row security (RLS) is NOT enabled';
     END IF;
 
+    -- Prove SELECT policy for authenticated enforcing auth.uid() and user_id in USING
     SELECT count(*) INTO v_count
-    FROM pg_policy
-    WHERE polrelid = 'public.transfers'::regclass
+    FROM pg_policy p
+    WHERE p.polrelid = 'public.transfers'::regclass
+      AND p.polcmd IN ('r', '*')
       AND (
-        (polqual IS NOT NULL AND pg_get_expr(polqual, polrelid) ILIKE '%auth.uid() = user_id%')
-        OR (polwithcheck IS NOT NULL AND pg_get_expr(polwithcheck, polrelid) ILIKE '%auth.uid() = user_id%')
-      );
+        (to_regrole('authenticated') IS NOT NULL AND to_regrole('authenticated')::oid = ANY(p.polroles))
+        OR 0 = ANY(p.polroles)
+      )
+      AND p.polqual IS NOT NULL
+      AND pg_get_expr(p.polqual, p.polrelid) ILIKE '%auth.uid()%'
+      AND pg_get_expr(p.polqual, p.polrelid) ILIKE '%user_id%';
 
     IF v_count < 1 THEN
-        RAISE EXCEPTION 'public.transfers missing RLS policies enforcing auth.uid() = user_id';
+        RAISE EXCEPTION 'public.transfers missing SELECT RLS policy for authenticated enforcing auth.uid() and user_id in USING';
+    END IF;
+
+    -- Prove INSERT policy for authenticated enforcing auth.uid() and user_id in WITH CHECK
+    SELECT count(*) INTO v_count
+    FROM pg_policy p
+    WHERE p.polrelid = 'public.transfers'::regclass
+      AND p.polcmd IN ('a', '*')
+      AND (
+        (to_regrole('authenticated') IS NOT NULL AND to_regrole('authenticated')::oid = ANY(p.polroles))
+        OR 0 = ANY(p.polroles)
+      )
+      AND p.polwithcheck IS NOT NULL
+      AND pg_get_expr(p.polwithcheck, p.polrelid) ILIKE '%auth.uid()%'
+      AND pg_get_expr(p.polwithcheck, p.polrelid) ILIKE '%user_id%';
+
+    IF v_count < 1 THEN
+        RAISE EXCEPTION 'public.transfers missing INSERT RLS policy for authenticated enforcing auth.uid() and user_id in WITH CHECK';
+    END IF;
+
+    -- Prove UPDATE policy for authenticated enforcing auth.uid() and user_id in USING and WITH CHECK
+    SELECT count(*) INTO v_count
+    FROM pg_policy p
+    WHERE p.polrelid = 'public.transfers'::regclass
+      AND p.polcmd IN ('w', '*')
+      AND (
+        (to_regrole('authenticated') IS NOT NULL AND to_regrole('authenticated')::oid = ANY(p.polroles))
+        OR 0 = ANY(p.polroles)
+      )
+      AND p.polqual IS NOT NULL
+      AND pg_get_expr(p.polqual, p.polrelid) ILIKE '%auth.uid()%'
+      AND pg_get_expr(p.polqual, p.polrelid) ILIKE '%user_id%'
+      AND p.polwithcheck IS NOT NULL
+      AND pg_get_expr(p.polwithcheck, p.polrelid) ILIKE '%auth.uid()%'
+      AND pg_get_expr(p.polwithcheck, p.polrelid) ILIKE '%user_id%';
+
+    IF v_count < 1 THEN
+        RAISE EXCEPTION 'public.transfers missing UPDATE RLS policy for authenticated enforcing auth.uid() and user_id in USING and WITH CHECK';
+    END IF;
+
+    -- Prove DELETE policy is absent for public.transfers
+    SELECT count(*) INTO v_count
+    FROM pg_policy p
+    WHERE p.polrelid = 'public.transfers'::regclass
+      AND p.polcmd = 'd';
+
+    IF v_count > 0 THEN
+        RAISE EXCEPTION 'public.transfers must NOT have a DELETE policy (expected 0, found %)', v_count;
     END IF;
 
     -- 5. Grants inspection
@@ -170,18 +223,21 @@ BEGIN
         RAISE EXCEPTION 'public.account_balances does not have security_invoker = true';
     END IF;
 
-    -- 7. Archive Guard Trigger & Function Security Mode inspection
-    SELECT EXISTS (
-        SELECT 1 FROM pg_trigger
-        WHERE tgname = 'trg_check_transfer_accounts_active'
-          AND tgrelid = 'public.transfers'::regclass
-    ) INTO v_sec_invoker;
+    -- 7. Archive Guard Trigger & Function Security Mode & search_path inspection
+    SELECT count(*) INTO v_count
+    FROM pg_trigger
+    WHERE tgname = 'trg_check_transfer_accounts_active'
+      AND tgrelid = 'public.transfers'::regclass
+      AND (tgtype & 1) = 1    -- FOR EACH ROW
+      AND (tgtype & 2) = 0    -- BEFORE
+      AND (tgtype & 4) = 4    -- INSERT
+      AND (tgtype & 16) = 16; -- UPDATE
 
-    IF NOT v_sec_invoker THEN
-        RAISE EXCEPTION 'Missing trigger trg_check_transfer_accounts_active on public.transfers';
+    IF v_count < 1 THEN
+        RAISE EXCEPTION 'Missing or invalid trigger trg_check_transfer_accounts_active on public.transfers (must be BEFORE INSERT OR UPDATE FOR EACH ROW)';
     END IF;
 
-    SELECT prosecdef, prosrc INTO v_prosecdef, v_fsrc
+    SELECT prosecdef, prosrc, proconfig INTO v_prosecdef, v_fsrc, v_proconfig
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.proname = 'check_transfer_accounts_active';
@@ -192,6 +248,15 @@ BEGIN
 
     IF v_prosecdef IS TRUE THEN
         RAISE EXCEPTION 'SECURITY DEFINER LEAK: public.check_transfer_accounts_active has prosecdef = true (must be SECURITY INVOKER / false)';
+    END IF;
+
+    -- Verify search_path is explicitly set to empty string ('')
+    IF v_proconfig IS NULL OR NOT (
+        'search_path=' = ANY(v_proconfig) OR
+        'search_path=""' = ANY(v_proconfig) OR
+        'search_path=''' = ANY(v_proconfig)
+    ) THEN
+        RAISE EXCEPTION 'public.check_transfer_accounts_active does not have search_path explicitly set to empty string (proconfig: %)', v_proconfig;
     END IF;
 
     IF v_fsrc NOT ILIKE '%v_from_archived%' OR v_fsrc NOT ILIKE '%v_to_archived%' THEN
