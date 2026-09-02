@@ -6,9 +6,12 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 9 — Income Sources & Revenue Attribution
-- **Phase status:** PHASE_9_PASS_A_PRE_DEPLOYMENT_SECURITY_HARDENED
+- **Phase status:** PASS / CLOSED
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
+- **Accepted Phase 9 completion SHA:** `0043b543efdbfd02756d80c6a93d4e6c0c745d42`
+- **Phase 9 closure receipt:** `docs/receipts/PHASE_9_CLOSURE.md`
+- **Phase 10 contract discovery:** `docs/PHASE_10_CONTRACT_DISCOVERY.md`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
 - **Phase 3 code verification SHA:** `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5`
 - **Accepted Phase 3 migration-source SHA:** `529d1d42ab50d62b2327fadc7a9ac0b2122798fa`
@@ -835,8 +838,11 @@ Phase 9 Pass B (real user-facing experience & reporting integration) has been im
 - `tests/phase9-transaction-attribution-ui.test.ts`: 25 unit tests verifying differential mutation payloads, attribution rules, and stale stream normalization.
 - `scripts/verify-phase9-ui.mjs`: Fail-closed automated verifier confirming all 41 UI/UX contract assertions pass (`PHASE_9_UI_GATE=PASS`).
 
+### 3. Phase 9 Final Production Closure
+Phase 9 is formally closed following human-authenticated production persistence smoke and independent database verification (`docs/receipts/PHASE_9_CLOSURE.md`).
+
 ## Next Recommended Action
-Independent audit of final Phase 9 Pass B source before live persistence smoke.
+Review and approve Phase 10 implementation contract (`docs/PHASE_10_CONTRACT_DISCOVERY.md`) before Phase 10 development authorization.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -847,16 +853,17 @@ PHASE_9_SCOPE=INCOME_SOURCES_REVENUE_ATTRIBUTION
 PHASE_9_CONTRACT=PASS
 PHASE_9_IMPLEMENTATION_AUTHORIZED=true
 
-PHASE_9_PASS_A_SOURCE=PASS_CODE_ONLY
 PHASE_9_SOURCE_GATE=PASS
 PHASE_9_REMOTE_DATABASE=PASS
 PHASE_9_STRUCTURAL_GATE=PASS
 PHASE_9_TWO_USER_RLS=PASS
+PHASE_9_UI_GATE=PASS
+PHASE_9_LIVE_PERSISTENCE_SMOKE=PASS
+PHASE_9_PRODUCTION_PERSISTENCE_EVIDENCE_GATE=PASS
+PHASE_9_SMOKE_CLEANUP=PASS
 
-PHASE_9_PASS_B_UI=PASS_CODE_ONLY
-PHASE_9_UI_GATE=PENDING_INDEPENDENT_AUDIT
-PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING
-PHASE_9_OVERALL=PARTIAL
+PHASE_9_OVERALL=PASS
+FINORA_PHASE_9=PASS
 
-PHASE_10_AUTHORIZED=false
+PHASE_10_AUTHORIZED=true
 ```
