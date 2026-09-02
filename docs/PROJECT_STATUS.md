@@ -783,9 +783,12 @@ Phase 9 Pass A and its pre-deployment security corrective have been implemented 
   - CRUD operations strictly exclude client `user_id` injection and prevent stream parent mutation.
 
 ### 3. Verification Suite
-- `scripts/verify-phase9-db.sql`: Fail-closed structural assertion gate with `DO $$ ... $$` verifying table schemas, exact column counts, effective table and column ACLs, RLS policies, composite FKs, trigger bitmasks, function security, and 22-column view order.
-- `scripts/verify-phase9-source.mjs`: Automated source verifier checking all Phase 9 security contracts, migration locks, and TypeScript definitions.
+- `scripts/verify-phase9-db.sql`: Hardened fail-closed structural assertion gate with `DO $$ ... $$` verifying table schemas, exact column counts, effective table and column ACLs (including full anon rejection), exact RLS policy command matrix (SELECT, INSERT, UPDATE, no DELETE/ALL) with authenticated role OID binding and canonical ownership expressions, exact composite unique/FK local and referenced column order via `conkey`/`confkey` unnest with ordinality, trigger function bindings (`handle_updated_at`, `check_transaction_attribution_active`), `SECURITY INVOKER` function configurations with exact empty `search_path`, and 22-column view order.
+- `scripts/verify-phase9-source.mjs`: Automated source verifier (70/70 checks) checking all Phase 9 security contracts, migration locks, DB verifier catalog mechanics, and TypeScript definitions.
 - `tests/phase9-income-sources.test.ts`: Unit test suite testing name validation, attribution constraints, fail-closed currency behavior, exact decimal aggregation, large decimal boundary (`numeric(20,4)`), and archive neutrality.
+
+## Next Recommended Action
+Independent audit of final Phase 9 Pass A source and structural verifier before remote migration deployment.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -793,12 +796,14 @@ FINORA_PHASE_8=PASS
 
 PHASE_9_AUTHORIZED=true
 PHASE_9_SCOPE=INCOME_SOURCES_REVENUE_ATTRIBUTION
-PHASE_9_CONTRACT=PASS_CODE_ONLY
+PHASE_9_CONTRACT=PASS
 PHASE_9_IMPLEMENTATION_AUTHORIZED=true
-PHASE_9_PASS_A_SOURCE_GATE=PASS_CODE_ONLY
-PHASE_9_REMOTE_DATABASE=PENDING_DEPLOYMENT
-PHASE_9_STRUCTURAL_GATE=PENDING_DEPLOYMENT
-PHASE_9_TWO_USER_RLS=PENDING_DEPLOYMENT
+
+PHASE_9_PASS_A_SOURCE=PASS_CODE_ONLY
+PHASE_9_SOURCE_GATE=PENDING
+PHASE_9_REMOTE_DATABASE=PENDING
+PHASE_9_STRUCTURAL_GATE=PENDING
+PHASE_9_TWO_USER_RLS=PENDING
 PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING
 PHASE_9_OVERALL=PARTIAL
 

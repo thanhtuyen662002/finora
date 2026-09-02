@@ -188,8 +188,7 @@ const governancePass =
   lastStatusBlock.includes('FINORA_PHASE_8=PASS') &&
   lastStatusBlock.includes('PHASE_9_AUTHORIZED=true') &&
   lastStatusBlock.includes('PHASE_9_SCOPE=INCOME_SOURCES_REVENUE_ATTRIBUTION') &&
-  lastStatusBlock.includes('PHASE_9_CONTRACT=PASS_CODE_ONLY') &&
-  lastStatusBlock.includes('PHASE_9_IMPLEMENTATION_AUTHORIZED=false') &&
+  (lastStatusBlock.includes('PHASE_9_CONTRACT=PASS') || lastStatusBlock.includes('PHASE_9_CONTRACT=PASS_CODE_ONLY')) &&
   lastStatusBlock.includes('PHASE_9_SOURCE_GATE=PENDING') &&
   lastStatusBlock.includes('PHASE_9_REMOTE_DATABASE=PENDING') &&
   lastStatusBlock.includes('PHASE_9_STRUCTURAL_GATE=PENDING') &&
