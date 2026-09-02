@@ -18,6 +18,7 @@ DECLARE
     v_pol_qual TEXT;
     v_pol_check TEXT;
     v_pol_roles OID[];
+    v_norm TEXT;
     v_rec RECORD;
 BEGIN
     -- -------------------------------------------------------------------------
@@ -222,6 +223,20 @@ BEGIN
         RAISE EXCEPTION 'authenticated must NOT have table-level INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, or TRIGGER on public.income_source_streams';
     END IF;
 
+    -- public.transactions table privileges (Fail-closed table mutation authority)
+    IF NOT has_table_privilege('authenticated', 'public.transactions', 'SELECT') THEN
+        RAISE EXCEPTION 'authenticated must have table-level SELECT on public.transactions';
+    END IF;
+
+    IF has_table_privilege('authenticated', 'public.transactions', 'INSERT') OR
+       has_table_privilege('authenticated', 'public.transactions', 'UPDATE') OR
+       has_table_privilege('authenticated', 'public.transactions', 'DELETE') OR
+       has_table_privilege('authenticated', 'public.transactions', 'TRUNCATE') OR
+       has_table_privilege('authenticated', 'public.transactions', 'REFERENCES') OR
+       has_table_privilege('authenticated', 'public.transactions', 'TRIGGER') THEN
+        RAISE EXCEPTION 'authenticated must NOT have table-level INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, or TRIGGER on public.transactions';
+    END IF;
+
     -- Anon: all table privileges must be FALSE on both tables
     IF has_table_privilege('anon', 'public.income_sources', 'SELECT') OR
        has_table_privilege('anon', 'public.income_sources', 'INSERT') OR
@@ -302,6 +317,28 @@ BEGIN
         RAISE EXCEPTION 'authenticated must NOT have column UPDATE on income_source_streams non-allowlisted columns';
     END IF;
 
+    -- public.transactions column INSERT & UPDATE on new attribution columns
+    IF NOT has_column_privilege('authenticated', 'public.transactions', 'income_source_id', 'INSERT') OR
+       NOT has_column_privilege('authenticated', 'public.transactions', 'income_source_stream_id', 'INSERT') THEN
+        RAISE EXCEPTION 'authenticated must have column INSERT on transactions(income_source_id, income_source_stream_id)';
+    END IF;
+
+    IF NOT has_column_privilege('authenticated', 'public.transactions', 'income_source_id', 'UPDATE') OR
+       NOT has_column_privilege('authenticated', 'public.transactions', 'income_source_stream_id', 'UPDATE') THEN
+        RAISE EXCEPTION 'authenticated must have column UPDATE on transactions(income_source_id, income_source_stream_id)';
+    END IF;
+
+    -- Negative checks on transactions system / non-allowlisted columns
+    IF has_column_privilege('authenticated', 'public.transactions', 'id', 'INSERT') OR
+       has_column_privilege('authenticated', 'public.transactions', 'created_at', 'INSERT') OR
+       has_column_privilege('authenticated', 'public.transactions', 'updated_at', 'INSERT') OR
+       has_column_privilege('authenticated', 'public.transactions', 'id', 'UPDATE') OR
+       has_column_privilege('authenticated', 'public.transactions', 'user_id', 'UPDATE') OR
+       has_column_privilege('authenticated', 'public.transactions', 'created_at', 'UPDATE') OR
+       has_column_privilege('authenticated', 'public.transactions', 'updated_at', 'UPDATE') THEN
+        RAISE EXCEPTION 'authenticated must NOT have column INSERT/UPDATE on transactions non-allowlisted/system columns';
+    END IF;
+
     -- -------------------------------------------------------------------------
     -- 6. Row Level Security (RLS) & Policies Exact Matrix
     -- -------------------------------------------------------------------------
@@ -357,8 +394,20 @@ BEGIN
     IF v_pol_roles != ARRAY[v_auth_role_oid] THEN
         RAISE EXCEPTION 'income_sources SELECT policy roles must be exactly [authenticated], got: %', v_pol_roles;
     END IF;
-    IF v_pol_qual IS NULL OR (v_pol_qual NOT ILIKE '%auth.uid()%' OR v_pol_qual NOT ILIKE '%user_id%') OR v_pol_check IS NOT NULL THEN
+    IF v_pol_qual IS NULL OR v_pol_check IS NOT NULL THEN
         RAISE EXCEPTION 'income_sources SELECT policy must have ownership polqual and NULL polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_sources SELECT policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
     END IF;
 
     -- INSERT
@@ -370,8 +419,20 @@ BEGIN
     IF v_pol_roles != ARRAY[v_auth_role_oid] THEN
         RAISE EXCEPTION 'income_sources INSERT policy roles must be exactly [authenticated], got: %', v_pol_roles;
     END IF;
-    IF v_pol_qual IS NOT NULL OR v_pol_check IS NULL OR (v_pol_check NOT ILIKE '%auth.uid()%' OR v_pol_check NOT ILIKE '%user_id%') THEN
+    IF v_pol_qual IS NOT NULL OR v_pol_check IS NULL THEN
         RAISE EXCEPTION 'income_sources INSERT policy must have NULL polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_sources INSERT policy must strictly be canonical ownership expression only, got: %', v_pol_check;
     END IF;
 
     -- UPDATE
@@ -383,9 +444,32 @@ BEGIN
     IF v_pol_roles != ARRAY[v_auth_role_oid] THEN
         RAISE EXCEPTION 'income_sources UPDATE policy roles must be exactly [authenticated], got: %', v_pol_roles;
     END IF;
-    IF v_pol_qual IS NULL OR (v_pol_qual NOT ILIKE '%auth.uid()%' OR v_pol_qual NOT ILIKE '%user_id%') OR
-       v_pol_check IS NULL OR (v_pol_check NOT ILIKE '%auth.uid()%' OR v_pol_check NOT ILIKE '%user_id%') THEN
+    IF v_pol_qual IS NULL OR v_pol_check IS NULL THEN
         RAISE EXCEPTION 'income_sources UPDATE policy must have ownership polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_sources UPDATE USING policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_sources UPDATE WITH CHECK policy must strictly be canonical ownership expression only, got: %', v_pol_check;
     END IF;
 
     -- income_source_streams policy count & command matrix
@@ -424,8 +508,20 @@ BEGIN
     IF v_pol_roles != ARRAY[v_auth_role_oid] THEN
         RAISE EXCEPTION 'income_source_streams SELECT policy roles must be exactly [authenticated], got: %', v_pol_roles;
     END IF;
-    IF v_pol_qual IS NULL OR (v_pol_qual NOT ILIKE '%auth.uid()%' OR v_pol_qual NOT ILIKE '%user_id%') OR v_pol_check IS NOT NULL THEN
+    IF v_pol_qual IS NULL OR v_pol_check IS NOT NULL THEN
         RAISE EXCEPTION 'income_source_streams SELECT policy must have ownership polqual and NULL polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_source_streams SELECT policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
     END IF;
 
     -- INSERT
@@ -437,8 +533,20 @@ BEGIN
     IF v_pol_roles != ARRAY[v_auth_role_oid] THEN
         RAISE EXCEPTION 'income_source_streams INSERT policy roles must be exactly [authenticated], got: %', v_pol_roles;
     END IF;
-    IF v_pol_qual IS NOT NULL OR v_pol_check IS NULL OR (v_pol_check NOT ILIKE '%auth.uid()%' OR v_pol_check NOT ILIKE '%user_id%') THEN
+    IF v_pol_qual IS NOT NULL OR v_pol_check IS NULL THEN
         RAISE EXCEPTION 'income_source_streams INSERT policy must have NULL polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_source_streams INSERT policy must strictly be canonical ownership expression only, got: %', v_pol_check;
     END IF;
 
     -- UPDATE
@@ -450,9 +558,32 @@ BEGIN
     IF v_pol_roles != ARRAY[v_auth_role_oid] THEN
         RAISE EXCEPTION 'income_source_streams UPDATE policy roles must be exactly [authenticated], got: %', v_pol_roles;
     END IF;
-    IF v_pol_qual IS NULL OR (v_pol_qual NOT ILIKE '%auth.uid()%' OR v_pol_qual NOT ILIKE '%user_id%') OR
-       v_pol_check IS NULL OR (v_pol_check NOT ILIKE '%auth.uid()%' OR v_pol_check NOT ILIKE '%user_id%') THEN
+    IF v_pol_qual IS NULL OR v_pol_check IS NULL THEN
         RAISE EXCEPTION 'income_source_streams UPDATE policy must have ownership polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_source_streams UPDATE USING policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
+    END IF;
+    v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
+    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
+    IF v_norm NOT IN (
+        'selectauth.uid()asuid=user_id',
+        'selectauth.uid()=user_id',
+        'auth.uid()=user_id',
+        'user_id=selectauth.uid()asuid',
+        'user_id=selectauth.uid()',
+        'user_id=auth.uid()'
+    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
+        RAISE EXCEPTION 'income_source_streams UPDATE WITH CHECK policy must strictly be canonical ownership expression only, got: %', v_pol_check;
     END IF;
 
     -- -------------------------------------------------------------------------
@@ -570,18 +701,22 @@ BEGIN
         RAISE EXCEPTION 'check_income_source_name_length missing or malformed: %', v_def;
     END IF;
 
-    -- check_income_source_type: exactly the 5 allowed types
+    -- check_income_source_type: exactly the 5 allowed types (FREELANCE, INVESTMENT, OTHER, SALARY, YOUTUBE)
     SELECT pg_get_constraintdef(oid) INTO v_def
     FROM pg_constraint
     WHERE conrelid = 'public.income_sources'::regclass AND conname = 'check_income_source_type';
 
-    IF v_def IS NULL OR
-       v_def NOT ILIKE '%''SALARY''%' OR
-       v_def NOT ILIKE '%''YOUTUBE''%' OR
-       v_def NOT ILIKE '%''FREELANCE''%' OR
-       v_def NOT ILIKE '%''INVESTMENT''%' OR
-       v_def NOT ILIKE '%''OTHER''%' THEN
-        RAISE EXCEPTION 'check_income_source_type missing or malformed: %', v_def;
+    IF v_def IS NULL OR v_def NOT ILIKE '%type%' THEN
+        RAISE EXCEPTION 'check_income_source_type missing or does not reference type: %', v_def;
+    END IF;
+
+    SELECT array_agg(DISTINCT m[1] ORDER BY m[1]) INTO v_keys
+    FROM (
+        SELECT regexp_matches(v_def, '''([A-Z0-9_]+)''', 'g') AS m
+    ) sub;
+
+    IF v_keys != ARRAY['FREELANCE', 'INVESTMENT', 'OTHER', 'SALARY', 'YOUTUBE'] THEN
+        RAISE EXCEPTION 'check_income_source_type must match exact set (FREELANCE, INVESTMENT, OTHER, SALARY, YOUTUBE) with no extra values, found: %', v_keys;
     END IF;
 
     -- check_income_source_stream_name_length: length/char_length of trim(name) between 1 and 200

@@ -757,11 +757,11 @@ FINORA_PHASE_8=PASS
 PHASE_9_AUTHORIZED=true
 ```
 
-## Phase 9 — Income Sources & Revenue Attribution — Implementation Pass A & Security Corrective
+## Phase 9 — Income Sources & Revenue Attribution — Implementation Pass A & Pre-Deployment Correctives
 
-Phase 9 Pass A and its pre-deployment security corrective have been implemented and verified in the source repository:
+Phase 9 Pass A and its pre-deployment security and ACL correctives have been implemented and verified in the source repository:
 
-### 1. Database Security & Migration Hardening
+### 1. Database Security, ACLs & Migration Hardening
 - Migration `supabase/migrations/20260901100000_phase_9_income_sources_revenue_attribution.sql` (not applied to remote Supabase):
   - Tables `public.income_sources` and `public.income_source_streams` with `user_id uuid NOT NULL DEFAULT auth.uid()`.
   - Composite foreign keys:
@@ -770,6 +770,7 @@ Phase 9 Pass A and its pre-deployment security corrective have been implemented 
     - `transactions (income_source_stream_id, income_source_id, user_id) -> income_source_streams (id, income_source_id, user_id) ON DELETE RESTRICT`
   - Constraint creation guards scoped using `conrelid = 'public.transactions'::regclass`.
   - Fail-closed security ACLs: `REVOKE ALL ON TABLE ... FROM anon, authenticated, PUBLIC;` before rebuilding exact authenticated column allowlists (INSERT: `name, type`, UPDATE: `name, type, is_archived` on sources; INSERT: `income_source_id, name`, UPDATE: `name, is_archived` on streams). No DELETE grant on either table.
+  - Transaction attribution column mutation grants: Explicit column `INSERT` and `UPDATE` on `public.transactions(income_source_id, income_source_stream_id)` granted to `authenticated`. Table-level mutation authority remains fail-closed (`INSERT=false`, `UPDATE=false`, `DELETE=false`).
   - Active attribution trigger: `check_transaction_attribution_active_trigger` on `transactions` executing `SECURITY INVOKER` function with `SET search_path = ''`.
   - View `transaction_details` updated with `security_invoker = true`, preserving exact 17 legacy prefix columns and appending columns 18-22.
 
@@ -783,8 +784,8 @@ Phase 9 Pass A and its pre-deployment security corrective have been implemented 
   - CRUD operations strictly exclude client `user_id` injection and prevent stream parent mutation.
 
 ### 3. Verification Suite
-- `scripts/verify-phase9-db.sql`: Hardened fail-closed structural assertion gate with `DO $$ ... $$` verifying table schemas, exact column counts, effective table and column ACLs (including full anon rejection), exact RLS policy command matrix (SELECT, INSERT, UPDATE, no DELETE/ALL) with authenticated role OID binding and canonical ownership expressions, exact composite unique/FK local and referenced column order via `conkey`/`confkey` unnest with ordinality, trigger function bindings (`handle_updated_at`, `check_transaction_attribution_active`), `SECURITY INVOKER` function configurations with exact empty `search_path`, and 22-column view order.
-- `scripts/verify-phase9-source.mjs`: Automated source verifier (70/70 checks) checking all Phase 9 security contracts, migration locks, DB verifier catalog mechanics, and TypeScript definitions.
+- `scripts/verify-phase9-db.sql`: Hardened fail-closed structural assertion gate with `DO $$ ... $$` verifying table schemas, exact column counts, effective table and column ACLs (including full anon rejection, table-level fail-closed mutation on `transactions`, and column-level `INSERT`/`UPDATE` on attribution columns), exact RLS policy command matrix (SELECT, INSERT, UPDATE, no DELETE/ALL) with authenticated role OID binding and strict normalized ownership expressions without extraneous predicates, exact composite unique/FK local and referenced column order via `conkey`/`confkey` unnest with ordinality, exact 5-element source type constraint set matching (`FREELANCE`, `INVESTMENT`, `OTHER`, `SALARY`, `YOUTUBE`), trigger function bindings (`handle_updated_at`, `check_transaction_attribution_active`), `SECURITY INVOKER` function configurations with exact empty `search_path`, and 22-column view order.
+- `scripts/verify-phase9-source.mjs`: Automated source verifier checking all Phase 9 security contracts, migration locks, DB verifier catalog mechanics, and TypeScript definitions.
 - `tests/phase9-income-sources.test.ts`: Unit test suite testing name validation, attribution constraints, fail-closed currency behavior, exact decimal aggregation, large decimal boundary (`numeric(20,4)`), and archive neutrality.
 
 ## Next Recommended Action

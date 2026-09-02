@@ -234,6 +234,21 @@ GRANT SELECT ON TABLE public.income_source_streams TO authenticated;
 GRANT INSERT (income_source_id, name) ON TABLE public.income_source_streams TO authenticated;
 GRANT UPDATE (name, is_archived) ON TABLE public.income_source_streams TO authenticated;
 
+-- Grant column-level mutation authority on new transaction attribution columns to authenticated
+GRANT INSERT (
+    income_source_id,
+    income_source_stream_id
+)
+ON TABLE public.transactions
+TO authenticated;
+
+GRANT UPDATE (
+    income_source_id,
+    income_source_stream_id
+)
+ON TABLE public.transactions
+TO authenticated;
+
 -- 9. Replace transaction_details view preserving exact 17-column prefix and appending 18-22
 CREATE OR REPLACE VIEW public.transaction_details WITH (security_invoker = true) AS
 SELECT 

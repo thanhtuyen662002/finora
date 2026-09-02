@@ -116,6 +116,16 @@ check('SOURCE_COLUMN_ALLOWLIST_EXACT: income_sources column-level INSERT and UPD
 check('STREAM_COLUMN_ALLOWLIST_EXACT: income_source_streams column-level INSERT and UPDATE allowlists',
   phase9Mig.includes('GRANT INSERT (income_source_id, name)') &&
   phase9Mig.includes('GRANT UPDATE (name, is_archived)'));
+check('TX_ATTRIBUTION_COLUMN_GRANTS_EXACT: transactions attribution column-level INSERT and UPDATE allowlists',
+  phase9Mig.includes('GRANT INSERT (') && phase9Mig.includes('income_source_id,') && phase9Mig.includes('income_source_stream_id') &&
+  phase9Mig.includes('ON TABLE public.transactions') &&
+  phase9Mig.includes('GRANT UPDATE (') &&
+  phase9Mig.includes('TO authenticated;'));
+check('TX_TABLE_LEVEL_MUTATION_NOT_GRANTED: no table level INSERT, UPDATE, DELETE, or ALL on transactions',
+  !phase9Mig.match(/GRANT\s+INSERT\s+ON\s+(TABLE\s+)?public\.transactions\s+TO/i) &&
+  !phase9Mig.match(/GRANT\s+UPDATE\s+ON\s+(TABLE\s+)?public\.transactions\s+TO/i) &&
+  !phase9Mig.match(/GRANT\s+DELETE\s+ON\s+(TABLE\s+)?public\.transactions\s+TO/i) &&
+  !phase9Mig.match(/GRANT\s+ALL\s+ON\s+(TABLE\s+)?public\.transactions\s+TO/i));
 check('No DELETE grant on income_sources or streams to authenticated',
   !phase9Mig.includes('GRANT DELETE ON public.income_sources') &&
   !phase9Mig.includes('GRANT DELETE ON TABLE public.income_sources') &&
@@ -133,7 +143,9 @@ check('DB_VERIFIER_EFFECTIVE_TABLE_ACL_CHECKS: asserts has_table_privilege for a
   dbVerifier.includes("has_table_privilege('authenticated', 'public.income_sources', 'SELECT')") &&
   dbVerifier.includes("has_table_privilege('authenticated', 'public.income_sources', 'INSERT')") &&
   dbVerifier.includes("has_table_privilege('authenticated', 'public.income_source_streams', 'SELECT')") &&
-  dbVerifier.includes("has_table_privilege('authenticated', 'public.income_source_streams', 'INSERT')"));
+  dbVerifier.includes("has_table_privilege('authenticated', 'public.income_source_streams', 'INSERT')") &&
+  dbVerifier.includes("has_table_privilege('authenticated', 'public.transactions', 'SELECT')") &&
+  dbVerifier.includes("has_table_privilege('authenticated', 'public.transactions', 'INSERT')"));
 check('DB_VERIFIER_ANON_ALL_PRIVILEGES_ABSENT: asserts anon has no SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, or TRIGGER',
   dbVerifier.includes("has_table_privilege('anon', 'public.income_sources', 'TRUNCATE')") &&
   dbVerifier.includes("has_table_privilege('anon', 'public.income_sources', 'REFERENCES')") &&
@@ -145,7 +157,11 @@ check('DB_VERIFIER_EFFECTIVE_COLUMN_ACL_CHECKS: asserts has_column_privilege exa
   dbVerifier.includes("has_column_privilege('authenticated', 'public.income_sources', 'name', 'INSERT')") &&
   dbVerifier.includes("has_column_privilege('authenticated', 'public.income_sources', 'user_id', 'INSERT')") &&
   dbVerifier.includes("has_column_privilege('authenticated', 'public.income_source_streams', 'income_source_id', 'INSERT')") &&
-  dbVerifier.includes("has_column_privilege('authenticated', 'public.income_source_streams', 'user_id', 'INSERT')"));
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.income_source_streams', 'user_id', 'INSERT')") &&
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.transactions', 'income_source_id', 'INSERT')") &&
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.transactions', 'income_source_stream_id', 'INSERT')") &&
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.transactions', 'income_source_id', 'UPDATE')") &&
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.transactions', 'income_source_stream_id', 'UPDATE')"));
 check('DB_VERIFIER_RLS_COMMAND_MATRIX_EXACT: asserts polcmd = r, a, w and no DELETE or ALL policies',
   dbVerifier.includes("polcmd = 'r'") &&
   dbVerifier.includes("polcmd = 'a'") &&
@@ -165,6 +181,9 @@ check('DB_VERIFIER_RLS_INSERT_EXPR_EXACT: asserts INSERT has NULL polqual and ow
 check('DB_VERIFIER_RLS_UPDATE_EXPR_EXACT: asserts UPDATE has ownership polqual and ownership polwithcheck',
   dbVerifier.includes('income_sources UPDATE policy must have ownership polqual and ownership polwithcheck') &&
   dbVerifier.includes('income_source_streams UPDATE policy must have ownership polqual and ownership polwithcheck'));
+check('DB_VERIFIER_RLS_OWNERSHIP_ONLY_EXACT: asserts strict canonical ownership expression without extraneous predicates',
+  dbVerifier.includes('canonical ownership expression only') &&
+  dbVerifier.includes('selectauth.uid()asuid=user_id'));
 check('DB_VERIFIER_EXACT_UNIQUE_KEY_ORDER: asserts conkey WITH ORDINALITY for unique keys',
   dbVerifier.includes("conname = 'income_sources_id_user_id_key'") &&
   dbVerifier.includes("v_keys != ARRAY['id', 'user_id']") &&
@@ -181,6 +200,7 @@ check('DB_VERIFIER_EXACT_FK_REFERENCED_KEY_ORDER: asserts confkey order and conf
 check('DB_VERIFIER_CHECK_CONSTRAINT_SEMANTICS_EXACT: asserts CHECK constraint definitions',
   dbVerifier.includes('check_income_source_name_length') &&
   dbVerifier.includes('check_income_source_type') &&
+  dbVerifier.includes("ARRAY['FREELANCE', 'INVESTMENT', 'OTHER', 'SALARY', 'YOUTUBE']") &&
   dbVerifier.includes('check_income_source_stream_name_length') &&
   dbVerifier.includes('check_transaction_expense_no_attribution') &&
   dbVerifier.includes('check_transaction_stream_requires_source'));
