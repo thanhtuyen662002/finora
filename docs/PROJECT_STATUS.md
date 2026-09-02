@@ -808,6 +808,28 @@ The strict authenticated two-user runtime gate harness `scripts/verify-phase9-ru
 - **Metadata Financial Neutrality**: Verifies that creating, updating, and archiving sources/streams has zero delta on account balances or transaction counts.
 - **Transaction-Scoped Rollback**: Proves 0 runtime fixtures remain after transaction rollback.
 
+## Phase 9 — Income Sources & Revenue Attribution — Implementation Pass B (UI / UX)
+
+Phase 9 Pass B (real user-facing experience & reporting integration) has been implemented and verified:
+
+### 1. Income Sources & Streams Management (`/income-sources`)
+- Main management interface created at `/src/app/income-sources/page.tsx` using `AppShell` and `PageHeader`.
+- Real-time data loading via `getIncomeSourcesWithStreams({ includeArchived: true })`.
+- Summary metric cards displaying active income source count, active child stream count, and revenue diversification distribution (5 distinct source categories).
+- Source creation and editing modal supporting names up to 200 characters and 5 supported categories (`SALARY`, `YOUTUBE`, `FREELANCE`, `INVESTMENT`, `OTHER`).
+- Stream creation and renaming modal adhering strictly to immutable parent source constraints (no stream migration across parent sources).
+- Archive and restore controls for sources and streams without hard-delete actions.
+- Tabs and search filters to toggle between active and archived sources.
+- Dedicated loading skeleton at `/src/app/income-sources/loading.tsx`.
+- Sidebar navigation updated in `AppShell` with `Coins` icon.
+
+### 2. Transaction Attribution UX & Reporting Integration
+- `AddTransactionModal`: Dynamically displays optional Income Source and Stream selectors exclusively when transaction type is `INCOME`. For `EXPENSE` type, attribution payload is strictly nulled (`income_source_id: null`, `income_source_stream_id: null`).
+- `TransactionItem`: Displays revenue attribution badges showing income source name and child stream name when present.
+- `IncomeSourcesBreakdown`: Interactive visual breakdown component mounted in `/reports` displaying revenue contributions, percentage of total income, transaction counts, and child stream drill-downs.
+- `exportTransactionsToCSV`: Includes Income Source and Stream columns for comprehensive audit exports.
+- `verify-phase9-ui.mjs`: Fail-closed automated verifier confirming all 20 UI/UX contract assertions pass (`PHASE_9_UI_GATE=PASS`).
+
 ## Next Recommended Action
 Proceed to Phase 9 Live Persistence Smoke verification.
 
@@ -825,6 +847,7 @@ PHASE_9_SOURCE_GATE=PASS
 PHASE_9_REMOTE_DATABASE=PASS
 PHASE_9_STRUCTURAL_GATE=PASS
 PHASE_9_TWO_USER_RLS=PASS
+PHASE_9_UI_GATE=PASS
 PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING
 PHASE_9_OVERALL=PARTIAL
 

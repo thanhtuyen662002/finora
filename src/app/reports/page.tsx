@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/finance/PageHeader';
 import { PeriodSelector } from '@/components/finance/PeriodSelector';
 import { CashFlowChart } from '@/components/charts/CashFlowChart';
 import { CategoryDonutChart } from '@/components/charts/CategoryDonutChart';
+import { IncomeSourcesBreakdown } from '@/components/charts/IncomeSourcesBreakdown';
 import { TransactionList } from '@/components/finance/TransactionList';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -338,10 +339,10 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
-      {/* 2-Column Section: Expense Donut + Accounts in currency */}
+      {/* 2-Column Section: Expense Donut + Income Sources Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Category Expense Breakdown (7 Cols) */}
-        <div className="lg:col-span-7">
+        {/* Category Expense Breakdown (6 Cols) */}
+        <div className="lg:col-span-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-base font-semibold">
@@ -367,69 +368,95 @@ export default function ReportsPage() {
           </Card>
         </div>
 
-        {/* Currency & Account Position Summary (5 Cols) */}
-        <div className="lg:col-span-5">
+        {/* Income Sources Breakdown (6 Cols) */}
+        <div className="lg:col-span-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center space-x-2">
-                <Wallet className="h-4 w-4 text-primary" />
-                <span>Tài khoản ({displayCurrency})</span>
+              <CardTitle className="text-base font-semibold">
+                Cơ cấu nguồn thu nhập
               </CardTitle>
               <CardDescription>
-                Tổng số dư các tài khoản nắm giữ {displayCurrency}.
+                Phân bổ thu nhập theo nguồn và kênh thu ({data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? '—' : formatExactMoney(summary.totalIncome, displayCurrency)}).
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Tổng số dư {displayCurrency}:</span>
-                <span className="text-base font-bold text-foreground">
-                  {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? 'Không khả dụng' : formatExactMoney(data.totalAccountBalance || '0', displayCurrency)}
-                </span>
-              </div>
-
-              {(() => {
-                const activeAccounts = (data.accountsInCurrency || []).filter(acc => !acc.isArchived);
-                const previewAccounts = activeAccounts.slice(0, 8);
-                if (previewAccounts.length === 0) {
-                  return (
-                    <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
-                      Không có tài khoản đang hoạt động nào sử dụng {displayCurrency}.
-                    </div>
-                  );
-                }
-                return (
-                  <div className="space-y-2 pt-1">
-                    <div className="text-[11px] font-medium text-muted-foreground flex items-center justify-between pb-1">
-                      <span>Tài khoản đang hoạt động: {activeAccounts.length}</span>
-                      {activeAccounts.length > 8 && <span>(Hiển thị 8/{activeAccounts.length})</span>}
-                    </div>
-                    {previewAccounts.map((acc) => (
-                      <div
-                        key={acc.accountId}
-                        className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs"
-                      >
-                        <div className="flex items-center space-x-2.5 min-w-0 pr-2">
-                          <span
-                            className="h-3 w-3 rounded-full shrink-0"
-                            style={{ backgroundColor: acc.color }}
-                          />
-                          <div className="truncate">
-                            <p className="font-medium text-foreground truncate">{acc.name}</p>
-                            <p className="text-[10px] text-muted-foreground">{acc.institution || acc.type}</p>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0 font-semibold text-foreground">
-                          {formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
+            <CardContent>
+              {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  Dữ liệu tổng hợp chưa sẵn sàng.
+                </div>
+              ) : (
+                <IncomeSourcesBreakdown
+                  sources={data.incomeBreakdown || []}
+                  currency={displayCurrency}
+                />
+              )}
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Currency & Account Position Summary */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center space-x-2">
+            <Wallet className="h-4 w-4 text-primary" />
+            <span>Tài khoản ({displayCurrency})</span>
+          </CardTitle>
+          <CardDescription>
+            Tổng số dư các tài khoản nắm giữ {displayCurrency}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Tổng số dư {displayCurrency}:</span>
+            <span className="text-base font-bold text-foreground">
+              {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? 'Không khả dụng' : formatExactMoney(data.totalAccountBalance || '0', displayCurrency)}
+            </span>
+          </div>
+
+          {(() => {
+            const activeAccounts = (data.accountsInCurrency || []).filter(acc => !acc.isArchived);
+            const previewAccounts = activeAccounts.slice(0, 8);
+            if (previewAccounts.length === 0) {
+              return (
+                <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
+                  Không có tài khoản đang hoạt động nào sử dụng {displayCurrency}.
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-2 pt-1">
+                <div className="text-[11px] font-medium text-muted-foreground flex items-center justify-between pb-1">
+                  <span>Tài khoản đang hoạt động: {activeAccounts.length}</span>
+                  {activeAccounts.length > 8 && <span>(Hiển thị 8/{activeAccounts.length})</span>}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  {previewAccounts.map((acc) => (
+                    <div
+                      key={acc.accountId}
+                      className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs"
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                        <span
+                          className="h-3 w-3 rounded-full shrink-0"
+                          style={{ backgroundColor: acc.color }}
+                        />
+                        <div className="truncate">
+                          <p className="font-medium text-foreground truncate">{acc.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{acc.institution || acc.type}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 font-semibold text-foreground">
+                        {formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
 
       {/* Transaction Details in Selected Period & Currency */}
       <Card>

@@ -20,6 +20,8 @@ import type {
   CurrencySummary,
   MonthlyCashFlowPoint,
   CategoryExpenseBreakdown,
+  IncomeSourceBreakdown,
+  IncomeStreamBreakdown,
   AccountBalanceSnapshot,
   CurrencyAccountGroup,
 } from './types';
@@ -542,6 +544,122 @@ export function aggregateCategoryExpenses(
 }
 
 /**
+ * Aggregates income breakdown by income source and streams for a selected currency and period.
+ */
+export function aggregateIncomeSourcesBreakdown(
+  transactions: (TransactionDetailRow | ExtendedTransaction)[],
+  targetCurrency: string,
+  startDate?: string | null,
+  endDate?: string | null
+): IncomeSourceBreakdown[] {
+  const normCurrency = (targetCurrency || 'VND').toUpperCase();
+  const sourceMap = new Map<
+    string,
+    {
+      sourceId: string | null;
+      sourceName: string;
+      sourceType: string | null;
+      amount: string;
+      transactionCount: number;
+      streamMap: Map<
+        string,
+        {
+          streamId: string | null;
+          streamName: string;
+          amount: string;
+          transactionCount: number;
+        }
+      >;
+    }
+  >();
+
+  let totalIncome = '0.0000';
+
+  for (const tx of transactions) {
+    if (tx.is_voided) continue;
+    if (tx.type !== 'INCOME') continue;
+    if ((tx.currency_code || '').toUpperCase() !== normCurrency) continue;
+    if (startDate && tx.occurred_on < startDate) continue;
+    if (endDate && tx.occurred_on > endDate) continue;
+
+    const sourceId = tx.income_source_id || null;
+    const key = sourceId || '__UNATTRIBUTED__';
+    const sourceName = ('income_source_name' in tx ? tx.income_source_name : (tx as ExtendedTransaction).incomeSourceName) || (sourceId ? 'Nguồn thu' : 'Chưa phân loại');
+    const sourceType = ('income_source_type' in tx ? tx.income_source_type : (tx as ExtendedTransaction).incomeSourceType) || null;
+
+    const streamId = tx.income_source_stream_id || null;
+    const streamKey = streamId || '__NO_STREAM__';
+    const streamName = ('income_source_stream_name' in tx ? tx.income_source_stream_name : (tx as ExtendedTransaction).incomeSourceStreamName) || (streamId ? 'Kênh thu' : 'Mặc định');
+
+    const existing = sourceMap.get(key) || {
+      sourceId,
+      sourceName,
+      sourceType,
+      amount: '0.0000',
+      transactionCount: 0,
+      streamMap: new Map(),
+    };
+
+    existing.amount = addExactDecimals(existing.amount, toExactDecimal(tx.amount));
+    existing.transactionCount += 1;
+
+    const streamExisting = existing.streamMap.get(streamKey) || {
+      streamId,
+      streamName,
+      amount: '0.0000',
+      transactionCount: 0,
+    };
+    streamExisting.amount = addExactDecimals(streamExisting.amount, toExactDecimal(tx.amount));
+    streamExisting.transactionCount += 1;
+    existing.streamMap.set(streamKey, streamExisting);
+
+    sourceMap.set(key, existing);
+    totalIncome = addExactDecimals(totalIncome, toExactDecimal(tx.amount));
+  }
+
+  const result: IncomeSourceBreakdown[] = [];
+
+  for (const item of sourceMap.values()) {
+    const bps = computeBasisPoints(item.amount, totalIncome);
+    const percentage = Math.round(bps / 100);
+    const percentageStr = `${(bps / 100).toFixed(1)}%`;
+
+    const streams: IncomeStreamBreakdown[] = [];
+    for (const st of item.streamMap.values()) {
+      const stBps = computeBasisPoints(st.amount, totalIncome);
+      const stPercentage = Math.round(stBps / 100);
+      const stPercentageStr = `${(stBps / 100).toFixed(1)}%`;
+
+      streams.push({
+        streamId: st.streamId,
+        streamName: st.streamName,
+        amount: st.amount,
+        basisPoints: stBps,
+        percentage: stPercentage,
+        percentageStr: stPercentageStr,
+        transactionCount: st.transactionCount,
+      });
+    }
+
+    streams.sort((a, b) => b.basisPoints - a.basisPoints);
+
+    result.push({
+      sourceId: item.sourceId,
+      sourceName: item.sourceName,
+      sourceType: item.sourceType,
+      amount: item.amount,
+      basisPoints: bps,
+      percentage,
+      percentageStr,
+      transactionCount: item.transactionCount,
+      streams,
+    });
+  }
+
+  return result.sort((a, b) => b.basisPoints - a.basisPoints);
+}
+
+/**
  * Generates an RFC 4180 UTF-8 CSV export for transactions of the selected currency and period.
  */
 export function exportTransactionsToCSV(
@@ -568,6 +686,8 @@ export function exportTransactionsToCSV(
       'Danh mục',
       'Tài khoản',
       'Đối tác/Cửa hàng',
+      'Nguồn thu nhập',
+      'Kênh thu nhập',
       'Trạng thái',
       'Ghi chú',
       'Số tiền gốc',
@@ -586,6 +706,8 @@ export function exportTransactionsToCSV(
       'Danh mục',
       'Tài khoản',
       'Đối tác/Cửa hàng',
+      'Nguồn thu nhập',
+      'Kênh thu nhập',
       'Số tiền',
       'Đơn vị tiền tệ',
       'Trạng thái',
@@ -600,6 +722,8 @@ export function exportTransactionsToCSV(
       const typeLabel = tx.type === 'INCOME' ? 'Thu nhập' : 'Chi tiêu';
       const catName = ('category_name' in tx ? tx.category_name : tx.categoryName) || '';
       const accName = ('account_name' in tx ? tx.account_name : tx.accountName) || '';
+      const sourceName = ('income_source_name' in tx ? tx.income_source_name : tx.incomeSourceName) || '';
+      const streamName = ('income_source_stream_name' in tx ? tx.income_source_stream_name : tx.incomeSourceStreamName) || '';
       const status = tx.is_voided ? 'Đã vô hiệu hóa' : 'Hợp lệ';
 
       if (normCurrency === 'BASE') {
@@ -609,6 +733,8 @@ export function exportTransactionsToCSV(
           escapeCell(catName),
           escapeCell(accName),
           escapeCell(tx.merchant),
+          escapeCell(sourceName),
+          escapeCell(streamName),
           escapeCell(status),
           escapeCell(tx.note),
           escapeCell(txAny.fx_original_amount ? toExactDecimal(txAny.fx_original_amount) : ''),
@@ -627,6 +753,8 @@ export function exportTransactionsToCSV(
           escapeCell(catName),
           escapeCell(accName),
           escapeCell(tx.merchant),
+          escapeCell(sourceName),
+          escapeCell(streamName),
           escapeCell(toExactDecimal(tx.amount)),
           escapeCell(tx.currency_code),
           escapeCell(status),

@@ -19,6 +19,7 @@ import {
   aggregateAccountBalancesByCurrency,
   aggregateCashFlow,
   aggregateCategoryExpenses,
+  aggregateIncomeSourcesBreakdown,
 } from './engine';
 import type {
   ReportPeriod,
@@ -109,8 +110,15 @@ export async function getDashboardReportData(
   const accountBalancesByCurrency = aggregateAccountBalancesByCurrency(accounts, balances);
 
   const sixMonthCashFlowByCurrency: Record<string, any> = {};
+  const incomeBreakdownByCurrency: Record<string, any> = {};
   for (const c of availableCurrencies) {
     sixMonthCashFlowByCurrency[c] = aggregateCashFlow(transactions, c, dateRange6M.monthKeys);
+    incomeBreakdownByCurrency[c] = aggregateIncomeSourcesBreakdown(
+      transactions,
+      c,
+      dateRange6M.startDate,
+      dateRange6M.endDate
+    );
   }
 
   const baseValuation: BaseValuationProvenance = {
@@ -144,6 +152,7 @@ export async function getDashboardReportData(
     currentMonthSummaries,
     accountBalancesByCurrency,
     sixMonthCashFlowByCurrency,
+    incomeBreakdownByCurrency,
     recentTransactions,
     currentMonthLabel,
     _periodTxList: periodTxList,
@@ -266,6 +275,11 @@ export async function enrichDashboardBaseFx(
     enriched.sixMonthCashFlowByCurrency = {
       ...enriched.sixMonthCashFlowByCurrency,
       BASE: aggregateCashFlow(baseTransactions, 'BASE', dateRange6M.monthKeys)
+    };
+
+    enriched.incomeBreakdownByCurrency = {
+      ...enriched.incomeBreakdownByCurrency,
+      BASE: aggregateIncomeSourcesBreakdown(baseTransactions, 'BASE', dateRange6M.startDate, dateRange6M.endDate)
     };
 
     enriched.baseHistorical = {
@@ -503,6 +517,13 @@ export async function getDetailedReportData(
     dateRange.endDate
   );
 
+  const incomeBreakdown = aggregateIncomeSourcesBreakdown(
+    activeTransactions,
+    selectedCurrency,
+    dateRange.startDate,
+    dateRange.endDate
+  );
+
   let accountsInCurrency: AccountBalanceSnapshot[] | null = [];
   let totalAccountBalance: string | null = '0.0000';
 
@@ -542,6 +563,7 @@ export async function getDetailedReportData(
     summary,
     cashFlow,
     categoryBreakdown,
+    incomeBreakdown,
     accountsInCurrency,
     totalAccountBalance,
     transactions: transactionsInScope,

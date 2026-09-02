@@ -86,6 +86,28 @@ export interface CurrencyAccountGroup {
   accounts: AccountBalanceSnapshot[];
 }
 
+export interface IncomeStreamBreakdown {
+  streamId: string | null;
+  streamName: string;
+  amount: string; // Exact decimal string
+  basisPoints: number; // [0..10000] fraction of total income in this period
+  percentage: number; // e.g. 20
+  percentageStr: string; // e.g. "20.0%"
+  transactionCount: number;
+}
+
+export interface IncomeSourceBreakdown {
+  sourceId: string | null;
+  sourceName: string;
+  sourceType: string | null;
+  amount: string; // Exact decimal string
+  basisPoints: number; // [0..10000] fraction of total income in this period
+  percentage: number; // e.g. 45
+  percentageStr: string; // e.g. "45.0%"
+  transactionCount: number;
+  streams: IncomeStreamBreakdown[];
+}
+
 export interface DashboardReportData {
   baseCurrency: string;
   autoFxEnabled: boolean;
@@ -105,6 +127,9 @@ export interface DashboardReportData {
   
   // 6-month cash flow series per currency
   sixMonthCashFlowByCurrency: Record<string, MonthlyCashFlowPoint[]>;
+
+  // Income sources breakdown per currency
+  incomeBreakdownByCurrency: Record<string, IncomeSourceBreakdown[]>;
   
   // Real recent transactions (limit 5-10)
   recentTransactions: ExtendedTransaction[]; // could contain BaseConvertedTransaction
@@ -129,6 +154,7 @@ export interface DetailedReportData {
   summary: CurrencySummary;
   cashFlow: MonthlyCashFlowPoint[];
   categoryBreakdown: CategoryExpenseBreakdown[];
+  incomeBreakdown: IncomeSourceBreakdown[];
   accountsInCurrency: AccountBalanceSnapshot[] | null;
   totalAccountBalance: string | null; // Exact decimal sum of accounts in selected currency
   transactions: ExtendedTransaction[]; // could contain BaseConvertedTransaction

@@ -1,22 +1,20 @@
 import React from 'react';
-import { MockIncomeSource } from '@/types/finance';
-import { formatMoney, formatConverted } from '@/lib/money/format';
+import type { IncomeSourceBreakdown } from '@/features/reports/types';
+import { formatExactMoney } from '@/lib/money';
 import { CurrencyBadge } from '@/components/finance/CurrencyBadge';
-import { Video, Briefcase, Laptop, TrendingUp, ChevronRight } from 'lucide-react';
+import { Video, Briefcase, Laptop, TrendingUp, ChevronRight, HelpCircle, Layers } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface IncomeSourcesBreakdownProps {
-  sources: MockIncomeSource[];
+  sources: IncomeSourceBreakdown[];
+  currency: string;
 }
 
 export const IncomeSourcesBreakdown: React.FC<IncomeSourcesBreakdownProps> = ({
   sources,
+  currency,
 }) => {
-  const totalBaseVND = sources.reduce(
-    (sum, src) => sum + src.totalBaseAmountVND,
-    0
-  );
-
-  const getSourceIcon = (type: string) => {
+  const getSourceIcon = (type: string | null) => {
     switch (type) {
       case 'YOUTUBE':
         return <Video className="h-4 w-4 text-red-500" />;
@@ -27,75 +25,96 @@ export const IncomeSourcesBreakdown: React.FC<IncomeSourcesBreakdownProps> = ({
       case 'INVESTMENT':
         return <TrendingUp className="h-4 w-4 text-amber-500" />;
       default:
-        return <Briefcase className="h-4 w-4 text-slate-500" />;
+        return type ? <Briefcase className="h-4 w-4 text-slate-500" /> : <HelpCircle className="h-4 w-4 text-muted-foreground" />;
     }
   };
+
+  const getSourceTypeLabel = (type: string | null) => {
+    switch (type) {
+      case 'SALARY': return 'Lương';
+      case 'YOUTUBE': return 'YouTube';
+      case 'FREELANCE': return 'Freelance';
+      case 'INVESTMENT': return 'Đầu tư';
+      case 'OTHER': return 'Khác';
+      default: return 'Chưa phân loại';
+    }
+  };
+
+  if (!sources || sources.length === 0) {
+    return (
+      <div className="py-8 text-center border rounded-xl bg-card">
+        <Layers className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+        <p className="text-sm font-medium text-muted-foreground">Chưa có dữ liệu thu nhập</p>
+        <p className="text-xs text-muted-foreground/80 mt-1">
+          Các khoản thu nhập được gán nguồn thu sẽ hiển thị cơ cấu tại đây.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
       {sources.map((src) => {
-        const percent = Math.round((src.totalBaseAmountVND / totalBaseVND) * 100);
-
+        const hasStreams = src.streams && src.streams.length > 0;
         return (
           <div
-            key={src.id}
+            key={src.sourceId || '__unattributed__'}
             className="p-3.5 rounded-xl border bg-card hover:bg-muted/30 transition-colors space-y-2.5"
           >
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-                  {getSourceIcon(src.type)}
+              <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted shrink-0">
+                  {getSourceIcon(src.sourceType)}
                 </div>
-                <div>
+                <div className="min-w-0 truncate">
                   <div className="flex items-center space-x-2">
-                    <h4 className="text-sm font-semibold text-foreground">
-                      {src.name}
+                    <h4 className="text-sm font-semibold text-foreground truncate">
+                      {src.sourceName}
                     </h4>
-                    {src.currency !== 'VND' && (
-                      <CurrencyBadge currency={src.currency} />
+                    {currency !== 'VND' && currency !== 'BASE' && (
+                      <CurrencyBadge currency={currency} />
                     )}
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    Đóng góp {percent}% tổng thu nhập
-                  </span>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                    <span className="inline-block px-1.5 py-0.2 text-[10px] font-medium rounded bg-muted/80 text-muted-foreground">
+                      {getSourceTypeLabel(src.sourceType)}
+                    </span>
+                    <span>&middot;</span>
+                    <span>Đóng góp {src.percentageStr} ({src.transactionCount} giao dịch)</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="text-right">
-                {src.currency !== 'VND' && src.originalAmount ? (
-                  <>
-                    <p className="text-sm font-bold text-foreground">
-                      {formatMoney(src.originalAmount, src.currency)}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground font-medium">
-                      {formatConverted(src.totalBaseAmountVND)}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-sm font-bold text-foreground">
-                    {formatMoney(src.totalBaseAmountVND, 'VND')}
-                  </p>
-                )}
+              <div className="text-right shrink-0">
+                <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                  +{formatExactMoney(src.amount, currency)}
+                </p>
+                <div className="w-20 bg-muted rounded-full h-1.5 mt-1 ml-auto overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full transition-all"
+                    style={{ width: `${Math.min(src.percentage, 100)}%` }}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Sub-sources for YouTube channels */}
-            {src.subSources && src.subSources.length > 0 && (
-              <div className="pl-6 pt-1 border-t border-border/60 space-y-1.5">
-                {src.subSources.map((sub) => (
+            {/* Nested Streams */}
+            {hasStreams && (
+              <div className="pl-6 pt-2 border-t border-border/60 space-y-1.5">
+                {src.streams.map((sub) => (
                   <div
-                    key={sub.id}
+                    key={sub.streamId || '__default_stream__'}
                     className="flex items-center justify-between text-xs text-muted-foreground py-0.5"
                   >
-                    <div className="flex items-center space-x-1.5 truncate">
+                    <div className="flex items-center space-x-1.5 truncate pr-2">
                       <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="truncate">{sub.name}</span>
+                      <span className="truncate font-medium text-foreground">{sub.streamName}</span>
+                      <span className="text-[10px] text-muted-foreground">({sub.percentageStr})</span>
                     </div>
-                    <div className="text-right shrink-0 pl-2">
-                      <span className="font-semibold text-foreground">
-                        {formatMoney(sub.amount, sub.currency)}
-                      </span>{' '}
-                      <span className="text-[10px]">({formatConverted(sub.baseAmountVND)})</span>
+                    <div className="text-right shrink-0">
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                        +{formatExactMoney(sub.amount, currency)}
+                      </span>
                     </div>
                   </div>
                 ))}

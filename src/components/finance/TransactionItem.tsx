@@ -67,8 +67,17 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
               <CurrencyBadge currency={transaction.currency_code} />
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">
-            {transaction.categoryName} &middot; {transaction.accountName}
+          <p className="text-xs text-muted-foreground truncate mt-0.5 flex items-center gap-1.5">
+            <span>{transaction.categoryName} &middot; {transaction.accountName}</span>
+            {transaction.incomeSourceName && (
+              <>
+                <span>&middot;</span>
+                <span className="inline-flex items-center px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 text-[10px] font-medium border border-emerald-200 dark:border-emerald-800/40">
+                  {transaction.incomeSourceName}
+                  {transaction.incomeSourceStreamName ? ` / ${transaction.incomeSourceStreamName}` : ''}
+                </span>
+              </>
+            )}
           </p>
         </div>
       </div>

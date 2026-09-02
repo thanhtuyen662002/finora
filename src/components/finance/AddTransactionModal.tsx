@@ -24,6 +24,10 @@ import {
 } from '@/features/transactions';
 import { getAccounts } from '@/features/accounts/accounts';
 import { getCategories } from '@/features/categories/categories';
+import {
+  getIncomeSourcesWithStreams,
+  IncomeSourceWithStreams,
+} from '@/features/income-sources';
 import { isPositiveExactDecimal, toExactDecimal } from '@/lib/money';
 
 interface AddTransactionModalProps {
@@ -33,6 +37,7 @@ interface AddTransactionModalProps {
   initialData?: ExtendedTransaction | null;
   accounts?: AccountRow[];
   categories?: CategoryRow[];
+  incomeSources?: IncomeSourceWithStreams[];
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -42,37 +47,58 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   initialData,
   accounts: propAccounts = [],
   categories: propCategories = [],
+  incomeSources: propIncomeSources = [],
 }) => {
   const [internalAccounts, setInternalAccounts] = useState<AccountRow[]>([]);
   const [internalCategories, setInternalCategories] = useState<CategoryRow[]>([]);
+  const [internalIncomeSources, setInternalIncomeSources] = useState<IncomeSourceWithStreams[]>([]);
 
   useEffect(() => {
     let active = true;
-    if (open && (!propAccounts.length || !propCategories.length)) {
-      Promise.all([getAccounts(), getCategories()])
-        .then(([accs, cats]) => {
-          if (active) {
-            setInternalAccounts(accs);
-            setInternalCategories(cats);
-          }
-        })
-        .catch((error: unknown) => {
-          console.error(error);
-        });
+    if (open) {
+      const tasks: Promise<any>[] = [];
+      if (!propAccounts.length) tasks.push(getAccounts().then((res) => ({ type: 'acc', res })));
+      if (!propCategories.length) tasks.push(getCategories().then((res) => ({ type: 'cat', res })));
+      if (!propIncomeSources.length) {
+        tasks.push(
+          getIncomeSourcesWithStreams({ includeArchived: true }).then((res) => ({
+            type: 'src',
+            res,
+          }))
+        );
+      }
+
+      if (tasks.length > 0) {
+        Promise.all(tasks)
+          .then((results) => {
+            if (!active) return;
+            for (const item of results) {
+              if (item.type === 'acc') setInternalAccounts(item.res);
+              if (item.type === 'cat') setInternalCategories(item.res);
+              if (item.type === 'src') setInternalIncomeSources(item.res);
+            }
+          })
+          .catch((error: unknown) => {
+            console.error(error);
+          });
+      }
     }
     return () => {
       active = false;
     };
-  }, [open, propAccounts.length, propCategories.length]);
+  }, [open, propAccounts.length, propCategories.length, propIncomeSources.length]);
 
   const accounts = propAccounts.length > 0 ? propAccounts : internalAccounts;
   const categories = propCategories.length > 0 ? propCategories : internalCategories;
+  const incomeSources = propIncomeSources.length > 0 ? propIncomeSources : internalIncomeSources;
 
   const [type, setType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('VND');
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [incomeSourceId, setIncomeSourceId] = useState('');
+  const [incomeSourceStreamId, setIncomeSourceStreamId] = useState('');
   const [merchant, setMerchant] = useState('');
   const [note, setNote] = useState('');
   const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().substring(0, 10));
@@ -92,6 +118,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setCurrency(initialData.currency_code);
       setAccountId(initialData.account_id);
       setCategoryId(initialData.category_id);
+      setIncomeSourceId(initialData.income_source_id || '');
+      setIncomeSourceStreamId(initialData.income_source_stream_id || '');
       setMerchant(initialData.merchant || '');
       setNote(initialData.note || '');
       setOccurredOn(initialData.occurred_on || new Date().toISOString().substring(0, 10));
@@ -108,6 +136,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setCurrency(firstActiveAccount?.currency_code || 'VND');
       setAccountId(firstActiveAccount?.id || '');
       setCategoryId(activeCategories[0]?.id || '');
+      setIncomeSourceId('');
+      setIncomeSourceStreamId('');
       setMerchant('');
       setNote('');
       setOccurredOn(new Date().toISOString().substring(0, 10));
@@ -125,12 +155,22 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         (!category.is_archived || Boolean(initialData && category.id === initialData.category_id))
     );
     setCategoryId(availableCategories[0]?.id || '');
+
+    if (newType === 'EXPENSE') {
+      setIncomeSourceId('');
+      setIncomeSourceStreamId('');
+    }
   };
 
   const handleAccountChange = (newAccountId: string) => {
     setAccountId(newAccountId);
     const account = accounts.find((candidate) => candidate.id === newAccountId);
     if (account) setCurrency(account.currency_code);
+  };
+
+  const handleIncomeSourceChange = (newSourceId: string) => {
+    setIncomeSourceId(newSourceId);
+    setIncomeSourceStreamId('');
   };
 
   const accountOptions = accounts
@@ -155,6 +195,47 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       value: category.id,
       label: `${category.name}${category.is_archived ? ' (Đã lưu trữ)' : ''}`,
     }));
+
+  const incomeSourceOptions = [
+    { value: '', label: '-- Không gán nguồn thu --' },
+    ...incomeSources
+      .filter(
+        (src) =>
+          !src.is_archived ||
+          Boolean(initialData && src.id === initialData.income_source_id)
+      )
+      .map((src) => {
+        const typeLabel =
+          src.type === 'SALARY'
+            ? 'Lương'
+            : src.type === 'YOUTUBE'
+            ? 'YouTube'
+            : src.type === 'FREELANCE'
+            ? 'Freelance'
+            : src.type === 'INVESTMENT'
+            ? 'Đầu tư'
+            : 'Khác';
+        return {
+          value: src.id,
+          label: `${src.name} [${typeLabel}]${src.is_archived ? ' (Đã lưu trữ)' : ''}`,
+        };
+      }),
+  ];
+
+  const selectedSource = incomeSources.find((s) => s.id === incomeSourceId);
+  const streamOptions = [
+    { value: '', label: '-- Mặc định (Toàn nguồn) --' },
+    ...(selectedSource?.streams || [])
+      .filter(
+        (st) =>
+          !st.is_archived ||
+          Boolean(initialData && st.id === initialData.income_source_stream_id)
+      )
+      .map((st) => ({
+        value: st.id,
+        label: `${st.name}${st.is_archived ? ' (Đã lưu trữ)' : ''}`,
+      })),
+  ];
 
   const handleVoid = async () => {
     if (!initialData) return;
@@ -217,6 +298,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         currency_code: currency,
         account_id: accountId,
         category_id: categoryId,
+        income_source_id: type === 'INCOME' ? (incomeSourceId || null) : null,
+        income_source_stream_id:
+          type === 'INCOME' && incomeSourceId ? (incomeSourceStreamId || null) : null,
         merchant: merchant.trim(),
         note: note.trim() || null,
         occurred_on: occurredOn,
@@ -239,13 +323,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-lg">
             <Plus className="h-5 w-5 text-primary" />
             <span>{initialData ? 'Sửa giao dịch' : 'Thêm giao dịch mới'}</span>
           </DialogTitle>
-          <DialogDescription>Ghi nhận thu chi.</DialogDescription>
+          <DialogDescription>Ghi nhận thu chi và phân bổ nguồn thu.</DialogDescription>
         </DialogHeader>
 
         {errorMsg && (
@@ -331,6 +415,37 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               />
             </div>
           </div>
+
+          {/* Phase 9 Income Attribution Section - shown only for INCOME */}
+          {type === 'INCOME' && (
+            <div className="p-3 rounded-lg border bg-muted/20 space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="incomeSource" className="text-xs font-semibold text-foreground">
+                  Nguồn thu nhập (Tùy chọn)
+                </Label>
+                <Select
+                  id="incomeSource"
+                  value={incomeSourceId}
+                  onChange={(event) => handleIncomeSourceChange(event.target.value)}
+                  options={incomeSourceOptions}
+                />
+              </div>
+
+              {incomeSourceId && selectedSource && selectedSource.streams && selectedSource.streams.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="incomeStream" className="text-xs font-semibold text-foreground">
+                    Kênh thu (Tùy chọn)
+                  </Label>
+                  <Select
+                    id="incomeStream"
+                    value={incomeSourceStreamId}
+                    onChange={(event) => setIncomeSourceStreamId(event.target.value)}
+                    options={streamOptions}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
