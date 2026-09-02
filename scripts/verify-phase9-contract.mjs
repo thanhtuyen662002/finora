@@ -189,10 +189,10 @@ const governancePass =
   lastStatusBlock.includes('PHASE_9_AUTHORIZED=true') &&
   lastStatusBlock.includes('PHASE_9_SCOPE=INCOME_SOURCES_REVENUE_ATTRIBUTION') &&
   (lastStatusBlock.includes('PHASE_9_CONTRACT=PASS') || lastStatusBlock.includes('PHASE_9_CONTRACT=PASS_CODE_ONLY')) &&
-  lastStatusBlock.includes('PHASE_9_SOURCE_GATE=PENDING') &&
-  lastStatusBlock.includes('PHASE_9_REMOTE_DATABASE=PENDING') &&
-  lastStatusBlock.includes('PHASE_9_STRUCTURAL_GATE=PENDING') &&
-  lastStatusBlock.includes('PHASE_9_TWO_USER_RLS=PENDING') &&
+  (lastStatusBlock.includes('PHASE_9_SOURCE_GATE=PENDING') || lastStatusBlock.includes('PHASE_9_SOURCE_GATE=PASS')) &&
+  (lastStatusBlock.includes('PHASE_9_REMOTE_DATABASE=PENDING') || lastStatusBlock.includes('PHASE_9_REMOTE_DATABASE=PASS')) &&
+  (lastStatusBlock.includes('PHASE_9_STRUCTURAL_GATE=PENDING') || lastStatusBlock.includes('PHASE_9_STRUCTURAL_GATE=PASS')) &&
+  (lastStatusBlock.includes('PHASE_9_TWO_USER_RLS=PENDING') || lastStatusBlock.includes('PHASE_9_TWO_USER_RLS=PASS')) &&
   lastStatusBlock.includes('PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING') &&
   lastStatusBlock.includes('PHASE_9_OVERALL=PARTIAL') &&
   lastStatusBlock.includes('PHASE_10_AUTHORIZED=false');

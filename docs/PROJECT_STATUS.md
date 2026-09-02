@@ -788,8 +788,28 @@ Phase 9 Pass A and its pre-deployment security and ACL correctives have been imp
 - `scripts/verify-phase9-source.mjs`: Automated source verifier checking all Phase 9 security contracts, migration locks, DB verifier catalog mechanics, and TypeScript definitions.
 - `tests/phase9-income-sources.test.ts`: Unit test suite testing name validation, attribution constraints, fail-closed currency behavior, exact decimal aggregation, large decimal boundary (`numeric(20,4)`), and archive neutrality.
 
+## Phase 9 — Income Sources & Revenue Attribution — Authenticated Two-User Runtime Gate
+
+The strict authenticated two-user runtime gate harness `scripts/verify-phase9-runtime.sql` was constructed and executed with full rollback protection:
+
+### Runtime Verification Points
+- **User Discovery**: Dynamically discovers 2 distinct authenticated users from `auth.users` without hardcoded UUIDs.
+- **Database-Derived Ownership**: Asserts `INSERT` without `user_id` on `public.income_sources` and `public.income_source_streams` automatically sets `user_id = auth.uid()` and defaults `is_archived = false`.
+- **Column Privilege Injection Denial**: Asserts attempts to explicitly provide `user_id` on `income_sources` or `income_source_streams` `INSERT` are rejected with `insufficient_privilege` (SQLSTATE `42501`).
+- **RLS Read & Update Isolation**: Proves USER_B cannot `SELECT` or `UPDATE` USER_A income sources or streams.
+- **Stream Hierarchy & Cross-User Attachment**: Proves streams inherit ownership correctly and USER_B cannot attach a stream to USER_A's income source (SQLSTATE `23503`).
+- **Stream Parent Immutability**: Proves authenticated users cannot mutate `income_source_id` on existing streams (SQLSTATE `42501`).
+- **Transaction Attribution**: Verifies source-only, source+stream, and unattributed `INCOME` transactions, correctly resolved via `public.transaction_details` (22 columns).
+- **Attribution Constraints**: Asserts `EXPENSE` attribution is rejected (SQLSTATE `23514`) and stream-without-source is rejected (SQLSTATE `23514`).
+- **Composite Ownership & Parent Enforcement**: Asserts cross-user source/stream attribution and stream/source parent mismatch on transactions are rejected with FK violations (SQLSTATE `23503`).
+- **Active Attribution Enforcement & Historical Realization**: Asserts new transaction attribution or existing transaction attribution updates to archived sources/streams are rejected by the active-attribution trigger (SQLSTATE `P0001`), while historical realized income transactions referencing archived sources/streams remain fully visible and unrelated fields (e.g. `note`) can be updated.
+- **Hard DELETE Denial**: Asserts authenticated users cannot `DELETE` rows from `income_sources` or `income_source_streams` (SQLSTATE `42501`).
+- **View RLS Isolation**: Proves USER_B cannot query USER_A transactions through `public.transaction_details`.
+- **Metadata Financial Neutrality**: Verifies that creating, updating, and archiving sources/streams has zero delta on account balances or transaction counts.
+- **Transaction-Scoped Rollback**: Proves 0 runtime fixtures remain after transaction rollback.
+
 ## Next Recommended Action
-Independent audit of final Phase 9 Pass A source and structural verifier before remote migration deployment.
+Proceed to Phase 9 Live Persistence Smoke verification.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -801,10 +821,10 @@ PHASE_9_CONTRACT=PASS
 PHASE_9_IMPLEMENTATION_AUTHORIZED=true
 
 PHASE_9_PASS_A_SOURCE=PASS_CODE_ONLY
-PHASE_9_SOURCE_GATE=PENDING
-PHASE_9_REMOTE_DATABASE=PENDING
-PHASE_9_STRUCTURAL_GATE=PENDING
-PHASE_9_TWO_USER_RLS=PENDING
+PHASE_9_SOURCE_GATE=PASS
+PHASE_9_REMOTE_DATABASE=PASS
+PHASE_9_STRUCTURAL_GATE=PASS
+PHASE_9_TWO_USER_RLS=PASS
 PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING
 PHASE_9_OVERALL=PARTIAL
 
