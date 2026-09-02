@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, CheckCircle2 } from 'lucide-react';
+import { Plus, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { MoneyInput } from './MoneyInput';
 import { AccountRow, CategoryRow } from '@/types/database';
 import {
@@ -20,6 +20,7 @@ import {
   updateTransaction,
   voidTransaction,
   restoreTransaction,
+  buildTransactionUpdatePayload,
   ExtendedTransaction,
 } from '@/features/transactions';
 import { getAccounts } from '@/features/accounts/accounts';
@@ -52,34 +53,57 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [internalAccounts, setInternalAccounts] = useState<AccountRow[]>([]);
   const [internalCategories, setInternalCategories] = useState<CategoryRow[]>([]);
   const [internalIncomeSources, setInternalIncomeSources] = useState<IncomeSourceWithStreams[]>([]);
+  const [incomeSourcesLoading, setIncomeSourcesLoading] = useState(false);
+  const [incomeSourcesLoadError, setIncomeSourcesLoadError] = useState<string | null>(null);
+
+  const loadIncomeSources = useCallback(async () => {
+    if (propIncomeSources.length > 0) return;
+    setIncomeSourcesLoading(true);
+    setIncomeSourcesLoadError(null);
+    try {
+      const res = await getIncomeSourcesWithStreams({ includeArchived: true });
+      setInternalIncomeSources(res);
+    } catch (err: unknown) {
+      console.error(err);
+      setIncomeSourcesLoadError(
+        'Không thể tải nguồn thu nhập. Bạn vẫn có thể lưu giao dịch không gán nguồn hoặc thử tải lại.'
+      );
+    } finally {
+      setIncomeSourcesLoading(false);
+    }
+  }, [propIncomeSources.length]);
 
   useEffect(() => {
     let active = true;
     if (open) {
-      const tasks: Promise<any>[] = [];
-      if (!propAccounts.length) tasks.push(getAccounts().then((res) => ({ type: 'acc', res })));
-      if (!propCategories.length) tasks.push(getCategories().then((res) => ({ type: 'cat', res })));
-      if (!propIncomeSources.length) {
-        tasks.push(
-          getIncomeSourcesWithStreams({ includeArchived: true }).then((res) => ({
-            type: 'src',
-            res,
-          }))
-        );
+      if (!propAccounts.length) {
+        getAccounts()
+          .then((res) => {
+            if (active) setInternalAccounts(res);
+          })
+          .catch((err) => console.error(err));
       }
-
-      if (tasks.length > 0) {
-        Promise.all(tasks)
-          .then((results) => {
-            if (!active) return;
-            for (const item of results) {
-              if (item.type === 'acc') setInternalAccounts(item.res);
-              if (item.type === 'cat') setInternalCategories(item.res);
-              if (item.type === 'src') setInternalIncomeSources(item.res);
+      if (!propCategories.length) {
+        getCategories()
+          .then((res) => {
+            if (active) setInternalCategories(res);
+          })
+          .catch((err) => console.error(err));
+      }
+      if (!propIncomeSources.length) {
+        getIncomeSourcesWithStreams()
+          .then((res) => {
+            if (active) {
+              setInternalIncomeSources(res);
+              setIncomeSourcesLoading(false);
             }
           })
-          .catch((error: unknown) => {
-            console.error(error);
+          .catch((err: any) => {
+            if (active) {
+              console.error('Failed to load income sources for attribution:', err);
+              setIncomeSourcesLoadError(err?.message || 'Không thể tải danh sách nguồn thu nhập');
+              setIncomeSourcesLoading(false);
+            }
           });
       }
     }
@@ -292,24 +316,51 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     try {
       const exactAmount = toExactDecimal(amount);
-      const commonFields = {
-        type,
-        amount: exactAmount,
-        currency_code: currency,
-        account_id: accountId,
-        category_id: categoryId,
-        income_source_id: type === 'INCOME' ? (incomeSourceId || null) : null,
-        income_source_stream_id:
-          type === 'INCOME' && incomeSourceId ? (incomeSourceStreamId || null) : null,
-        merchant: merchant.trim(),
-        note: note.trim() || null,
-        occurred_on: occurredOn,
-      };
 
       if (initialData) {
-        await updateTransaction(initialData.id, commonFields);
+        const updatePayload = buildTransactionUpdatePayload(
+          {
+            id: initialData.id,
+            type: initialData.type,
+            amount: initialData.amount,
+            currency_code: initialData.currency_code,
+            account_id: initialData.account_id,
+            category_id: initialData.category_id,
+            merchant: initialData.merchant || '',
+            note: initialData.note,
+            occurred_on: initialData.occurred_on,
+            income_source_id: initialData.income_source_id,
+            income_source_stream_id: initialData.income_source_stream_id,
+          },
+          {
+            type,
+            amount: exactAmount,
+            currency_code: currency,
+            account_id: accountId,
+            category_id: categoryId,
+            merchant: merchant.trim(),
+            note: note.trim() || null,
+            occurred_on: occurredOn,
+            income_source_id: type === 'INCOME' ? (incomeSourceId || null) : null,
+            income_source_stream_id:
+              type === 'INCOME' && incomeSourceId ? (incomeSourceStreamId || null) : null,
+          }
+        );
+        await updateTransaction(initialData.id, updatePayload);
       } else {
-        await createTransaction(commonFields);
+        await createTransaction({
+          type,
+          amount: exactAmount,
+          currency_code: currency,
+          account_id: accountId,
+          category_id: categoryId,
+          income_source_id: type === 'INCOME' ? (incomeSourceId || null) : null,
+          income_source_stream_id:
+            type === 'INCOME' && incomeSourceId ? (incomeSourceStreamId || null) : null,
+          merchant: merchant.trim(),
+          note: note.trim() || null,
+          occurred_on: occurredOn,
+        });
       }
 
       if (onSuccess) await onSuccess();
@@ -419,6 +470,36 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           {/* Phase 9 Income Attribution Section - shown only for INCOME */}
           {type === 'INCOME' && (
             <div className="p-3 rounded-lg border bg-muted/20 space-y-3">
+              {incomeSourcesLoadError && (
+                <div
+                  className="flex items-start justify-between gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-xs text-destructive"
+                  role="alert"
+                >
+                  <div className="flex items-start gap-1.5">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{incomeSourcesLoadError}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[11px] shrink-0"
+                    onClick={() => loadIncomeSources()}
+                    disabled={incomeSourcesLoading}
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${incomeSourcesLoading ? 'animate-spin' : ''}`} />
+                    Thử lại
+                  </Button>
+                </div>
+              )}
+
+              {incomeSourcesLoading && !incomeSourcesLoadError && (
+                <div className="flex items-center space-x-2 text-xs text-muted-foreground py-1">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span>Đang tải danh sách nguồn thu nhập...</span>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <Label htmlFor="incomeSource" className="text-xs font-semibold text-foreground">
                   Nguồn thu nhập (Tùy chọn)
@@ -428,6 +509,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   value={incomeSourceId}
                   onChange={(event) => handleIncomeSourceChange(event.target.value)}
                   options={incomeSourceOptions}
+                  disabled={incomeSourcesLoading}
                 />
               </div>
 
@@ -441,6 +523,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     value={incomeSourceStreamId}
                     onChange={(event) => setIncomeSourceStreamId(event.target.value)}
                     options={streamOptions}
+                    disabled={incomeSourcesLoading}
                   />
                 </div>
               )}

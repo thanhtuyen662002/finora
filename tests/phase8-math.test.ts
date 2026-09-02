@@ -110,8 +110,8 @@ async function runTests() {
   }];
   const csvRes = exportTransactionsToCSV(fakeTx as any, 'BASE', 'Tháng 10', 'UTC');
   const csvLines = csvRes.csvContent.split('\r\n');
-  assertEq(csvLines[0].split(',').length, 15, 'BASE CSV header/data column counts and provenance (header)');
-  assertEq(csvLines[1].split(',').length, 15, 'BASE CSV header/data column counts and provenance (data)');
+  assertEq(csvLines[0].split(',').length, 17, 'BASE CSV header/data column counts and provenance (header)');
+  assertEq(csvLines[1].split(',').length, 17, 'BASE CSV header/data column counts and provenance (data)');
 
   const fakeAccs = [{ id: 'a1', currency_code: 'USD' }, { id: 'a2', currency_code: 'VND' }];
   const avail = getAvailableCurrenciesAndDefault(fakeAccs as any, [], 'BASE').availableCurrencies;

@@ -63,13 +63,28 @@ check('Income sources page provides active / archived filter tabs',
 const appShell = fs.readFileSync('src/components/layout/AppShell.tsx', 'utf-8');
 check('AppShell has /income-sources navigation entry', appShell.includes("href: '/income-sources'") && appShell.includes('Nguồn thu nhập'));
 
-// 4. Transaction Attribution in AddTransactionModal
+// 4. Transaction Attribution in AddTransactionModal & Mutation Logic
+check('Transaction mutation builder exists (src/features/transactions/mutation.ts)',
+  fs.existsSync('src/features/transactions/mutation.ts'));
+
+const txMutation = fs.readFileSync('src/features/transactions/mutation.ts', 'utf-8');
+check('Mutation builder exports buildTransactionUpdatePayload with differential logic',
+  txMutation.includes('export function buildTransactionUpdatePayload') &&
+  txMutation.includes('toExactDecimal') &&
+  txMutation.includes('isPositiveExactDecimal'));
+
 const addTxModal = fs.readFileSync('src/components/finance/AddTransactionModal.tsx', 'utf-8');
 check('AddTransactionModal loads income sources & streams',
   addTxModal.includes('getIncomeSourcesWithStreams') &&
   addTxModal.includes('incomeSources') &&
   addTxModal.includes('incomeSourceId') &&
   addTxModal.includes('incomeSourceStreamId'));
+check('AddTransactionModal integrates buildTransactionUpdatePayload for differential updates',
+  addTxModal.includes('buildTransactionUpdatePayload'));
+check('AddTransactionModal handles metadata load error and retry state',
+  addTxModal.includes('incomeSourcesLoadError') &&
+  addTxModal.includes('loadIncomeSources') &&
+  addTxModal.includes('Thử lại'));
 check('AddTransactionModal displays attribution UI for INCOME type only',
   addTxModal.includes("type === 'INCOME'") &&
   addTxModal.includes('Nguồn thu nhập'));
@@ -90,8 +105,22 @@ check('IncomeSourcesBreakdown uses IncomeSourceBreakdown interface and formatExa
   breakdownChart.includes('IncomeSourceBreakdown') &&
   breakdownChart.includes('formatExactMoney') &&
   breakdownChart.includes('sourceType'));
+check('IncomeSourcesBreakdown has accurate empty state',
+  breakdownChart.includes('Chưa có thu nhập thực nhận trong kỳ này.'));
 
-// 7. Reporting engine & Reports page integration
+// 7. Dashboard & Income Sources Realized Analytics Wiring
+const dashboardPage = fs.readFileSync('src/app/dashboard/page.tsx', 'utf-8');
+check('Dashboard page imports and mounts IncomeSourcesBreakdown component',
+  dashboardPage.includes('IncomeSourcesBreakdown') &&
+  dashboardPage.includes('Nguồn thu nhập — 6 tháng') &&
+  dashboardPage.includes('data.incomeBreakdownByCurrency[effectiveCurrency]'));
+
+check('Income sources page mounts Realized Income Analytics section',
+  incomeSourcesPage.includes('IncomeSourcesBreakdown') &&
+  incomeSourcesPage.includes('Phân tích cơ cấu thu nhập thực nhận') &&
+  incomeSourcesPage.includes('getDetailedReportData'));
+
+// 8. Reporting engine & Reports page integration
 const reportsEngine = fs.readFileSync('src/features/reports/engine.ts', 'utf-8');
 check('Reporting engine exports aggregateIncomeSourcesBreakdown',
   reportsEngine.includes('export function aggregateIncomeSourcesBreakdown'));
@@ -114,6 +143,11 @@ const reportsPage = fs.readFileSync('src/app/reports/page.tsx', 'utf-8');
 check('Reports page mounts IncomeSourcesBreakdown component',
   reportsPage.includes('<IncomeSourcesBreakdown') &&
   reportsPage.includes('data.incomeBreakdown'));
+
+// 9. Unit Test Suite
+check('Phase 9 unit test suites exist',
+  fs.existsSync('tests/phase9-income-sources.test.ts') &&
+  fs.existsSync('tests/phase9-transaction-attribution-ui.test.ts'));
 
 // Summary
 console.log(`\nVerification complete: ${passed} / ${total} checks passed.`);

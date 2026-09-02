@@ -8,6 +8,7 @@ import { SummaryCard } from '@/components/finance/SummaryCard';
 import { AccountCard } from '@/components/finance/AccountCard';
 import { TransactionList } from '@/components/finance/TransactionList';
 import { CashFlowChart } from '@/components/charts/CashFlowChart';
+import { IncomeSourcesBreakdown } from '@/components/charts/IncomeSourcesBreakdown';
 import { AccountDetailModal } from '@/components/finance/AccountDetailModal';
 import { AddTransactionModal } from '@/components/finance/AddTransactionModal';
 import { AddTransferModal } from '@/components/finance/AddTransferModal';
@@ -351,6 +352,44 @@ export default function DashboardPage() {
               ) : (
                 <CashFlowChart
                   data={data.sixMonthCashFlowByCurrency[effectiveCurrency] || []}
+                  currency={displayCurrency}
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Phase 9 Income Sources Breakdown Card */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <CardTitle className="text-base font-semibold">
+                    Nguồn thu nhập — 6 tháng
+                  </CardTitle>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-sm bg-muted text-muted-foreground">
+                    {displayCurrency}
+                  </span>
+                </div>
+                <CardDescription>
+                  Phân bổ thu nhập thực nhận theo nguồn và kênh thu trong 6 tháng gần nhất ({displayCurrency}).
+                </CardDescription>
+              </div>
+              <Link
+                href="/income-sources"
+                className="text-xs font-medium text-primary hover:underline flex items-center shrink-0"
+              >
+                Chi tiết & Quản lý
+                <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
+                <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+                  Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+                </div>
+              ) : (
+                <IncomeSourcesBreakdown
+                  sources={data.incomeBreakdownByCurrency[effectiveCurrency] || []}
                   currency={displayCurrency}
                 />
               )}

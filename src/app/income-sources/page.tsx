@@ -28,6 +28,12 @@ import {
   type IncomeSourceType,
 } from '@/features/income-sources';
 import {
+  getDetailedReportData,
+  type DetailedReportData,
+  type ReportPeriod,
+} from '@/features/reports';
+import { IncomeSourcesBreakdown } from '@/components/charts/IncomeSourcesBreakdown';
+import {
   Coins,
   Plus,
   Briefcase,
@@ -44,6 +50,7 @@ import {
   CheckCircle2,
   RefreshCw,
   GitBranch,
+  Calendar,
 } from 'lucide-react';
 
 const SOURCE_TYPE_LABELS: Record<IncomeSourceType, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
@@ -98,6 +105,13 @@ export default function IncomeSourcesPage() {
   // Feedback banner
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Realized Income Analytics State
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<ReportPeriod>('6M');
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('');
+  const [reportData, setReportData] = useState<DetailedReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
     setTimeout(() => {
@@ -105,44 +119,79 @@ export default function IncomeSourcesPage() {
     }, 4000);
   };
 
+  const loadAnalytics = useCallback(async (period: ReportPeriod, curr?: string) => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const data = await getDetailedReportData(period, curr);
+      setReportData(data);
+      if (!curr) {
+        setSelectedCurrency(data.selectedCurrency || data.availableCurrencies[0] || 'VND');
+      } else if (!data.availableCurrencies.includes(curr) && curr !== 'BASE') {
+        setSelectedCurrency(data.selectedCurrency || data.availableCurrencies[0] || 'VND');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setReportError(err?.message || 'Không thể tải số liệu phân tích thu nhập');
+    } finally {
+      setReportLoading(false);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await getIncomeSourcesWithStreams({ includeArchived: true });
       setSources(res);
+      await loadAnalytics(analyticsPeriod, selectedCurrency || undefined);
     } catch (err: any) {
       setError(err?.message || 'Không thể tải danh sách nguồn thu nhập');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [analyticsPeriod, selectedCurrency, loadAnalytics]);
 
   useEffect(() => {
     let active = true;
-    async function fetchSources() {
+    async function initData() {
       try {
-        setLoading(true);
-        setError(null);
         const res = await getIncomeSourcesWithStreams({ includeArchived: true });
         if (active) {
           setSources(res);
+          setLoading(false);
         }
       } catch (err: any) {
         if (active) {
           setError(err?.message || 'Không thể tải danh sách nguồn thu nhập');
-        }
-      } finally {
-        if (active) {
           setLoading(false);
         }
       }
+
+      try {
+        const data = await getDetailedReportData(analyticsPeriod, selectedCurrency || undefined);
+        if (active) {
+          setReportData(data);
+          if (!selectedCurrency) {
+            setSelectedCurrency(data.selectedCurrency || data.availableCurrencies[0] || 'VND');
+          } else if (!data.availableCurrencies.includes(selectedCurrency) && selectedCurrency !== 'BASE') {
+            setSelectedCurrency(data.selectedCurrency || data.availableCurrencies[0] || 'VND');
+          }
+          setReportLoading(false);
+        }
+      } catch (err: any) {
+        if (active) {
+          console.error(err);
+          setReportError(err?.message || 'Không thể tải số liệu phân tích thu nhập');
+          setReportLoading(false);
+        }
+      }
     }
-    fetchSources();
+    initData();
     return () => {
       active = false;
     };
-  }, []);
+  }, [analyticsPeriod, selectedCurrency]);
 
   // Open Create Source Modal
   const handleOpenCreateSource = () => {
@@ -378,6 +427,126 @@ export default function IncomeSourcesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Realized Income Analytics Section */}
+      <Card className="bg-card border shadow-2xs">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
+          <div>
+            <div className="flex items-center space-x-2">
+              <CardTitle className="text-base font-semibold">
+                Phân tích cơ cấu thu nhập thực nhận
+              </CardTitle>
+              {reportData && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-sm bg-muted text-muted-foreground">
+                  {selectedCurrency === 'BASE' ? `Quy đổi (${reportData.baseCurrency})` : (selectedCurrency || reportData.selectedCurrency || 'VND')}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Tổng hợp từ các giao dịch thu nhập thực tế theo kỳ và phân bổ theo kênh nhánh.
+            </p>
+          </div>
+
+          {/* Period & Currency Selectors */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Currency Selector */}
+            {reportData && reportData.availableCurrencies.length > 1 && (
+              <div className="flex items-center space-x-1 bg-muted/60 p-0.5 rounded-lg border">
+                {reportData.availableCurrencies.map((curr) => {
+                  const effectiveCurr = selectedCurrency || reportData.selectedCurrency || 'VND';
+                  const isSelected = effectiveCurr === curr;
+                  return (
+                    <button
+                      key={curr}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCurrency(curr);
+                        loadAnalytics(analyticsPeriod, curr);
+                      }}
+                      className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors ${
+                        isSelected
+                          ? 'bg-background text-foreground shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {curr === 'BASE' ? `Quy đổi (${reportData.baseCurrency})` : curr}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Period Selector Tabs */}
+            <div className="flex items-center space-x-1 bg-muted/60 p-0.5 rounded-lg border">
+              {(
+                [
+                  { id: '1M', label: 'Tháng này' },
+                  { id: '3M', label: '3 tháng' },
+                  { id: '6M', label: '6 tháng' },
+                  { id: '1Y', label: '1 năm' },
+                  { id: 'ALL', label: 'Tất cả' },
+                ] as const
+              ).map((p) => {
+                const isSelected = analyticsPeriod === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setAnalyticsPeriod(p.id);
+                      loadAnalytics(p.id, selectedCurrency || undefined);
+                    }}
+                    className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors ${
+                      isSelected
+                        ? 'bg-background text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadAnalytics(analyticsPeriod, selectedCurrency || undefined)}
+              title="Làm mới phân tích"
+              className="h-8 px-2"
+            >
+              <RefreshCw className={`h-3 w-3 ${reportLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {reportLoading && !reportData ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              <RefreshCw className="h-4 w-4 animate-spin mx-auto mb-2 text-primary" />
+              Đang phân tích cơ cấu thu nhập...
+            </div>
+          ) : reportError ? (
+            <div className="py-6 text-center text-xs text-destructive">
+              <AlertCircle className="h-5 w-5 mx-auto mb-1" />
+              {reportError}
+            </div>
+          ) : (selectedCurrency || reportData?.selectedCurrency || 'VND') === 'BASE' &&
+            reportData?.baseHistorical.status !== 'AVAILABLE' ? (
+            <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+              Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
+            </div>
+          ) : (
+            <IncomeSourcesBreakdown
+              sources={reportData?.incomeBreakdown || []}
+              currency={
+                (selectedCurrency || reportData?.selectedCurrency || 'VND') === 'BASE'
+                  ? reportData?.baseCurrency || 'VND'
+                  : selectedCurrency || reportData?.selectedCurrency || 'VND'
+              }
+            />
+          )}
+        </CardContent>
+      </Card>
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">

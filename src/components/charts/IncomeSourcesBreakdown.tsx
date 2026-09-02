@@ -44,10 +44,7 @@ export const IncomeSourcesBreakdown: React.FC<IncomeSourcesBreakdownProps> = ({
     return (
       <div className="py-8 text-center border rounded-xl bg-card">
         <Layers className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-        <p className="text-sm font-medium text-muted-foreground">Chưa có dữ liệu thu nhập</p>
-        <p className="text-xs text-muted-foreground/80 mt-1">
-          Các khoản thu nhập được gán nguồn thu sẽ hiển thị cơ cấu tại đây.
-        </p>
+        <p className="text-sm font-medium text-muted-foreground">Chưa có thu nhập thực nhận trong kỳ này.</p>
       </div>
     );
   }

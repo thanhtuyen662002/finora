@@ -823,12 +823,17 @@ Phase 9 Pass B (real user-facing experience & reporting integration) has been im
 - Dedicated loading skeleton at `/src/app/income-sources/loading.tsx`.
 - Sidebar navigation updated in `AppShell` with `Coins` icon.
 
-### 2. Transaction Attribution UX & Reporting Integration
+### 2. Transaction Attribution UX, Differential Mutation & Reporting Integration
 - `AddTransactionModal`: Dynamically displays optional Income Source and Stream selectors exclusively when transaction type is `INCOME`. For `EXPENSE` type, attribution payload is strictly nulled (`income_source_id: null`, `income_source_stream_id: null`).
+- `buildTransactionUpdatePayload`: Differential mutation builder strictly omits trigger-sensitive columns (`type`, `income_source_id`, `income_source_stream_id`) when unchanged, preventing trigger violations on historical edits of transactions with archived sources.
+- Loading/Error/Retry state handling in `AddTransactionModal` for income source metadata.
 - `TransactionItem`: Displays revenue attribution badges showing income source name and child stream name when present.
-- `IncomeSourcesBreakdown`: Interactive visual breakdown component mounted in `/reports` displaying revenue contributions, percentage of total income, transaction counts, and child stream drill-downs.
+- `IncomeSourcesBreakdown`: Interactive visual breakdown component mounted in `/reports`, `/dashboard`, and `/income-sources` displaying revenue contributions, percentage of total income, transaction counts, and child stream drill-downs.
+- `/income-sources`: Realized Income Analytics section with period selection (`1M`, `3M`, `6M`, `1Y`, `ALL`) and currency toggles, backed by the deterministic reporting engine.
+- `/dashboard`: Mounted `IncomeSourcesBreakdown` component showing 6-month realized income structure by currency.
 - `exportTransactionsToCSV`: Includes Income Source and Stream columns for comprehensive audit exports.
-- `verify-phase9-ui.mjs`: Fail-closed automated verifier confirming all 20 UI/UX contract assertions pass (`PHASE_9_UI_GATE=PASS`).
+- `tests/phase9-transaction-attribution-ui.test.ts`: 23 unit tests verifying differential mutation payloads and attribution rules.
+- `scripts/verify-phase9-ui.mjs`: Fail-closed automated verifier confirming all 28 UI/UX contract assertions pass (`PHASE_9_UI_GATE=PASS`).
 
 ## Next Recommended Action
 Proceed to Phase 9 Live Persistence Smoke verification.
