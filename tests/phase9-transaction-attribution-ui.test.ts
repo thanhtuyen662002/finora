@@ -143,6 +143,23 @@ async function runTests() {
   assertEq(payload4.income_source_id, 'src-youtube', 'income_source_id updated to src-youtube');
   assertEq(payload4.income_source_stream_id, null, 'income_source_stream_id cleared to null');
 
+  // Test 4b: Income source changed from Source A to Source B while form accidentally contains stale stream A
+  const payload4b = buildTransactionUpdatePayload(incomeInitial, {
+    type: 'INCOME',
+    amount: '25000000.0000',
+    currency_code: 'VND',
+    account_id: 'acc-vcb',
+    category_id: 'cat-salary',
+    merchant: 'YouTube Partner',
+    note: null,
+    occurred_on: '2026-08-31',
+    income_source_id: 'src-youtube',
+    income_source_stream_id: 'stream-base-salary', // Stale stream from src-salary
+  });
+
+  assertEq(payload4b.income_source_id, 'src-youtube', 'income_source_id updated to src-youtube');
+  assertEq(payload4b.income_source_stream_id, null, 'stale stream normalized to null on source change');
+
   // Test 5: EXPENSE changed to INCOME sets source and stream
   const payload5 = buildTransactionUpdatePayload(expenseInitial, {
     type: 'INCOME',

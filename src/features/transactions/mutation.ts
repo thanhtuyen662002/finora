@@ -93,7 +93,12 @@ export function buildTransactionUpdatePayload(
   const initialStream = initial.income_source_stream_id || null;
 
   const currentSource = currentType === 'INCOME' ? (current.income_source_id || null) : null;
-  const currentStream = currentType === 'INCOME' && currentSource ? (current.income_source_stream_id || null) : null;
+  let currentStream = currentType === 'INCOME' && currentSource ? (current.income_source_stream_id || null) : null;
+
+  // Defensive: If income source changed and stream still matches the previous source's stream, normalize stream to null
+  if (initialSource !== currentSource && currentStream && currentStream === initialStream) {
+    currentStream = null;
+  }
 
   if (initialType !== currentType) {
     // Type transition

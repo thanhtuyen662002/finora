@@ -824,19 +824,19 @@ Phase 9 Pass B (real user-facing experience & reporting integration) has been im
 - Sidebar navigation updated in `AppShell` with `Coins` icon.
 
 ### 2. Transaction Attribution UX, Differential Mutation & Reporting Integration
-- `AddTransactionModal`: Dynamically displays optional Income Source and Stream selectors exclusively when transaction type is `INCOME`. For `EXPENSE` type, attribution payload is strictly nulled (`income_source_id: null`, `income_source_stream_id: null`).
-- `buildTransactionUpdatePayload`: Differential mutation builder strictly omits trigger-sensitive columns (`type`, `income_source_id`, `income_source_stream_id`) when unchanged, preventing trigger violations on historical edits of transactions with archived sources.
+- `AddTransactionModal`: Single canonical metadata loader `loadIncomeSources` calling `getIncomeSourcesWithStreams({ includeArchived: true })` on both initial open and retry, ensuring historical archived source and stream attributions resolve and display (`<name> (Đã lưu trữ)`) while excluding archived items for new transactions.
+- `buildTransactionUpdatePayload`: Differential mutation builder strictly omits trigger-sensitive columns (`type`, `income_source_id`, `income_source_stream_id`) when unchanged, preventing trigger violations on historical edits of transactions with archived sources. Also fail-closed normalizes stale stream IDs when income source changes.
 - Loading/Error/Retry state handling in `AddTransactionModal` for income source metadata.
 - `TransactionItem`: Displays revenue attribution badges showing income source name and child stream name when present.
 - `IncomeSourcesBreakdown`: Interactive visual breakdown component mounted in `/reports`, `/dashboard`, and `/income-sources` displaying revenue contributions, percentage of total income, transaction counts, and child stream drill-downs.
 - `/income-sources`: Realized Income Analytics section with period selection (`1M`, `3M`, `6M`, `1Y`, `ALL`) and currency toggles, backed by the deterministic reporting engine.
 - `/dashboard`: Mounted `IncomeSourcesBreakdown` component showing 6-month realized income structure by currency.
 - `exportTransactionsToCSV`: Includes Income Source and Stream columns for comprehensive audit exports.
-- `tests/phase9-transaction-attribution-ui.test.ts`: 23 unit tests verifying differential mutation payloads and attribution rules.
-- `scripts/verify-phase9-ui.mjs`: Fail-closed automated verifier confirming all 28 UI/UX contract assertions pass (`PHASE_9_UI_GATE=PASS`).
+- `tests/phase9-transaction-attribution-ui.test.ts`: 25 unit tests verifying differential mutation payloads, attribution rules, and stale stream normalization.
+- `scripts/verify-phase9-ui.mjs`: Fail-closed automated verifier confirming all 41 UI/UX contract assertions pass (`PHASE_9_UI_GATE=PASS`).
 
 ## Next Recommended Action
-Proceed to Phase 9 Live Persistence Smoke verification.
+Independent audit of final Phase 9 Pass B source before live persistence smoke.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -852,7 +852,9 @@ PHASE_9_SOURCE_GATE=PASS
 PHASE_9_REMOTE_DATABASE=PASS
 PHASE_9_STRUCTURAL_GATE=PASS
 PHASE_9_TWO_USER_RLS=PASS
-PHASE_9_UI_GATE=PASS
+
+PHASE_9_PASS_B_UI=PASS_CODE_ONLY
+PHASE_9_UI_GATE=PENDING_INDEPENDENT_AUDIT
 PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING
 PHASE_9_OVERALL=PARTIAL
 

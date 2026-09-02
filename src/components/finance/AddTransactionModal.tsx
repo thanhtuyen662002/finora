@@ -64,7 +64,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       const res = await getIncomeSourcesWithStreams({ includeArchived: true });
       setInternalIncomeSources(res);
     } catch (err: unknown) {
-      console.error(err);
+      console.error('Failed to load income sources for attribution:', err);
       setIncomeSourcesLoadError(
         'Không thể tải nguồn thu nhập. Bạn vẫn có thể lưu giao dịch không gán nguồn hoặc thử tải lại.'
       );
@@ -74,6 +74,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   }, [propIncomeSources.length]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     let active = true;
     if (open) {
       if (!propAccounts.length) {
@@ -91,26 +92,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           .catch((err) => console.error(err));
       }
       if (!propIncomeSources.length) {
-        getIncomeSourcesWithStreams()
-          .then((res) => {
-            if (active) {
-              setInternalIncomeSources(res);
-              setIncomeSourcesLoading(false);
-            }
-          })
-          .catch((err: any) => {
-            if (active) {
-              console.error('Failed to load income sources for attribution:', err);
-              setIncomeSourcesLoadError(err?.message || 'Không thể tải danh sách nguồn thu nhập');
-              setIncomeSourcesLoading(false);
-            }
-          });
+        void loadIncomeSources();
       }
     }
     return () => {
       active = false;
     };
-  }, [open, propAccounts.length, propCategories.length, propIncomeSources.length]);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [open, propAccounts.length, propCategories.length, propIncomeSources.length, loadIncomeSources]);
 
   const accounts = propAccounts.length > 0 ? propAccounts : internalAccounts;
   const categories = propCategories.length > 0 ? propCategories : internalCategories;
