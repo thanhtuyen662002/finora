@@ -1,4 +1,4 @@
-import { addExactDecimals, toExactDecimal } from '@/lib/money';
+import { addExactDecimals, compareExactDecimals, toExactDecimal } from '@/lib/money';
 import type {
   IncomeAttributionReport,
   IncomeAttributionSourceAggregate,
@@ -78,7 +78,7 @@ export function validateTransactionAttribution(input: {
 export type RealizedTransactionForAttribution = {
   type: 'INCOME' | 'EXPENSE';
   is_voided: boolean;
-  amount: string | number;
+  amount: string;
   currency_code: string;
   income_source_id?: string | null;
   income_source_stream_id?: string | null;
@@ -86,6 +86,17 @@ export type RealizedTransactionForAttribution = {
   income_source_type?: IncomeSourceType | null;
   income_source_stream_name?: string | null;
 };
+
+export function validateAttributionCurrencyCode(code: unknown): string {
+  if (typeof code !== 'string') {
+    throw new Error('Invalid or missing currency_code: currency must be a non-empty string');
+  }
+  const trimmed = code.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(trimmed)) {
+    throw new Error(`Invalid currency_code "${code}": expected 3-letter uppercase ISO code`);
+  }
+  return trimmed;
+}
 
 /**
  * Deterministic, exact-decimal revenue attribution aggregator.
@@ -100,10 +111,10 @@ export function aggregateRealizedIncomeAttribution(
     (tx) => tx.type === 'INCOME' && tx.is_voided !== true
   );
 
-  // 2. Group by currency
+  // 2. Group by currency (fail-closed on invalid currency)
   const byCurrency = new Map<string, RealizedTransactionForAttribution[]>();
   for (const tx of realizedIncome) {
-    const curr = (tx.currency_code || 'VND').toUpperCase();
+    const curr = validateAttributionCurrencyCode(tx.currency_code);
     const list = byCurrency.get(curr) || [];
     list.push(tx);
     byCurrency.set(curr, list);
@@ -175,16 +186,21 @@ export function aggregateRealizedIncomeAttribution(
 
     const sources: IncomeAttributionSourceAggregate[] = [];
     for (const entry of sourceMap.values()) {
-      entry.aggregate.streams = Array.from(entry.streamMap.values());
+      const streams = Array.from(entry.streamMap.values());
+      streams.sort((a, b) => {
+        const cmp = compareExactDecimals(b.totalAmount, a.totalAmount);
+        if (cmp !== 0) return cmp;
+        return (a.streamName || '').localeCompare(b.streamName || '');
+      });
+      entry.aggregate.streams = streams;
       sources.push(entry.aggregate);
     }
 
-    // Sort sources deterministically: highest totalAmount first
+    // Sort sources deterministically: highest totalAmount first, using exact decimal comparison
     sources.sort((a, b) => {
-      if (a.totalAmount === b.totalAmount) {
-        return (a.sourceName || '').localeCompare(b.sourceName || '');
-      }
-      return b.totalAmount.localeCompare(a.totalAmount, undefined, { numeric: true });
+      const cmp = compareExactDecimals(b.totalAmount, a.totalAmount);
+      if (cmp !== 0) return cmp;
+      return (a.sourceName || '').localeCompare(b.sourceName || '');
     });
 
     reports.push({

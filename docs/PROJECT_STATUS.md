@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 9 — Income Sources & Revenue Attribution
-- **Phase status:** PHASE_9_CONTRACT_DEFINED_IMPLEMENTATION_PENDING
+- **Phase status:** PHASE_9_PASS_A_PRE_DEPLOYMENT_SECURITY_HARDENED
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
@@ -757,28 +757,35 @@ FINORA_PHASE_8=PASS
 PHASE_9_AUTHORIZED=true
 ```
 
-## Phase 9 — Income Sources & Revenue Attribution — Contract Definition
+## Phase 9 — Income Sources & Revenue Attribution — Implementation Pass A & Security Corrective
 
-The authoritative contract for Phase 9 has been defined and locked in `docs/PHASE_9_CONTRACT.md`.
-Architectural decision recorded in `docs/DECISIONS.md` as `ADR-015`.
+Phase 9 Pass A and its pre-deployment security corrective have been implemented and verified in the source repository:
 
-Contract specifications established:
-1. Income sources and streams are pure attribution metadata, not an authoritative financial ledger.
-2. Zero-delta financial invariant: `ACCOUNT_BALANCE_DELTA=0`, `NET_WORTH_DELTA=0`, `INCOME_TOTAL_DELTA=0`, `EXPENSE_TOTAL_DELTA=0`, `FX_SNAPSHOT_DELTA=0`.
-3. Mandatory composite ownership FKs (`ON DELETE RESTRICT`) preventing cross-user and stream-source mismatch attribution.
-4. Active attribution trigger enforcing soft-archived entities cannot be attached to new or updated transactions.
-5. Strict 17-column prefix lock preserved on `public.transaction_details` view; Phase 9 columns strictly appended at positions 18-22.
-6. Exact-money arithmetic enforced; floats prohibited in all financial paths.
-7. Phase 8 FX engine and `transaction_fx_snapshots` reused without secondary providers.
-8. Generic stream hierarchy without platform-specific tables (`youtube_channels` forbidden).
-9. YouTube API / AdSense external synchronization explicitly marked out of scope.
-10. Two-user runtime test matrix and structural gate defined.
-11. Phase 8 migration blobs locked.
+### 1. Database Security & Migration Hardening
+- Migration `supabase/migrations/20260901100000_phase_9_income_sources_revenue_attribution.sql` (not applied to remote Supabase):
+  - Tables `public.income_sources` and `public.income_source_streams` with `user_id uuid NOT NULL DEFAULT auth.uid()`.
+  - Composite foreign keys:
+    - `income_source_streams (income_source_id, user_id) -> income_sources (id, user_id) ON DELETE RESTRICT`
+    - `transactions (income_source_id, user_id) -> income_sources (id, user_id) ON DELETE RESTRICT`
+    - `transactions (income_source_stream_id, income_source_id, user_id) -> income_source_streams (id, income_source_id, user_id) ON DELETE RESTRICT`
+  - Constraint creation guards scoped using `conrelid = 'public.transactions'::regclass`.
+  - Fail-closed security ACLs: `REVOKE ALL ON TABLE ... FROM anon, authenticated, PUBLIC;` before rebuilding exact authenticated column allowlists (INSERT: `name, type`, UPDATE: `name, type, is_archived` on sources; INSERT: `income_source_id, name`, UPDATE: `name, is_archived` on streams). No DELETE grant on either table.
+  - Active attribution trigger: `check_transaction_attribution_active_trigger` on `transactions` executing `SECURITY INVOKER` function with `SET search_path = ''`.
+  - View `transaction_details` updated with `security_invoker = true`, preserving exact 17 legacy prefix columns and appending columns 18-22.
 
-Phase 9 implementation has NOT started in this contract task.
+### 2. Domain & Application Logic Hardening
+- `src/features/income-sources/domain.ts`:
+  - Enforced string-only monetary inputs (`RealizedTransactionForAttribution.amount: string`).
+  - Strict currency code validation (`validateAttributionCurrencyCode`) that fails closed with clear error on invalid/missing currency (no silent VND fallback).
+  - Exact-decimal revenue attribution sorting using `compareExactDecimals`.
+  - Pure exact decimal math (`toExactDecimal`, `addExactDecimals`) with zero floating-point accumulation.
+- `src/features/income-sources/income-sources.ts`:
+  - CRUD operations strictly exclude client `user_id` injection and prevent stream parent mutation.
 
-## Next Recommended Action
-Audit and accept the Phase 9 contract before implementation.
+### 3. Verification Suite
+- `scripts/verify-phase9-db.sql`: Fail-closed structural assertion gate with `DO $$ ... $$` verifying table schemas, exact column counts, effective table and column ACLs, RLS policies, composite FKs, trigger bitmasks, function security, and 22-column view order.
+- `scripts/verify-phase9-source.mjs`: Automated source verifier checking all Phase 9 security contracts, migration locks, and TypeScript definitions.
+- `tests/phase9-income-sources.test.ts`: Unit test suite testing name validation, attribution constraints, fail-closed currency behavior, exact decimal aggregation, large decimal boundary (`numeric(20,4)`), and archive neutrality.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -787,11 +794,11 @@ FINORA_PHASE_8=PASS
 PHASE_9_AUTHORIZED=true
 PHASE_9_SCOPE=INCOME_SOURCES_REVENUE_ATTRIBUTION
 PHASE_9_CONTRACT=PASS_CODE_ONLY
-PHASE_9_IMPLEMENTATION_AUTHORIZED=false
-PHASE_9_SOURCE_GATE=PENDING
-PHASE_9_REMOTE_DATABASE=PENDING
-PHASE_9_STRUCTURAL_GATE=PENDING
-PHASE_9_TWO_USER_RLS=PENDING
+PHASE_9_IMPLEMENTATION_AUTHORIZED=true
+PHASE_9_PASS_A_SOURCE_GATE=PASS_CODE_ONLY
+PHASE_9_REMOTE_DATABASE=PENDING_DEPLOYMENT
+PHASE_9_STRUCTURAL_GATE=PENDING_DEPLOYMENT
+PHASE_9_TWO_USER_RLS=PENDING_DEPLOYMENT
 PHASE_9_LIVE_PERSISTENCE_SMOKE=PENDING
 PHASE_9_OVERALL=PARTIAL
 

@@ -2,6 +2,7 @@ import {
   aggregateRealizedIncomeAttribution,
   isValidIncomeSourceType,
   SUPPORTED_INCOME_SOURCE_TYPES,
+  validateAttributionCurrencyCode,
   validateIncomeSourceName,
   validateIncomeSourceStreamName,
   validateTransactionAttribution,
@@ -28,6 +29,18 @@ function assertTrue(cond: boolean, msg: string = '') {
     console.error(`[FAIL] ${msg}: condition is false`);
     process.exit(1);
   } else {
+    console.log(`[PASS] ${msg}`);
+    passed++;
+  }
+}
+
+function assertThrows(fn: () => void, msg: string = '') {
+  total++;
+  try {
+    fn();
+    console.error(`[FAIL] ${msg}: expected function to throw error`);
+    process.exit(1);
+  } catch (_e) {
     console.log(`[PASS] ${msg}`);
     passed++;
   }
@@ -104,7 +117,17 @@ async function runPhase9Tests() {
   });
   assertTrue(incomeUnattributed.valid, 'income with no attribution accepted');
 
-  // 5. Aggregation engine tests
+  // 5. Currency Validation & Fail-Closed Behavior
+  assertEq(validateAttributionCurrencyCode('VND'), 'VND', 'VND valid');
+  assertEq(validateAttributionCurrencyCode('usd'), 'USD', 'usd normalized to uppercase USD');
+  assertThrows(() => validateAttributionCurrencyCode(''), 'empty currency string throws');
+  assertThrows(() => validateAttributionCurrencyCode('US'), '2-char currency throws');
+  assertThrows(() => validateAttributionCurrencyCode('USDD'), '4-char currency throws');
+  assertThrows(() => validateAttributionCurrencyCode(null), 'null currency throws');
+  assertThrows(() => validateAttributionCurrencyCode(undefined), 'undefined currency throws');
+  assertThrows(() => validateAttributionCurrencyCode(123), 'numeric currency throws');
+
+  // 6. Aggregation engine tests
   const testTransactions: RealizedTransactionForAttribution[] = [
     // Active VND income
     {
@@ -225,6 +248,49 @@ async function runPhase9Tests() {
   assertEq(vndReport.sources[1].streams.length, 2, 'Freelance has 2 streams (Client A & B)');
   assertEq(vndReport.sources[2].sourceName, 'Unattributed', 'Third is Unattributed');
   assertEq(vndReport.sources[2].totalAmount, '1200000.0000', 'Unattributed total is 1.2M');
+
+  // 7. Large exact-decimal precision test near numeric(20,4) limit
+  const largeDecimalTxs: RealizedTransactionForAttribution[] = [
+    {
+      type: 'INCOME',
+      is_voided: false,
+      amount: '9007199254740991.0000',
+      currency_code: 'USD',
+      income_source_id: 'src-whale',
+      income_source_name: 'Mega Source',
+      income_source_type: 'INVESTMENT',
+    },
+    {
+      type: 'INCOME',
+      is_voided: false,
+      amount: '1.0000',
+      currency_code: 'USD',
+      income_source_id: 'src-whale',
+      income_source_name: 'Mega Source',
+      income_source_type: 'INVESTMENT',
+    },
+  ];
+  const largeReport = aggregateRealizedIncomeAttribution(largeDecimalTxs);
+  assertEq(largeReport[0].totalIncome, '9007199254740992.0000', 'Large decimal exact addition without IEEE-754 precision loss');
+
+  // 8. Archive-Neutrality Domain Invariant Test
+  // Metadata archive state changes do not alter historical attribution totals
+  const archivedTxs: RealizedTransactionForAttribution[] = [
+    {
+      type: 'INCOME',
+      is_voided: false,
+      amount: '5000.0000',
+      currency_code: 'USD',
+      income_source_id: 'src-archived-job',
+      income_source_name: 'Past Job (Archived)',
+      income_source_type: 'SALARY',
+      income_source_stream_id: 'stm-archived-bonus',
+      income_source_stream_name: '2024 Bonus',
+    },
+  ];
+  const archiveReport = aggregateRealizedIncomeAttribution(archivedTxs);
+  assertEq(archiveReport[0].totalIncome, '5000.0000', 'Historical income from archived source remains fully realized in report');
+  assertEq(archiveReport[0].sources[0].totalAmount, '5000.0000', 'Source total remains 5000.0000');
 
   console.log(`\n=== All Phase 9 Domain Tests Passed (${passed}/${total}) ===\n`);
 }

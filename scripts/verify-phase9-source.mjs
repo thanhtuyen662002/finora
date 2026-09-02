@@ -53,12 +53,15 @@ check('transactions composite FK to income_source_streams ON DELETE RESTRICT',
   migLower.includes('foreign key (income_source_stream_id, income_source_id, user_id)') &&
   migLower.includes('references public.income_source_streams (id, income_source_id, user_id) on delete restrict'));
 
-// 4. CHECK constraints in migration
-check('check_income_source_name_length present', phase9Mig.includes('CONSTRAINT check_income_source_name_length'));
-check('check_income_source_type present', phase9Mig.includes('CONSTRAINT check_income_source_type'));
-check('check_income_source_stream_name_length present', phase9Mig.includes('CONSTRAINT check_income_source_stream_name_length'));
-check('check_transaction_expense_no_attribution present', phase9Mig.includes('CONSTRAINT check_transaction_expense_no_attribution'));
-check('check_transaction_stream_requires_source present', phase9Mig.includes('CONSTRAINT check_transaction_stream_requires_source'));
+// 4. Constraint guards scoped with conrelid in migration
+check('transactions composite FK guards use conrelid',
+  phase9Mig.includes("WHERE conname = 'transactions_income_source_fkey'") &&
+  phase9Mig.includes("AND conrelid = 'public.transactions'::regclass") &&
+  phase9Mig.includes("WHERE conname = 'transactions_income_source_stream_fkey'"));
+check('transactions CHECK guards use conrelid',
+  phase9Mig.includes("WHERE conname = 'check_transaction_expense_no_attribution'") &&
+  phase9Mig.includes("AND conrelid = 'public.transactions'::regclass") &&
+  phase9Mig.includes("WHERE conname = 'check_transaction_stream_requires_source'"));
 
 // 5. Trigger and Function
 check('check_transaction_attribution_active function has SECURITY INVOKER', phase9Mig.includes('SECURITY INVOKER'));
@@ -92,22 +95,68 @@ check('transaction_details view preserves 17 prefix columns and appends attribut
   phase9Mig.includes('src.type AS income_source_type,') &&
   phase9Mig.includes('strm.name AS income_source_stream_name'));
 
-// 7. Security and RLS
+// 7. Security and RLS in Migration
 check('income_sources has ENABLE ROW LEVEL SECURITY', phase9Mig.includes('ALTER TABLE public.income_sources ENABLE ROW LEVEL SECURITY;'));
 check('income_source_streams has ENABLE ROW LEVEL SECURITY', phase9Mig.includes('ALTER TABLE public.income_source_streams ENABLE ROW LEVEL SECURITY;'));
-check('income_sources column-level INSERT grant excludes user_id',
-  phase9Mig.includes('GRANT INSERT (name, type) ON public.income_sources TO authenticated;'));
-check('income_sources column-level UPDATE grant excludes user_id',
-  phase9Mig.includes('GRANT UPDATE (name, type, is_archived) ON public.income_sources TO authenticated;'));
-check('income_source_streams column-level INSERT grant excludes user_id',
-  phase9Mig.includes('GRANT INSERT (income_source_id, name) ON public.income_source_streams TO authenticated;'));
-check('income_source_streams column-level UPDATE grant excludes user_id and income_source_id',
-  phase9Mig.includes('GRANT UPDATE (name, is_archived) ON public.income_source_streams TO authenticated;'));
+check('AUTHENTICATED_SOURCE_TABLE_ALL_REVOKED: revoke all from anon, authenticated, PUBLIC',
+  phase9Mig.includes('REVOKE ALL ON TABLE public.income_sources FROM anon, authenticated, PUBLIC;') ||
+  phase9Mig.includes('REVOKE ALL ON public.income_sources FROM anon, authenticated, PUBLIC;'));
+check('AUTHENTICATED_STREAM_TABLE_ALL_REVOKED: revoke all from anon, authenticated, PUBLIC',
+  phase9Mig.includes('REVOKE ALL ON TABLE public.income_source_streams FROM anon, authenticated, PUBLIC;') ||
+  phase9Mig.includes('REVOKE ALL ON public.income_source_streams FROM anon, authenticated, PUBLIC;'));
+check('SOURCE_TABLE_LEVEL_MUTATION_NOT_GRANTED: no table level INSERT/UPDATE on income_sources',
+  !phase9Mig.match(/GRANT\s+INSERT\s+ON\s+(TABLE\s+)?public\.income_sources\s+TO/i) &&
+  !phase9Mig.match(/GRANT\s+UPDATE\s+ON\s+(TABLE\s+)?public\.income_sources\s+TO/i));
+check('STREAM_TABLE_LEVEL_MUTATION_NOT_GRANTED: no table level INSERT/UPDATE on income_source_streams',
+  !phase9Mig.match(/GRANT\s+INSERT\s+ON\s+(TABLE\s+)?public\.income_source_streams\s+TO/i) &&
+  !phase9Mig.match(/GRANT\s+UPDATE\s+ON\s+(TABLE\s+)?public\.income_source_streams\s+TO/i));
+check('SOURCE_COLUMN_ALLOWLIST_EXACT: income_sources column-level INSERT and UPDATE allowlists',
+  phase9Mig.includes('GRANT INSERT (name, type)') &&
+  phase9Mig.includes('GRANT UPDATE (name, type, is_archived)'));
+check('STREAM_COLUMN_ALLOWLIST_EXACT: income_source_streams column-level INSERT and UPDATE allowlists',
+  phase9Mig.includes('GRANT INSERT (income_source_id, name)') &&
+  phase9Mig.includes('GRANT UPDATE (name, is_archived)'));
 check('No DELETE grant on income_sources or streams to authenticated',
-  !phase9Mig.includes('GRANT DELETE ON public.income_sources TO authenticated') &&
-  !phase9Mig.includes('GRANT DELETE ON public.income_source_streams TO authenticated'));
+  !phase9Mig.includes('GRANT DELETE ON public.income_sources') &&
+  !phase9Mig.includes('GRANT DELETE ON TABLE public.income_sources') &&
+  !phase9Mig.includes('GRANT DELETE ON public.income_source_streams') &&
+  !phase9Mig.includes('GRANT DELETE ON TABLE public.income_source_streams'));
 
-// 8. TypeScript definitions
+// 8. DB Verifier Structural Gate Analysis
+const dbVerifierPath = 'scripts/verify-phase9-db.sql';
+check('scripts/verify-phase9-db.sql exists', fs.existsSync(dbVerifierPath));
+const dbVerifier = fs.readFileSync(dbVerifierPath, 'utf-8');
+
+check('DB_VERIFIER_FAIL_CLOSED_BLOCK: uses DO $$ ... $$ assertion block',
+  dbVerifier.includes('DO $$') && dbVerifier.includes('RAISE EXCEPTION'));
+check('DB_VERIFIER_EFFECTIVE_TABLE_ACL_CHECKS: asserts has_table_privilege for authenticated and anon',
+  dbVerifier.includes("has_table_privilege('authenticated', 'public.income_sources', 'SELECT')") &&
+  dbVerifier.includes("has_table_privilege('authenticated', 'public.income_sources', 'INSERT')") &&
+  dbVerifier.includes("has_table_privilege('anon', 'public.income_sources', 'SELECT')"));
+check('DB_VERIFIER_EFFECTIVE_COLUMN_ACL_CHECKS: asserts has_column_privilege exact allowlists',
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.income_sources', 'name', 'INSERT')") &&
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.income_sources', 'user_id', 'INSERT')") &&
+  dbVerifier.includes("has_column_privilege('authenticated', 'public.income_source_streams', 'income_source_id', 'INSERT')"));
+check('DB_VERIFIER_EXACT_POLICY_CHECKS: asserts exact 3 policies and no DELETE policy',
+  dbVerifier.includes("polrelid = 'public.income_sources'::regclass") &&
+  dbVerifier.includes("polcmd = 'd'") &&
+  dbVerifier.includes('v_count != 3'));
+check('DB_VERIFIER_TRIGGER_BITMASK_CHECKS: asserts tgtype bitmask for updated_at and attribution triggers',
+  dbVerifier.includes('(tgtype & 1 = 1) AND (tgtype & 2 = 2) AND (tgtype & 16 = 16)') &&
+  dbVerifier.includes('(tgtype & 1 = 1) AND (tgtype & 2 = 2) AND (tgtype & 4 = 4) AND (tgtype & 16 = 16)'));
+check('DB_VERIFIER_FUNCTION_SEARCH_PATH_CHECK: asserts search_path and prosecdef = FALSE',
+  dbVerifier.includes('prosecdef = FALSE') && dbVerifier.includes("search_path="));
+check('DB_VERIFIER_VIEW_REL_OPTIONS: asserts security_invoker = true in reloptions',
+  dbVerifier.includes("security_invoker=true"));
+check('DB_VERIFIER_22_COLUMN_ORDER: asserts exact 22 column array order',
+  dbVerifier.includes("'income_source_stream_name'") && dbVerifier.includes("v_col_order != v_expected_order"));
+check('DB_VERIFIER_EXACT_FK_KEY_ORDER: asserts confdeltype = \'r\' and composite FKs',
+  dbVerifier.includes("confdeltype = 'r'") && dbVerifier.includes('transactions_income_source_stream_fkey'));
+check('TRIGGER_NAME_MATCH: trigger name is identical in migration and DB verifier',
+  dbVerifier.includes('check_transaction_attribution_active_trigger') &&
+  phase9Mig.includes('check_transaction_attribution_active_trigger'));
+
+// 9. TypeScript definitions
 const dbTypes = fs.readFileSync('src/types/database.ts', 'utf-8');
 check('database.ts includes income_sources table', dbTypes.includes('income_sources: {'));
 check('database.ts includes income_source_streams table', dbTypes.includes('income_source_streams: {'));
@@ -118,13 +167,20 @@ check('database.ts includes attribution in transaction_details view',
   dbTypes.includes('income_source_type: IncomeSourceType | null;') &&
   dbTypes.includes('income_source_stream_name: string | null;'));
 
-// 9. Feature domain & services
+// 10. Feature domain & services
 check('src/features/income-sources/domain.ts exists', fs.existsSync('src/features/income-sources/domain.ts'));
 check('src/features/income-sources/income-sources.ts exists', fs.existsSync('src/features/income-sources/income-sources.ts'));
 check('src/features/income-sources/types.ts exists', fs.existsSync('src/features/income-sources/types.ts'));
 check('src/features/income-sources/index.ts exists', fs.existsSync('src/features/income-sources/index.ts'));
 
 const domainCode = fs.readFileSync('src/features/income-sources/domain.ts', 'utf-8');
+check('DOMAIN_MONETARY_INPUT_STRING_ONLY: amount is strictly string (not string | number)',
+  domainCode.includes('amount: string;') && !domainCode.includes('amount: string | number;'));
+check('DOMAIN_CURRENCY_FAIL_CLOSED: no silent VND fallback in domain attribution',
+  !domainCode.includes("|| 'VND'") && !domainCode.includes('|| "VND"') &&
+  domainCode.includes('validateAttributionCurrencyCode'));
+check('DOMAIN_EXACT_DECIMAL_SORTING: uses compareExactDecimals for deterministic sorting',
+  domainCode.includes('compareExactDecimals'));
 check('domain.ts uses exact decimal money functions',
   domainCode.includes('addExactDecimals') && domainCode.includes('toExactDecimal'));
 check('domain.ts contains zero JS float math on financial accumulation',
@@ -132,7 +188,7 @@ check('domain.ts contains zero JS float math on financial accumulation',
 
 const serviceCode = fs.readFileSync('src/features/income-sources/income-sources.ts', 'utf-8');
 check('service createIncomeSource does not inject user_id',
-  !serviceCode.includes('user_id: userData.user.id') && serviceCode.includes('from(\'income_sources\')'));
+  !serviceCode.includes('user_id: userData.user.id') && serviceCode.includes("from('income_sources')"));
 check('service updateIncomeSourceStream does not mutate income_source_id',
   !serviceCode.includes('payload.income_source_id ='));
 
@@ -143,9 +199,8 @@ check('transactions.ts maps incomeSourceName and stream fields in mapDetailRow',
   txServiceCode.includes('incomeSourceName: row.income_source_name') &&
   txServiceCode.includes('incomeSourceStreamName: row.income_source_stream_name'));
 
-// 10. Tests and Verifiers
+// 11. Tests and Contract
 check('tests/phase9-income-sources.test.ts exists', fs.existsSync('tests/phase9-income-sources.test.ts'));
-check('scripts/verify-phase9-db.sql exists', fs.existsSync('scripts/verify-phase9-db.sql'));
 check('docs/PHASE_9_CONTRACT.md exists', fs.existsSync('docs/PHASE_9_CONTRACT.md'));
 
 console.log(`\n=== Phase 9 Source Verification Result: ${passed}/${total} checks passed ===\n`);

@@ -67,7 +67,9 @@ ALTER TABLE public.transactions
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'transactions_income_source_fkey'
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'transactions_income_source_fkey'
+          AND conrelid = 'public.transactions'::regclass
     ) THEN
         ALTER TABLE public.transactions
             ADD CONSTRAINT transactions_income_source_fkey
@@ -76,7 +78,9 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'transactions_income_source_stream_fkey'
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'transactions_income_source_stream_fkey'
+          AND conrelid = 'public.transactions'::regclass
     ) THEN
         ALTER TABLE public.transactions
             ADD CONSTRAINT transactions_income_source_stream_fkey
@@ -92,7 +96,9 @@ CREATE INDEX IF NOT EXISTS idx_transactions_income_source_stream_id ON public.tr
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'check_transaction_expense_no_attribution'
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'check_transaction_expense_no_attribution'
+          AND conrelid = 'public.transactions'::regclass
     ) THEN
         ALTER TABLE public.transactions
             ADD CONSTRAINT check_transaction_expense_no_attribution
@@ -103,7 +109,9 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'check_transaction_stream_requires_source'
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'check_transaction_stream_requires_source'
+          AND conrelid = 'public.transactions'::regclass
     ) THEN
         ALTER TABLE public.transactions
             ADD CONSTRAINT check_transaction_stream_requires_source
@@ -215,16 +223,16 @@ CREATE POLICY "Users can update own income source streams"
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- 8. Fail-closed privileges and explicit column allowlists
-REVOKE ALL ON public.income_sources FROM anon, PUBLIC;
-REVOKE ALL ON public.income_source_streams FROM anon, PUBLIC;
+REVOKE ALL ON TABLE public.income_sources FROM anon, authenticated, PUBLIC;
+REVOKE ALL ON TABLE public.income_source_streams FROM anon, authenticated, PUBLIC;
 
-GRANT SELECT ON public.income_sources TO authenticated;
-GRANT INSERT (name, type) ON public.income_sources TO authenticated;
-GRANT UPDATE (name, type, is_archived) ON public.income_sources TO authenticated;
+GRANT SELECT ON TABLE public.income_sources TO authenticated;
+GRANT INSERT (name, type) ON TABLE public.income_sources TO authenticated;
+GRANT UPDATE (name, type, is_archived) ON TABLE public.income_sources TO authenticated;
 
-GRANT SELECT ON public.income_source_streams TO authenticated;
-GRANT INSERT (income_source_id, name) ON public.income_source_streams TO authenticated;
-GRANT UPDATE (name, is_archived) ON public.income_source_streams TO authenticated;
+GRANT SELECT ON TABLE public.income_source_streams TO authenticated;
+GRANT INSERT (income_source_id, name) ON TABLE public.income_source_streams TO authenticated;
+GRANT UPDATE (name, is_archived) ON TABLE public.income_source_streams TO authenticated;
 
 -- 9. Replace transaction_details view preserving exact 17-column prefix and appending 18-22
 CREATE OR REPLACE VIEW public.transaction_details WITH (security_invoker = true) AS
