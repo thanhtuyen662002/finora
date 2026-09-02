@@ -398,16 +398,8 @@ BEGIN
         RAISE EXCEPTION 'income_sources SELECT policy must have ownership polqual and NULL polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
     END IF;
     v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_sources SELECT policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_sources SELECT policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_qual;
     END IF;
 
     -- INSERT
@@ -423,16 +415,8 @@ BEGIN
         RAISE EXCEPTION 'income_sources INSERT policy must have NULL polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
     END IF;
     v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_sources INSERT policy must strictly be canonical ownership expression only, got: %', v_pol_check;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_sources INSERT policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_check;
     END IF;
 
     -- UPDATE
@@ -448,28 +432,12 @@ BEGIN
         RAISE EXCEPTION 'income_sources UPDATE policy must have ownership polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
     END IF;
     v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_sources UPDATE USING policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_sources UPDATE USING policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_qual;
     END IF;
     v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_sources UPDATE WITH CHECK policy must strictly be canonical ownership expression only, got: %', v_pol_check;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_sources UPDATE WITH CHECK policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_check;
     END IF;
 
     -- income_source_streams policy count & command matrix
@@ -512,16 +480,8 @@ BEGIN
         RAISE EXCEPTION 'income_source_streams SELECT policy must have ownership polqual and NULL polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
     END IF;
     v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_source_streams SELECT policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_source_streams SELECT policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_qual;
     END IF;
 
     -- INSERT
@@ -537,16 +497,8 @@ BEGIN
         RAISE EXCEPTION 'income_source_streams INSERT policy must have NULL polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
     END IF;
     v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_source_streams INSERT policy must strictly be canonical ownership expression only, got: %', v_pol_check;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_source_streams INSERT policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_check;
     END IF;
 
     -- UPDATE
@@ -562,28 +514,12 @@ BEGIN
         RAISE EXCEPTION 'income_source_streams UPDATE policy must have ownership polqual and ownership polwithcheck, got qual=%, check=%', v_pol_qual, v_pol_check;
     END IF;
     v_norm := lower(regexp_replace(v_pol_qual, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_qual ILIKE '% or %' OR v_pol_qual ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_source_streams UPDATE USING policy must strictly be canonical ownership expression only, got: %', v_pol_qual;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_source_streams UPDATE USING policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_qual;
     END IF;
     v_norm := lower(regexp_replace(v_pol_check, '\s+', '', 'g'));
-    v_norm := regexp_replace(v_norm, '[\(\)]', '', 'g');
-    IF v_norm NOT IN (
-        'selectauth.uid()asuid=user_id',
-        'selectauth.uid()=user_id',
-        'auth.uid()=user_id',
-        'user_id=selectauth.uid()asuid',
-        'user_id=selectauth.uid()',
-        'user_id=auth.uid()'
-    ) OR v_pol_check ILIKE '% or %' OR v_pol_check ILIKE '% and %' THEN
-        RAISE EXCEPTION 'income_source_streams UPDATE WITH CHECK policy must strictly be canonical ownership expression only, got: %', v_pol_check;
+    IF v_norm != '((selectauth.uid()asuid)=user_id)' THEN
+        RAISE EXCEPTION 'income_source_streams UPDATE WITH CHECK policy must strictly be canonical ownership expression ((selectauth.uid()asuid)=user_id), got normalized: %, raw: %', v_norm, v_pol_check;
     END IF;
 
     -- -------------------------------------------------------------------------

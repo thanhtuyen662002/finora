@@ -181,9 +181,20 @@ check('DB_VERIFIER_RLS_INSERT_EXPR_EXACT: asserts INSERT has NULL polqual and ow
 check('DB_VERIFIER_RLS_UPDATE_EXPR_EXACT: asserts UPDATE has ownership polqual and ownership polwithcheck',
   dbVerifier.includes('income_sources UPDATE policy must have ownership polqual and ownership polwithcheck') &&
   dbVerifier.includes('income_source_streams UPDATE policy must have ownership polqual and ownership polwithcheck'));
+check('RLS_NORMALIZATION_PRESERVES_AUTH_UID_CALL: asserts DB verifier normalizes whitespace only and preserves function call parentheses',
+  dbVerifier.includes("lower(regexp_replace(v_pol_qual, '\\s+', '', 'g'))") &&
+  dbVerifier.includes("lower(regexp_replace(v_pol_check, '\\s+', '', 'g'))") &&
+  dbVerifier.includes('((selectauth.uid()asuid)=user_id)'));
+check('RLS_CANONICAL_NORMALIZED_EXPR_DEFINED: asserts canonical normalized ownership expression is strictly required for all policies',
+  dbVerifier.includes("v_norm != '((selectauth.uid()asuid)=user_id)'") &&
+  !dbVerifier.includes('v_norm NOT IN'));
+check('RLS_PARENTHESES_STRIP_BUG_ABSENT: asserts parentheses stripping bug is completely removed from DB verifier',
+  !dbVerifier.includes("regexp_replace(v_norm, '[\\(\\)]'") &&
+  !dbVerifier.includes("regexp_replace(v_norm, '[\(\)]'"));
 check('DB_VERIFIER_RLS_OWNERSHIP_ONLY_EXACT: asserts strict canonical ownership expression without extraneous predicates',
-  dbVerifier.includes('canonical ownership expression only') &&
-  dbVerifier.includes('selectauth.uid()asuid=user_id'));
+  dbVerifier.includes("v_norm != '((selectauth.uid()asuid)=user_id)'") &&
+  !dbVerifier.includes('OR true') &&
+  !dbVerifier.includes('user_id IS NOT NULL'));
 check('DB_VERIFIER_EXACT_UNIQUE_KEY_ORDER: asserts conkey WITH ORDINALITY for unique keys',
   dbVerifier.includes("conname = 'income_sources_id_user_id_key'") &&
   dbVerifier.includes("v_keys != ARRAY['id', 'user_id']") &&
