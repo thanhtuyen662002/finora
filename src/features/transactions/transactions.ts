@@ -1,11 +1,15 @@
 import { createClient } from '@/lib/supabase/client';
-import type { TransactionDetailRow, TransactionRow } from '@/types/database';
+import type { IncomeSourceType, TransactionDetailRow, TransactionRow } from '@/types/database';
+import { validateTransactionAttribution } from '@/features/income-sources/domain';
 
 export type ExtendedTransaction = TransactionRow & {
   accountName?: string;
   categoryName?: string;
   categoryIcon?: string;
   categoryColor?: string;
+  incomeSourceName?: string | null;
+  incomeSourceType?: IncomeSourceType | null;
+  incomeSourceStreamName?: string | null;
 };
 
 export type TransactionInsertInput = {
@@ -17,6 +21,8 @@ export type TransactionInsertInput = {
   merchant: string;
   note?: string | null;
   occurred_on?: string;
+  income_source_id?: string | null;
+  income_source_stream_id?: string | null;
 };
 
 export type TransactionUpdateInput = Partial<{
@@ -28,6 +34,8 @@ export type TransactionUpdateInput = Partial<{
   merchant: string;
   note: string | null;
   occurred_on: string;
+  income_source_id: string | null;
+  income_source_stream_id: string | null;
 }>;
 
 function mapDetailRow(row: TransactionDetailRow): ExtendedTransaction {
@@ -43,12 +51,17 @@ function mapDetailRow(row: TransactionDetailRow): ExtendedTransaction {
     note: row.note,
     occurred_on: row.occurred_on,
     is_voided: row.is_voided,
+    income_source_id: row.income_source_id,
+    income_source_stream_id: row.income_source_stream_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
     accountName: row.account_name,
     categoryName: row.category_name,
     categoryIcon: row.category_icon,
     categoryColor: row.category_color,
+    incomeSourceName: row.income_source_name,
+    incomeSourceType: row.income_source_type,
+    incomeSourceStreamName: row.income_source_stream_name,
   };
 }
 
@@ -114,13 +127,28 @@ export async function getRecentTransactions(limit = 6): Promise<ExtendedTransact
 export async function createTransaction(
   transaction: TransactionInsertInput
 ): Promise<ExtendedTransaction> {
+  const attributionCheck = validateTransactionAttribution({
+    type: transaction.type,
+    income_source_id: transaction.income_source_id,
+    income_source_stream_id: transaction.income_source_stream_id,
+  });
+  if (!attributionCheck.valid) {
+    throw new Error(attributionCheck.error);
+  }
+
+  const payload = {
+    ...transaction,
+    income_source_id: transaction.type === 'EXPENSE' ? null : (transaction.income_source_id || null),
+    income_source_stream_id: transaction.type === 'EXPENSE' ? null : (transaction.income_source_stream_id || null),
+  };
+
   const supabase = createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) throw new Error('Unauthorized');
 
   const { data, error } = await supabase
     .from('transactions')
-    .insert({ ...transaction, user_id: userData.user.id })
+    .insert({ ...payload, user_id: userData.user.id })
     .select('id')
     .single();
 
@@ -132,10 +160,27 @@ export async function updateTransaction(
   id: string,
   updates: TransactionUpdateInput
 ): Promise<ExtendedTransaction> {
+  if (updates.type === 'EXPENSE') {
+    const attributionCheck = validateTransactionAttribution({
+      type: 'EXPENSE',
+      income_source_id: updates.income_source_id,
+      income_source_stream_id: updates.income_source_stream_id,
+    });
+    if (!attributionCheck.valid) {
+      throw new Error(attributionCheck.error);
+    }
+  }
+
+  const payload = { ...updates };
+  if (updates.type === 'EXPENSE') {
+    payload.income_source_id = null;
+    payload.income_source_stream_id = null;
+  }
+
   const supabase = createClient();
   const { data, error } = await supabase
     .from('transactions')
-    .update(updates)
+    .update(payload)
     .eq('id', id)
     .select('id')
     .single();

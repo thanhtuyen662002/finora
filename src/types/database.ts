@@ -200,6 +200,74 @@ export interface Database {
         };
         Relationships: [];
       };
+      income_sources: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          type: IncomeSourceType;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          name: string;
+          type: IncomeSourceType;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          type?: IncomeSourceType;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      income_source_streams: {
+        Row: {
+          id: string;
+          user_id: string;
+          income_source_id: string;
+          name: string;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          income_source_id: string;
+          name: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          income_source_id?: string;
+          name?: string;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "income_source_streams_parent_fkey";
+            columns: ["income_source_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "income_sources";
+            referencedColumns: ["id", "user_id"];
+          }
+        ];
+      };
       transactions: {
         Row: {
           id: string;
@@ -213,6 +281,8 @@ export interface Database {
           note: string | null;
           occurred_on: string;
           is_voided: boolean;
+          income_source_id: string | null;
+          income_source_stream_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -228,6 +298,8 @@ export interface Database {
           note?: string | null;
           occurred_on?: string;
           is_voided?: boolean;
+          income_source_id?: string | null;
+          income_source_stream_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -243,6 +315,8 @@ export interface Database {
           note?: string | null;
           occurred_on?: string;
           is_voided?: boolean;
+          income_source_id?: string | null;
+          income_source_stream_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -496,6 +570,11 @@ export interface Database {
           category_name: string;
           category_icon: string;
           category_color: string;
+          income_source_id: string | null;
+          income_source_stream_id: string | null;
+          income_source_name: string | null;
+          income_source_type: IncomeSourceType | null;
+          income_source_stream_name: string | null;
         };
         Relationships: [];
       };
@@ -647,3 +726,13 @@ export type RecurringItemInsert = Omit<Database['public']['Tables']['recurring_i
 export type RecurringItemUpdate = Omit<Database['public']['Tables']['recurring_items']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 export type RecurringDetailRow = Database['public']['Views']['recurring_details']['Row'];
 export type RecurringDetailsRow = RecurringDetailRow;
+
+export type IncomeSourceType = 'SALARY' | 'YOUTUBE' | 'FREELANCE' | 'INVESTMENT' | 'OTHER';
+export type IncomeSourceRow = Database['public']['Tables']['income_sources']['Row'];
+export type IncomeSourceInsert = Omit<Database['public']['Tables']['income_sources']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type IncomeSourceUpdate = Omit<Database['public']['Tables']['income_sources']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
+
+export type IncomeSourceStreamRow = Database['public']['Tables']['income_source_streams']['Row'];
+export type IncomeSourceStreamInsert = Omit<Database['public']['Tables']['income_source_streams']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type IncomeSourceStreamUpdate = Omit<Database['public']['Tables']['income_source_streams']['Update'], 'id' | 'user_id' | 'income_source_id' | 'created_at' | 'updated_at'>;
+
