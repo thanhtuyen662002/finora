@@ -12,6 +12,7 @@
 - **Accepted Phase 9 completion SHA:** `0043b543efdbfd02756d80c6a93d4e6c0c745d42`
 - **Phase 9 closure receipt:** `docs/receipts/PHASE_9_CLOSURE.md`
 - **Phase 10 contract discovery:** `docs/PHASE_10_CONTRACT_DISCOVERY.md`
+- **Phase 9 closure / discovery commit SHA:** `edcd5ffe1f0afe95d008d2946f104084cb191aa7`
 - **Accepted Phase 2 completion SHA:** `c4248e5be9884bb2402e74900daf16909735c641`
 - **Phase 3 code verification SHA:** `2742768c7cbdea339c45ad5b43ec0aa0d81fa6a5`
 - **Accepted Phase 3 migration-source SHA:** `529d1d42ab50d62b2327fadc7a9ac0b2122798fa`
@@ -842,7 +843,7 @@ Phase 9 Pass B (real user-facing experience & reporting integration) has been im
 Phase 9 is formally closed following human-authenticated production persistence smoke and independent database verification (`docs/receipts/PHASE_9_CLOSURE.md`).
 
 ## Next Recommended Action
-Review and approve Phase 10 implementation contract (`docs/PHASE_10_CONTRACT_DISCOVERY.md`) before Phase 10 development authorization.
+Independent audit and approval of Phase 10 implementation contract (`docs/PHASE_10_CONTRACT_DISCOVERY.md`) before Phase 10 development authorization.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -866,4 +867,10 @@ PHASE_9_OVERALL=PASS
 FINORA_PHASE_9=PASS
 
 PHASE_10_AUTHORIZED=true
+PHASE_10_SCOPE=AI_FOUNDATION_PROVIDER_ABSTRACTION_ROUTER_STRUCTURED_RESULTS
+PHASE_10_CONTRACT=READY_FOR_INDEPENDENT_AUDIT
+PHASE_10_IMPLEMENTATION_AUTHORIZED=false
+
+PHASE_11_AUTHORIZED=false
+PHASE_12_AUTHORIZED=false
 ```
