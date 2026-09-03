@@ -1,16 +1,15 @@
+import 'server-only';
+
 /**
  * Finora AI Foundation — Server-Only Entrypoint
  * Phase 10 — Server Boundary Enforcement
  *
- * Ensures AI providers and routers are only instantiated on the server side.
+ * Ensures AI providers and routers are only instantiated and executed on the server side.
+ * Marked with 'server-only' to guarantee build-time module boundary enforcement.
  */
 
 import { GeminiProvider } from './providers/gemini';
 import { AiRouter } from './router';
-
-if (typeof window !== 'undefined') {
-  throw new Error('Finora AI Foundation runtime modules cannot be imported or executed in browser code.');
-}
 
 /**
  * Creates a default server-side AI router pre-configured with standard providers.

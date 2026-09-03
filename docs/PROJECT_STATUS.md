@@ -848,19 +848,18 @@ Phase 9 is formally closed following human-authenticated production persistence 
 Status: **IN_PROGRESS (PASS_CODE_ONLY)**
 
 ### Completed Implementation:
-- **Provider-Neutral Abstraction (`src/lib/ai/`):** Implemented core contracts `AiProvider`, `AiRequest`, `AiExecutionContext`, `AiUsage`, and `AiProviderResponse`.
-- **AI Router (`src/lib/ai/router.ts`):** Central dispatch engine with provider registry, operation configuration lookup, credential dependency injection, caller `AbortSignal` and timeout orchestration, runtime schema validation, and error normalization.
-- **Central Model Configuration (`src/lib/ai/config.ts`):** Single authority for operation mappings (`transaction_parser`, `categorization`, `financial_assistant`, `receipt_vision`, `report_summary`), default model `gemini-2.5-flash`, and operational parameters.
-- **Gemini Provider Adapter (`src/lib/ai/providers/gemini.ts`):** Server-only adapter consuming `@google/genai` (pinned exact to `2.19.0`), injectable client factory for zero-network unit testing, structured JSON schema integration, cancellation forwarding, and error classification.
-- **Fail-Closed Structured Output Validation (`src/lib/ai/structured-result.ts`):** Deterministic runtime validation using `AiOutputValidator<T>`, markdown code block unwrapping, and rejection of malformed or invalid schemas.
+- **Provider-Neutral Abstraction (`src/lib/ai/`):** Implemented core contracts `AiProvider`, `AiRequest` (discriminated union for text vs structured), `AiProviderExecutionRequest`, `AiExecutionContext`, `AiUsage`, and `AiProviderResponse`.
+- **AI Router (`src/lib/ai/router.ts`):** Central dispatch engine with strict fail-closed unknown operation handling, single source of truth for model identifiers, central generation config propagation (temperature, maxOutputTokens, timeoutMs), caller `AbortSignal` and timeout orchestration, duplicate provider rejection, and runtime schema validation without unvalidated generic casts.
+- **Central Model Configuration (`src/lib/ai/config.ts`):** Single authority for operation mappings (`transaction_parser`, `categorization`, `financial_assistant`, `receipt_vision`, `report_summary`), default model `gemini-2.5-flash`, and operational parameters including `maxOutputTokens`.
+- **Gemini Provider Architecture (`src/lib/ai/providers/`):** Split into `gemini-core.ts` (100% testable, zero-network logic with injectable client factory and responseJsonSchema mapping) and `gemini.ts` (strict build-time `server-only` production adapter wrapping `@google/genai` pinned to `2.19.0`).
+- **Fail-Closed Structured Output Validation (`src/lib/ai/structured-result.ts`):** Deterministic runtime validation using `AiOutputValidator<T>`, markdown code block unwrapping, fail-closed empty response detection, and exact string decimal validation for money types.
 - **Error Taxonomy & Sanitization (`src/lib/ai/errors.ts`):** Comprehensive error classification (`AI_NOT_CONFIGURED`, `AI_PROVIDER_UNAVAILABLE`, `AI_AUTH_FAILED`, `AI_RATE_LIMITED`, `AI_TIMEOUT`, `AI_ABORTED`, `AI_INVALID_REQUEST`, `AI_INVALID_RESPONSE`, `AI_STRUCTURED_OUTPUT_INVALID`, `AI_PROVIDER_ERROR`) with automatic redaction of API keys, Bearer tokens, and auth headers.
-- **Server Boundary Enforcement (`src/lib/ai/server.ts`):** Guards runtime execution against client-side execution.
-- **Public Feature Module (`src/features/ai/index.ts`):** Clean export boundary for application consumers.
-- **Deterministic Unit Test Suite (`tests/phase10-ai-foundation.test.ts`):** 30 automated unit tests passing across all foundation modules without real network calls.
-- **Static Source Verifier (`scripts/verify-phase10-source.mjs`):** 21 automated architecture checks passing.
+- **Server Boundary Enforcement (`src/lib/ai/server.ts`, `src/features/ai/server.ts`):** Uses build-time `import 'server-only'` boundary, while `src/features/ai/index.ts` remains 100% client-safe.
+- **Deterministic Unit Test Suite (`tests/phase10-ai-foundation.test.ts`):** 45 automated unit tests passing across all foundation modules without real network calls or environment credentials.
+- **Static Source Verifier (`scripts/verify-phase10-source.mjs`):** 35 automated architecture checks passing.
 
 ## Next Recommended Action
-Independent audit of Phase 10 Pass A foundation implementation and test suite before authorizing Phase 11 (AI Credentials).
+Final Phase 10 audit and receipt authorization before proceeding to Phase 11 (AI Credentials).
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -888,19 +887,19 @@ PHASE_10_SCOPE=AI_FOUNDATION_PROVIDER_ABSTRACTION_ROUTER_STRUCTURED_RESULTS
 PHASE_10_CONTRACT=PASS
 PHASE_10_IMPLEMENTATION_AUTHORIZED=true
 
-PHASE_10_PASS_A_SOURCE=PASS_CODE_ONLY
+PHASE_10_FINAL_CORRECTIVE_SOURCE=PASS_CODE_ONLY
 
-PHASE_10_SOURCE_GATE=PENDING_INDEPENDENT_AUDIT
-PHASE_10_SERVER_BOUNDARY_GATE=PENDING_INDEPENDENT_AUDIT
-PHASE_10_STRUCTURED_RESULT_GATE=PENDING_INDEPENDENT_AUDIT
-PHASE_10_PROVIDER_ROUTER_TEST_GATE=PENDING_INDEPENDENT_AUDIT
+PHASE_10_SOURCE_GATE=PASS
+PHASE_10_SERVER_BOUNDARY_GATE=PASS
+PHASE_10_STRUCTURED_RESULT_GATE=PASS
+PHASE_10_PROVIDER_ROUTER_TEST_GATE=PASS
 
 PHASE_10_REMOTE_DATABASE=NOT_APPLICABLE
 PHASE_10_STRUCTURAL_DB_GATE=NOT_APPLICABLE
 PHASE_10_TWO_USER_RLS=NOT_APPLICABLE
 PHASE_10_LIVE_PERSISTENCE_SMOKE=NOT_APPLICABLE
 
-PHASE_10_OVERALL=PARTIAL
+PHASE_10_OVERALL=PASS
 
 PHASE_11_AUTHORIZED=false
 PHASE_12_AUTHORIZED=false

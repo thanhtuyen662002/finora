@@ -3,10 +3,12 @@
  * Phase 10 — Router & Dispatch Layer
  *
  * Dispatches logical AI operations to configured providers with:
- * - Central configuration resolution
- * - Dependency injection of credentials
+ * - Central configuration resolution (fail-closed on unknown operations)
+ * - Single source of truth for models (no fallback model literals)
+ * - Propagation of central generation parameters (temperature, maxOutputTokens, timeoutMs)
+ * - Dependency injection of credentials (Phase 11 port)
  * - Strict timeout and caller cancellation handling
- * - Fail-closed runtime structured output validation
+ * - Fail-closed runtime structured output validation and empty-text validation
  * - Normalized application error responses
  */
 
@@ -16,10 +18,11 @@ import type { AiProvider } from './provider';
 import { parseAndValidateJson } from './structured-result';
 import type {
   AiExecutionContext,
-  AiOperation,
   AiProviderId,
   AiRequest,
+  AiStructuredRequest,
   AiStructuredResult,
+  AiTextRequest,
 } from './types';
 
 export interface AiRouterOptions {
@@ -37,9 +40,12 @@ export class AiRouter {
     }
   }
 
-  registerProvider(provider: AiProvider): void {
+  registerProvider(provider: AiProvider, options?: { allowOverride?: boolean }): void {
     if (!provider || !provider.id) {
       throw new Error('Cannot register provider without a valid id');
+    }
+    if (this.providers.has(provider.id) && !options?.allowOverride) {
+      throw new Error(`Duplicate AI provider registration for id '${provider.id}'. Use allowOverride to replace.`);
     }
     this.providers.set(provider.id, provider);
   }
@@ -49,6 +55,16 @@ export class AiRouter {
   }
 
   async execute<TInput, TOutput>(
+    request: AiStructuredRequest<TInput, TOutput>,
+    context?: AiExecutionContext
+  ): Promise<AiStructuredResult<TOutput>>;
+
+  async execute<TInput>(
+    request: AiTextRequest<TInput>,
+    context?: AiExecutionContext
+  ): Promise<AiStructuredResult<string>>;
+
+  async execute<TInput, TOutput = string>(
     request: AiRequest<TInput, TOutput>,
     context?: AiExecutionContext
   ): Promise<AiStructuredResult<TOutput>> {
@@ -63,17 +79,28 @@ export class AiRouter {
       };
     }
 
-    // 1. Resolve operation configuration
+    // 1. Resolve operation configuration — Unknown operation must ALWAYS fail closed
     const opConfig = getOperationConfig(request.operation);
-    const providerId = opConfig?.providerId ?? ('gemini' as AiProviderId);
-    const model = request.overrideModel ?? opConfig?.model ?? 'gemini-2.5-flash';
-
-    if (!opConfig && !request.overrideModel) {
+    if (!opConfig) {
       return {
         ok: false,
         error: new AiError({
           code: 'AI_INVALID_REQUEST',
-          message: `Unknown AI operation '${request.operation}' with no configuration or override model.`,
+          message: `Unknown AI operation '${request.operation}' with no configuration.`,
+        }),
+      };
+    }
+
+    const providerId = opConfig.providerId;
+    const model = opConfig.model;
+
+    if (!model || model.trim() === '') {
+      return {
+        ok: false,
+        error: new AiError({
+          code: 'AI_INVALID_REQUEST',
+          message: `Model not configured for operation '${request.operation}'.`,
+          providerId,
         }),
       };
     }
@@ -122,7 +149,7 @@ export class AiRouter {
       };
     }
 
-    if (!credential || !credential.value) {
+    if (!credential || !credential.value || credential.value.trim() === '') {
       return {
         ok: false,
         error: new AiError({
@@ -134,7 +161,10 @@ export class AiRouter {
     }
 
     // 4. Setup timeout and cancellation orchestration
-    const timeoutMs = request.timeoutMs ?? context?.timeoutMs ?? opConfig?.timeoutMs ?? 20000;
+    const effectiveTemperature = request.temperature ?? opConfig.temperature;
+    const effectiveMaxTokens = request.maxTokens ?? opConfig.maxOutputTokens;
+    const timeoutMs = request.timeoutMs ?? context?.timeoutMs ?? opConfig.timeoutMs ?? 20000;
+
     const timeoutController = new AbortController();
     let isTimeoutTriggered = false;
 
@@ -154,11 +184,33 @@ export class AiRouter {
     timeoutController.signal.addEventListener('abort', handleTimeoutAbort, { once: true });
 
     try {
+      const isStructuredMode =
+        (request as AiStructuredRequest<TInput, TOutput>).responseMode === 'structured' ||
+        Boolean((request as { outputValidator?: unknown }).outputValidator);
+
+      const outputValidator = (request as { outputValidator?: import('./types').AiOutputValidator<TOutput> }).outputValidator;
+
+      if (isStructuredMode && !outputValidator) {
+        clearTimeout(timeoutTimer);
+        return {
+          ok: false,
+          error: new AiError({
+            code: 'AI_INVALID_REQUEST',
+            message: 'Structured response mode requires an outputValidator.',
+            providerId,
+          }),
+        };
+      }
+
       const response = await provider.execute(
         {
           ...request,
-          overrideModel: model,
+          model,
+          temperature: effectiveTemperature,
+          maxTokens: effectiveMaxTokens,
+          timeoutMs,
           signal: compositeController.signal,
+          outputValidator,
         },
         credential,
         {
@@ -170,12 +222,24 @@ export class AiRouter {
       clearTimeout(timeoutTimer);
 
       // 5. Output processing & runtime schema validation
-      if (request.outputValidator) {
-        return parseAndValidateJson(response.text, request.outputValidator, {
+      if (isStructuredMode && outputValidator) {
+        return parseAndValidateJson(response.text, outputValidator, {
           provider: provider.id,
           model: response.model || model,
           usage: response.usage,
         });
+      }
+
+      // Text response mode validation
+      if (!response.text || typeof response.text !== 'string' || response.text.trim() === '') {
+        return {
+          ok: false,
+          error: new AiError({
+            code: 'AI_INVALID_RESPONSE',
+            message: 'AI provider returned an empty or whitespace-only response payload.',
+            providerId: provider.id,
+          }),
+        };
       }
 
       return {

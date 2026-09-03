@@ -6,16 +6,16 @@
 import type {
   AiCredential,
   AiExecutionContext,
+  AiProviderExecutionRequest,
   AiProviderId,
   AiProviderResponse,
-  AiRequest,
 } from './types';
 
 export interface AiProvider {
   readonly id: AiProviderId;
 
   execute<TInput, TOutput>(
-    request: AiRequest<TInput, TOutput>,
+    request: AiProviderExecutionRequest<TInput, TOutput>,
     credential: AiCredential,
     context?: AiExecutionContext
   ): Promise<AiProviderResponse>;

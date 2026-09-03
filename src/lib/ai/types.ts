@@ -32,17 +32,36 @@ export interface AiOutputValidator<T> {
   validate(value: unknown): T;
 }
 
-export interface AiRequest<TInput = unknown, TOutput = unknown> {
+export type AiResponseMode = 'text' | 'structured';
+
+export interface AiBaseRequest<TInput = unknown> {
   readonly operation: AiOperation;
   readonly input?: TInput;
   readonly prompt: string;
   readonly systemInstruction?: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
-  readonly outputValidator?: AiOutputValidator<TOutput>;
-  readonly overrideModel?: string;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
+}
+
+export interface AiTextRequest<TInput = unknown> extends AiBaseRequest<TInput> {
+  readonly responseMode?: 'text';
+}
+
+export interface AiStructuredRequest<TInput = unknown, TOutput = unknown> extends AiBaseRequest<TInput> {
+  readonly responseMode: 'structured';
+  readonly outputValidator: AiOutputValidator<TOutput>;
+}
+
+export type AiRequest<TInput = unknown, TOutput = unknown> =
+  | AiTextRequest<TInput>
+  | AiStructuredRequest<TInput, TOutput>;
+
+export interface AiProviderExecutionRequest<TInput = unknown, TOutput = unknown> extends AiBaseRequest<TInput> {
+  readonly model: string;
+  readonly responseMode?: AiResponseMode;
+  readonly outputValidator?: AiOutputValidator<TOutput>;
 }
 
 export interface AiCredential {

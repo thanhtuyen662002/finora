@@ -23,6 +23,7 @@
         "next": "^16.3.3",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+        "server-only": "^0.0.1",
         "tailwind-merge": "^3.0.2",
       },
       "devDependencies": {
@@ -909,6 +910,8 @@
     "scheduler": ["scheduler@0.27.0", "", {}, ""],
 
     "semver": ["semver@6.3.1", "", { "bin": "bin/semver.js" }, ""],
+
+    "server-only": ["server-only@0.0.1", "", {}, "sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA=="],
 
     "set-function-length": ["set-function-length@1.2.2", "", { "dependencies": { "define-data-property": "^1.1.4", "es-errors": "^1.3.0", "function-bind": "^1.1.2", "get-intrinsic": "^1.2.4", "gopd": "^1.0.1", "has-property-descriptors": "^1.0.2" } }, ""],
 
