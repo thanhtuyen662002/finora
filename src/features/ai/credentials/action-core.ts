@@ -12,8 +12,8 @@ import 'server-only';
  * 5. Dependency-injected core allows 100% real unit testing without mutating production context.
  */
 
-import { validatePlaintextApiKey, type AiCredentialRepository } from '@/lib/ai/credentials/repository';
-import { AiError } from '@/lib/ai/errors';
+import { validatePlaintextApiKey, type AiCredentialRepository } from '../../../lib/ai/credentials/repository';
+import { AiError } from '../../../lib/ai/errors';
 import type { ActionResult, AdminTargetUserDTO } from './types';
 
 // RFC 4122 v4 UUID validator
@@ -169,7 +169,7 @@ export interface AuthUserGetterResult {
 
 export interface PersonalActionDeps {
   getUser: () => Promise<AuthUserGetterResult>;
-  repo: AiCredentialRepository;
+  repoFactory: () => AiCredentialRepository | Promise<AiCredentialRepository>;
   hasSystemKey: boolean;
 }
 
@@ -181,7 +181,7 @@ export interface AdminVerifyResult {
 export interface AdminActionDeps {
   verifyAdmin: () => Promise<AdminVerifyResult>;
   adminClientFactory: () => AdminUserListingClient | Promise<AdminUserListingClient>;
-  repo: AiCredentialRepository;
+  repoFactory: () => AiCredentialRepository | Promise<AiCredentialRepository>;
   hasSystemKey: boolean;
   maxLookupPages?: number;
 }
@@ -201,7 +201,8 @@ export async function getMyAiCredentialMetadataCore(deps: PersonalActionDeps): P
       };
     }
 
-    const metadata = await deps.repo.getSafeMetadata(user.id, deps.hasSystemKey);
+    const repo = await deps.repoFactory();
+    const metadata = await repo.getSafeMetadata(user.id, deps.hasSystemKey);
 
     return {
       ok: true,
@@ -240,7 +241,9 @@ export async function saveMyPersonalAiCredentialCore(
       };
     }
 
-    await deps.repo.saveCredential({
+    const repo = await deps.repoFactory();
+
+    await repo.saveCredential({
       ownerUserId: user.id,
       source: 'PERSONAL',
       provider: 'GEMINI',
@@ -248,7 +251,7 @@ export async function saveMyPersonalAiCredentialCore(
       assignedByUserId: null,
     });
 
-    const metadata = await deps.repo.getSafeMetadata(user.id, deps.hasSystemKey);
+    const metadata = await repo.getSafeMetadata(user.id, deps.hasSystemKey);
 
     return {
       ok: true,
@@ -274,13 +277,15 @@ export async function revokeMyPersonalAiCredentialCore(deps: PersonalActionDeps)
       };
     }
 
-    await deps.repo.revokeCredential({
+    const repo = await deps.repoFactory();
+
+    await repo.revokeCredential({
       ownerUserId: user.id,
       source: 'PERSONAL',
       provider: 'GEMINI',
     });
 
-    const metadata = await deps.repo.getSafeMetadata(user.id, deps.hasSystemKey);
+    const metadata = await repo.getSafeMetadata(user.id, deps.hasSystemKey);
 
     return {
       ok: true,
@@ -307,7 +312,7 @@ export async function checkIsAdminCore(deps: {
 
 /**
  * Core logic: Admin looks up target user by exact email and retrieves safe metadata.
- * Strict invariant: verifyAdmin is checked BEFORE adminClientFactory or repo is touched.
+ * Strict invariant: verifyAdmin is checked BEFORE adminClientFactory or repoFactory is touched.
  */
 export async function getAdminAiCredentialTargetCore(
   targetEmail: string,
@@ -338,8 +343,9 @@ export async function getAdminAiCredentialTargetCore(
       };
     }
 
-    // 3. Fetch safe metadata for target
-    const metadata = await deps.repo.getSafeMetadata(targetUser.id, deps.hasSystemKey);
+    // 3. Only after target user resolution: instantiate repo and fetch safe metadata
+    const repo = await deps.repoFactory();
+    const metadata = await repo.getSafeMetadata(targetUser.id, deps.hasSystemKey);
 
     return {
       ok: true,
@@ -358,8 +364,10 @@ export async function getAdminAiCredentialTargetCore(
  * Core logic: Admin assigns a Gemini API credential to a target user.
  * Strict invariants:
  * - verifyAdmin is checked FIRST.
+ * - validatePlaintextApiKey is checked before privileged operations.
  * - assignedByUserId is derived strictly from verified admin session.
  * - targetEmail is resolved server-side to target auth UUID.
+ * - repoFactory is called ONLY after target resolution succeeds.
  */
 export async function saveAdminAssignedCredentialCore(
   params: { targetEmail: string; plaintext: string },
@@ -376,7 +384,7 @@ export async function saveAdminAssignedCredentialCore(
       };
     }
 
-    // 2. Validate plaintext input
+    // 2. Validate plaintext input before creating admin client or repo
     try {
       validatePlaintextApiKey(params.plaintext);
     } catch {
@@ -401,8 +409,11 @@ export async function saveAdminAssignedCredentialCore(
       };
     }
 
-    // 4. Save credential with ADMIN_ASSIGNED source and admin actor ID
-    await deps.repo.saveCredential({
+    // 4. Instantiate repo only after target user resolved
+    const repo = await deps.repoFactory();
+
+    // 5. Save credential with ADMIN_ASSIGNED source and admin actor ID
+    await repo.saveCredential({
       ownerUserId: targetUser.id,
       source: 'ADMIN_ASSIGNED',
       provider: 'GEMINI',
@@ -410,8 +421,8 @@ export async function saveAdminAssignedCredentialCore(
       assignedByUserId: adminUserId,
     });
 
-    // 5. Fetch safe metadata
-    const metadata = await deps.repo.getSafeMetadata(targetUser.id, deps.hasSystemKey);
+    // 6. Fetch safe metadata
+    const metadata = await repo.getSafeMetadata(targetUser.id, deps.hasSystemKey);
 
     return {
       ok: true,
@@ -431,6 +442,7 @@ export async function saveAdminAssignedCredentialCore(
  * Strict invariants:
  * - verifyAdmin is checked FIRST.
  * - targetEmail is resolved server-side to target auth UUID.
+ * - repoFactory is called ONLY after target resolution succeeds.
  * - Hardcoded to ADMIN_ASSIGNED source.
  */
 export async function revokeAdminAssignedCredentialCore(
@@ -462,15 +474,18 @@ export async function revokeAdminAssignedCredentialCore(
       };
     }
 
-    // 3. Revoke ADMIN_ASSIGNED credential
-    await deps.repo.revokeCredential({
+    // 3. Instantiate repo only after target user resolved
+    const repo = await deps.repoFactory();
+
+    // 4. Revoke ADMIN_ASSIGNED credential
+    await repo.revokeCredential({
       ownerUserId: targetUser.id,
       source: 'ADMIN_ASSIGNED',
       provider: 'GEMINI',
     });
 
-    // 4. Fetch safe metadata
-    const metadata = await deps.repo.getSafeMetadata(targetUser.id, deps.hasSystemKey);
+    // 5. Fetch safe metadata
+    const metadata = await repo.getSafeMetadata(targetUser.id, deps.hasSystemKey);
 
     return {
       ok: true,

@@ -437,7 +437,7 @@ export default function AdminPage() {
                 <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="text-sm font-semibold">Quyền truy cập quản trị bị từ chối</h4>
+                    <h4 className="text-sm font-semibold">Quyền truy cập quản trị bị từ chối (Access Denied)</h4>
                     <p className="text-xs mt-1 text-destructive/90">
                       Bạn không có quyền quản trị viên để tra cứu, quản lý hoặc cấp khóa AI cho người dùng khác.
                     </p>

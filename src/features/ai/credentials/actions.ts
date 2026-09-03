@@ -32,7 +32,6 @@ import {
  */
 export async function getMyAiCredentialMetadata(): Promise<ActionResult> {
   const supabase = await createClient();
-  const repo = createAiCredentialRepository();
   const hasSystemKey = Boolean(process.env.FINORA_SYSTEM_GEMINI_API_KEY?.trim());
 
   return getMyAiCredentialMetadataCore({
@@ -43,7 +42,7 @@ export async function getMyAiCredentialMetadata(): Promise<ActionResult> {
       } = await supabase.auth.getUser();
       return { user, error };
     },
-    repo,
+    repoFactory: createAiCredentialRepository,
     hasSystemKey,
   });
 }
@@ -53,7 +52,6 @@ export async function getMyAiCredentialMetadata(): Promise<ActionResult> {
  */
 export async function saveMyPersonalAiCredential(plaintext: string): Promise<ActionResult> {
   const supabase = await createClient();
-  const repo = createAiCredentialRepository();
   const hasSystemKey = Boolean(process.env.FINORA_SYSTEM_GEMINI_API_KEY?.trim());
 
   return saveMyPersonalAiCredentialCore(plaintext, {
@@ -64,7 +62,7 @@ export async function saveMyPersonalAiCredential(plaintext: string): Promise<Act
       } = await supabase.auth.getUser();
       return { user, error };
     },
-    repo,
+    repoFactory: createAiCredentialRepository,
     hasSystemKey,
   });
 }
@@ -74,7 +72,6 @@ export async function saveMyPersonalAiCredential(plaintext: string): Promise<Act
  */
 export async function revokeMyPersonalAiCredential(): Promise<ActionResult> {
   const supabase = await createClient();
-  const repo = createAiCredentialRepository();
   const hasSystemKey = Boolean(process.env.FINORA_SYSTEM_GEMINI_API_KEY?.trim());
 
   return revokeMyPersonalAiCredentialCore({
@@ -85,7 +82,7 @@ export async function revokeMyPersonalAiCredential(): Promise<ActionResult> {
       } = await supabase.auth.getUser();
       return { user, error };
     },
-    repo,
+    repoFactory: createAiCredentialRepository,
     hasSystemKey,
   });
 }
@@ -107,13 +104,12 @@ export async function getAdminAiCredentialTarget(
   targetEmail: string
 ): Promise<ActionResult<AdminTargetUserDTO>> {
   const supabase = await createClient();
-  const repo = createAiCredentialRepository();
   const hasSystemKey = Boolean(process.env.FINORA_SYSTEM_GEMINI_API_KEY?.trim());
 
   return getAdminAiCredentialTargetCore(targetEmail, {
     verifyAdmin: () => verifyAdminActor(supabase),
     adminClientFactory: () => createAdminClient(),
-    repo,
+    repoFactory: createAiCredentialRepository,
     hasSystemKey,
   });
 }
@@ -126,13 +122,12 @@ export async function saveAdminAssignedCredential(params: {
   plaintext: string;
 }): Promise<ActionResult<AdminTargetUserDTO>> {
   const supabase = await createClient();
-  const repo = createAiCredentialRepository();
   const hasSystemKey = Boolean(process.env.FINORA_SYSTEM_GEMINI_API_KEY?.trim());
 
   return saveAdminAssignedCredentialCore(params, {
     verifyAdmin: () => verifyAdminActor(supabase),
     adminClientFactory: () => createAdminClient(),
-    repo,
+    repoFactory: createAiCredentialRepository,
     hasSystemKey,
   });
 }
@@ -144,13 +139,12 @@ export async function revokeAdminAssignedCredential(params: {
   targetEmail: string;
 }): Promise<ActionResult<AdminTargetUserDTO>> {
   const supabase = await createClient();
-  const repo = createAiCredentialRepository();
   const hasSystemKey = Boolean(process.env.FINORA_SYSTEM_GEMINI_API_KEY?.trim());
 
   return revokeAdminAssignedCredentialCore(params, {
     verifyAdmin: () => verifyAdminActor(supabase),
     adminClientFactory: () => createAdminClient(),
-    repo,
+    repoFactory: createAiCredentialRepository,
     hasSystemKey,
   });
 }

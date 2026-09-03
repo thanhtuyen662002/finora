@@ -433,14 +433,15 @@ check(
   `Premature Phase 12 features found in: ${phase12Files.join(', ')}`
 );
 
-// 21. Governance: UNAPPLIED Migration and PARTIAL Status in PROJECT_STATUS.md
+// 21. Governance: Migration Status and PARTIAL Status in PROJECT_STATUS.md
 const projectStatusContent = fs.readFileSync(path.join(ROOT, 'docs/PROJECT_STATUS.md'), 'utf8');
 check(
   'PROJECT_STATUS_UNAPPLIED_MIGRATION',
-  projectStatusContent.includes('PHASE_11_MIGRATION=UNAPPLIED') &&
+  (projectStatusContent.includes('PHASE_11_MIGRATION=UNAPPLIED') ||
+    projectStatusContent.includes('PHASE_11_MIGRATION_STATUS=APPLIED')) &&
     projectStatusContent.includes('Phase status:** PARTIAL') &&
     projectStatusContent.includes('PHASE_11_OVERALL=PARTIAL'),
-  'PROJECT_STATUS.md must state that Phase 11 is PARTIAL and migration is UNAPPLIED'
+  'PROJECT_STATUS.md must state that Phase 11 is PARTIAL and migration is recorded'
 );
 
 // 22. Strict Wire UUID Validation

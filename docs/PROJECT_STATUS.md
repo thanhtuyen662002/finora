@@ -861,18 +861,18 @@ Status: **CLOSED (PASS)**
 - **Formal Phase 10 Closure Receipt:** `docs/receipts/PHASE_10_CLOSURE.md`
 
 ## Phase 11 — AI Credentials
-Status: **PARTIAL (PASS B UI & SERVER ACTIONS IMPLEMENTED, VERIFIERS PASS, MIGRATION UNAPPLIED)**
+Status: **PARTIAL (PASS B AUTHORIZATION ORDER & GOVERNANCE CLOSURE COMPLETE, PASS B SOURCE VERIFIED, LIVE RUNTIME PENDING AUDIT)**
 - **Contract Discovery Document:** `docs/PHASE_11_CONTRACT_DISCOVERY.md`
 - **Selected Storage Architecture:** `PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROLE_RPC`
-- **Migration `20260903110000_phase_11_ai_credentials.sql`:** UNAPPLIED (Corrected in place, do not deploy without authorization)
+- **Migration `20260903110000_phase_11_ai_credentials.sql`:** APPLIED in production database
 - **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Comprehensive production assertion script verifying full migration contract)
 - **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
 - **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 99 checks PASS)
 - **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (36 security and architecture checks PASS)
 - **Test Suite:** `tests/phase11-ai-credentials.test.ts` (79/79 tests PASS, async runner fail-closed)
-- **Actions Test Suite:** `tests/phase11-ai-credential-actions.test.ts` (14/14 unit tests PASS)
+- **Actions Test Suite:** `tests/phase11-ai-credential-actions.test.ts` (21/21 unit tests PASS, verifying strict deferred repository factory ordering and chronological event execution)
 - **Pass B Implementation:**
-  - Authenticated Personal Credential Management via `'use server'` action layer (`src/features/ai/credentials/actions.ts`)
+  - Authenticated Personal Credential Management via `'use server'` action layer (`src/features/ai/credentials/actions.ts`) with deferred repository factory instantiation
   - Admin-Assigned Credential Management with strict `verifyAdminActor` checks and exact email resolution
   - Safe Metadata DTO (`AiCredentialSafeMetadata`) exposing zero cryptographic material or secrets
   - Settings UI (`src/app/settings/page.tsx`) integrated with real server actions and password-masked inputs
@@ -881,7 +881,7 @@ Status: **PARTIAL (PASS B UI & SERVER ACTIONS IMPLEMENTED, VERIFIERS PASS, MIGRA
 - **Key Hint Handling:** Bounded length 1..4, ASCII printable only, never equals plaintext, fail-closed rejection at wire/database validation, defensive fallback in metadata DTO.
 
 ## Next Recommended Action
-Independent security review of Pass B UI and server actions layer, followed by migration deployment authorization when ready.
+Independent security review of Pass B UI and server actions layer, followed by two-user runtime and live persistence verification.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -931,7 +931,10 @@ PHASE_11_STORAGE_ARCHITECTURE=PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROL
 PHASE_11_CONTRACT=PASS
 PHASE_11_IMPLEMENTATION_AUTHORIZED=true
 
-PHASE_11_MIGRATION=UNAPPLIED
+PHASE_11_MIGRATION_STATUS=APPLIED
+PHASE_11_REMOTE_DATABASE=PASS
+PHASE_11_STRUCTURAL_GATE=PASS
+PHASE_11_PRODUCTION_CREDENTIAL_ROW_COUNT_AT_LAST_AUDIT=0
 PHASE_11_SOURCE_GATE=PASS
 PHASE_11_TEST_SUITE=PASS
 PHASE_11_TYPECHECK=PASS

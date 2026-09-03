@@ -12,7 +12,17 @@
 ## 2. Structural & Architectural Guarantees
 
 ### 2.1 Private Schema & Envelope Cryptography
-- Storage lives exclusively in `private.ai_credentials` behind `search_path = ''` RPC functions (`private.read_active_credentials`, `private.upsert_credential`, `private.revoke_credential`).
+- Storage lives exclusively in `private.ai_credentials`.
+- Deployed Service-Role RPC Functions:
+  - `public.ai_credentials_read_for_service(uuid, text)`
+  - `public.ai_credentials_write_for_service(uuid, uuid, text, text, uuid, smallint, text, bytea, bytea, bytea, text)`
+  - `public.ai_credentials_revoke_for_service(uuid, text, text)`
+- Security Model: `SECURITY INVOKER`, `search_path = ""`
+- ACL:
+  - `PUBLIC EXECUTE = false`
+  - `anon EXECUTE = false`
+  - `authenticated EXECUTE = false`
+  - `service_role EXECUTE = true`
 - AEAD Encryption uses Node.js standard `aes-256-gcm` with 12-byte cryptographically secure random nonces, 16-byte authentication tags, and 32-byte master keys.
 - Canonical AAD: `v1|${credentialId}|${ownerUserId}|${provider}|${source}`.
 - Key Hint: strictly 1..4 printable ASCII characters (`U+0020` through `U+007E`), never matching the plaintext credential.
@@ -57,7 +67,7 @@
 4. **Comprehensive Automated Test Suite (`tests/phase11-ai-credentials.test.ts`):**
    - 79 / 79 unit tests PASSED.
 5. **Server Actions Test Suite (`tests/phase11-ai-credential-actions.test.ts`):**
-   - 14 / 14 unit tests PASSED.
+   - 21 / 21 unit tests PASSED (including deferred repository factory and chronological authorization order tests).
 6. **TypeScript & Linter:**
    - `npm run typecheck`: 0 errors.
    - `eslint .`: 0 errors.

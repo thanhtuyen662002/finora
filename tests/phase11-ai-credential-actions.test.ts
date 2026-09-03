@@ -3,6 +3,7 @@
  * Tests actual execution of action-core logic via dependency injection:
  * - Authenticated personal credential lifecycle (get, save, revoke, invalid input, auth rejection)
  * - Administrative authorization boundaries (order of operations, non-admin rejection)
+ * - Deferred repository factory creation (zero service-role repo before auth / admin / validation)
  * - Email lookup resolution (case-normalization, complete multi-page pagination, safety limit fail-closed, ambiguity rejection)
  * - Admin assigned credential lifecycle (get target, assign, revoke)
  * - Error sanitization contracts (safe messages, internal leak prevention)
@@ -58,10 +59,15 @@ export interface MockCredentialRecord {
 }
 
 /**
- * In-memory Mock Repository for Testing Core Action Behaviors
+ * In-memory Mock Repository for Testing Core Action Behaviors with factory call tracking
  */
-function createMockAiCredentialRepository(initialRecords: MockCredentialRecord[] = []): {
+function createMockAiCredentialRepository(
+  initialRecords: MockCredentialRecord[] = [],
+  eventLog?: string[]
+): {
   repo: AiCredentialRepository;
+  repoFactory: () => AiCredentialRepository;
+  getRepoFactoryCalls: () => number;
   records: MockCredentialRecord[];
   saveCalls: SaveCredentialParams[];
   revokeCalls: RevokeCredentialParams[];
@@ -69,9 +75,11 @@ function createMockAiCredentialRepository(initialRecords: MockCredentialRecord[]
   const records = [...initialRecords];
   const saveCalls: SaveCredentialParams[] = [];
   const revokeCalls: RevokeCredentialParams[] = [];
+  let repoFactoryCalls = 0;
 
   const repo = {
     async getSafeMetadata(ownerUserId: string, hasSystemKey: boolean): Promise<AiCredentialSafeMetadata> {
+      eventLog?.push('getSafeMetadata');
       const userRecords = records.filter(
         (r) => r.ownerUserId === ownerUserId && r.revokedAt === null
       );
@@ -100,6 +108,7 @@ function createMockAiCredentialRepository(initialRecords: MockCredentialRecord[]
     },
 
     async saveCredential(params: SaveCredentialParams): Promise<void> {
+      eventLog?.push('saveCredential');
       saveCalls.push(params);
       const existingIdx = records.findIndex(
         (r) => r.ownerUserId === params.ownerUserId && r.source === params.source
@@ -120,6 +129,7 @@ function createMockAiCredentialRepository(initialRecords: MockCredentialRecord[]
     },
 
     async revokeCredential(params: RevokeCredentialParams): Promise<void> {
+      eventLog?.push('revokeCredential');
       revokeCalls.push(params);
       for (const r of records) {
         if (
@@ -135,6 +145,12 @@ function createMockAiCredentialRepository(initialRecords: MockCredentialRecord[]
 
   return {
     repo: repo as unknown as AiCredentialRepository,
+    repoFactory: () => {
+      eventLog?.push('repoFactory');
+      repoFactoryCalls++;
+      return repo as unknown as AiCredentialRepository;
+    },
+    getRepoFactoryCalls: () => repoFactoryCalls,
     records,
     saveCalls,
     revokeCalls,
@@ -165,78 +181,67 @@ async function runActionTests() {
     assert.strictEqual(isValidUuid(''), false);
   });
 
-  // 2. getMyAiCredentialMetadataCore: Unauthenticated
-  await it('getMyAiCredentialMetadataCore: rejects unauthenticated user with UNAUTHENTICATED', async () => {
-    const { repo } = createMockAiCredentialRepository();
+  // 2. PERSONAL-ORDER-01: unauthenticated metadata -> repoFactory = 0
+  await it('PERSONAL-ORDER-01: unauthenticated metadata -> repoFactory = 0', async () => {
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
     const res = await getMyAiCredentialMetadataCore({
       getUser: async () => ({ user: null, error: new Error('Auth session missing') }),
-      repo,
+      repoFactory,
       hasSystemKey: true,
     });
     assert.strictEqual(res.ok, false);
     if (!res.ok) {
       assert.strictEqual(res.code, 'UNAUTHENTICATED');
     }
+    assert.strictEqual(getRepoFactoryCalls(), 0);
   });
 
-  // 3. getMyAiCredentialMetadataCore: Authenticated
-  await it('getMyAiCredentialMetadataCore: returns safe metadata for authenticated user', async () => {
-    const userId = randomUUID();
-    const { repo } = createMockAiCredentialRepository();
-    const res = await getMyAiCredentialMetadataCore({
-      getUser: async () => ({ user: { id: userId }, error: null }),
-      repo,
-      hasSystemKey: true,
-    });
-    assert.strictEqual(res.ok, true);
-    if (res.ok) {
-      assert.strictEqual(res.metadata.hasPersonalCredential, false);
-      assert.strictEqual(res.metadata.hasSystemKeyConfigured, true);
-      assert.strictEqual(res.metadata.activeResolvedSource, 'SYSTEM');
-    }
-  });
-
-  // 4. saveMyPersonalAiCredentialCore: Unauthenticated & Validation
-  await it('saveMyPersonalAiCredentialCore: rejects unauthenticated or invalid API key inputs', async () => {
-    const userId = randomUUID();
-    const { repo } = createMockAiCredentialRepository();
-
-    // Unauthenticated
-    const unauthRes = await saveMyPersonalAiCredentialCore('AIzaSyValidApiKeyFormat1234567890', {
+  // 3. PERSONAL-ORDER-02: unauthenticated save -> repoFactory = 0
+  await it('PERSONAL-ORDER-02: unauthenticated save -> repoFactory = 0', async () => {
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
+    const res = await saveMyPersonalAiCredentialCore('AIzaSyValidApiKeyFormat1234567890', {
       getUser: async () => ({ user: null, error: null }),
-      repo,
+      repoFactory,
       hasSystemKey: false,
     });
-    assert.strictEqual(unauthRes.ok, false);
-    if (!unauthRes.ok) {
-      assert.strictEqual(unauthRes.code, 'UNAUTHENTICATED');
+    assert.strictEqual(res.ok, false);
+    if (!res.ok) {
+      assert.strictEqual(res.code, 'UNAUTHENTICATED');
     }
+    assert.strictEqual(getRepoFactoryCalls(), 0);
+  });
 
-    // Invalid input (empty / whitespace)
+  // 4. PERSONAL-ORDER-03: invalid plaintext after authenticated user -> repoFactory = 0
+  await it('PERSONAL-ORDER-03: invalid plaintext after authenticated user -> repoFactory = 0', async () => {
+    const userId = randomUUID();
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
+
     const invalidRes = await saveMyPersonalAiCredentialCore('   ', {
       getUser: async () => ({ user: { id: userId }, error: null }),
-      repo,
+      repoFactory,
       hasSystemKey: false,
     });
     assert.strictEqual(invalidRes.ok, false);
     if (!invalidRes.ok) {
       assert.strictEqual(invalidRes.code, 'INVALID_INPUT');
     }
+    assert.strictEqual(getRepoFactoryCalls(), 0);
   });
 
-  // 5. saveMyPersonalAiCredentialCore: Valid Save
-  await it('saveMyPersonalAiCredentialCore: successfully saves personal key and updates metadata', async () => {
+  // 5. PERSONAL-ORDER-04: authenticated valid save -> repoFactory = 1
+  await it('PERSONAL-ORDER-04: authenticated valid save -> repoFactory = 1', async () => {
     const userId = randomUUID();
-    const { repo, saveCalls } = createMockAiCredentialRepository();
+    const { repoFactory, getRepoFactoryCalls, saveCalls } = createMockAiCredentialRepository();
     const validKey = 'AIzaSyDemoPersonalKey1234567890';
 
     const res = await saveMyPersonalAiCredentialCore(validKey, {
       getUser: async () => ({ user: { id: userId }, error: null }),
-      repo,
+      repoFactory,
       hasSystemKey: true,
     });
 
     assert.strictEqual(res.ok, true);
+    assert.strictEqual(getRepoFactoryCalls(), 1);
     assert.strictEqual(saveCalls.length, 1);
     assert.strictEqual(saveCalls[0].ownerUserId, userId);
     assert.strictEqual(saveCalls[0].source, 'PERSONAL');
@@ -248,26 +253,60 @@ async function runActionTests() {
     }
   });
 
-  // 6. revokeMyPersonalAiCredentialCore
+  // 6. PERSONAL-ORDER-05: unauthenticated revoke -> repoFactory = 0
+  await it('PERSONAL-ORDER-05: unauthenticated revoke -> repoFactory = 0', async () => {
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
+    const res = await revokeMyPersonalAiCredentialCore({
+      getUser: async () => ({ user: null, error: new Error('Missing session') }),
+      repoFactory,
+      hasSystemKey: false,
+    });
+    assert.strictEqual(res.ok, false);
+    if (!res.ok) {
+      assert.strictEqual(res.code, 'UNAUTHENTICATED');
+    }
+    assert.strictEqual(getRepoFactoryCalls(), 0);
+  });
+
+  // 7. getMyAiCredentialMetadataCore: Authenticated
+  await it('getMyAiCredentialMetadataCore: returns safe metadata for authenticated user', async () => {
+    const userId = randomUUID();
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
+    const res = await getMyAiCredentialMetadataCore({
+      getUser: async () => ({ user: { id: userId }, error: null }),
+      repoFactory,
+      hasSystemKey: true,
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(getRepoFactoryCalls(), 1);
+    if (res.ok) {
+      assert.strictEqual(res.metadata.hasPersonalCredential, false);
+      assert.strictEqual(res.metadata.hasSystemKeyConfigured, true);
+      assert.strictEqual(res.metadata.activeResolvedSource, 'SYSTEM');
+    }
+  });
+
+  // 8. revokeMyPersonalAiCredentialCore: Authenticated
   await it('revokeMyPersonalAiCredentialCore: revokes personal key and updates metadata', async () => {
     const userId = randomUUID();
-    const { repo, revokeCalls } = createMockAiCredentialRepository();
+    const { repoFactory, getRepoFactoryCalls, revokeCalls } = createMockAiCredentialRepository();
 
     // First save
     await saveMyPersonalAiCredentialCore('AIzaSyDemoPersonalKey1234567890', {
       getUser: async () => ({ user: { id: userId }, error: null }),
-      repo,
+      repoFactory,
       hasSystemKey: false,
     });
 
     // Revoke
     const res = await revokeMyPersonalAiCredentialCore({
       getUser: async () => ({ user: { id: userId }, error: null }),
-      repo,
+      repoFactory,
       hasSystemKey: false,
     });
 
     assert.strictEqual(res.ok, true);
+    assert.strictEqual(getRepoFactoryCalls(), 2); // 1 for save + 1 for revoke
     assert.strictEqual(revokeCalls.length, 1);
     assert.strictEqual(revokeCalls[0].ownerUserId, userId);
     assert.strictEqual(revokeCalls[0].source, 'PERSONAL');
@@ -277,7 +316,7 @@ async function runActionTests() {
     }
   });
 
-  // 7. checkIsAdminCore
+  // 9. checkIsAdminCore
   await it('checkIsAdminCore: returns verified boolean strictly according to verifyAdmin', async () => {
     const nonAdmin = await checkIsAdminCore({
       verifyAdmin: async () => ({ isAdmin: false, userId: randomUUID() }),
@@ -290,7 +329,7 @@ async function runActionTests() {
     assert.strictEqual(admin.isAdmin, true);
   });
 
-  // 8. lookupUserByExactEmail: Normalization and Single Match
+  // 10. lookupUserByExactEmail: Normalization and Single Match
   await it('lookupUserByExactEmail: trims, lowercases, and matches exact user email', async () => {
     const targetId = randomUUID();
     const mockAdminClient: AdminUserListingClient = {
@@ -324,7 +363,7 @@ async function runActionTests() {
     assert.strictEqual(notFound, null);
   });
 
-  // 9. lookupUserByExactEmail: Pagination Traversal and Safety Limit
+  // 11. lookupUserByExactEmail: Pagination Traversal and Safety Limit
   await it('lookupUserByExactEmail: iterates through multiple pages and fails closed if limit reached with remaining pages', async () => {
     const targetId = randomUUID();
     let queriedPages: number[] = [];
@@ -390,7 +429,7 @@ async function runActionTests() {
     );
   });
 
-  // 10. lookupUserByExactEmail: Ambiguity Rejection
+  // 12. lookupUserByExactEmail: Ambiguity Rejection
   await it('lookupUserByExactEmail: fails closed when ambiguous duplicate emails exist', async () => {
     const mockClientDuplicates: AdminUserListingClient = {
       auth: {
@@ -420,56 +459,193 @@ async function runActionTests() {
     );
   });
 
-  // 11. getAdminAiCredentialTargetCore: Admin Authorization Gate & Order of Operations
-  await it('getAdminAiCredentialTargetCore: strictly rejects non-admin callers without creating admin client or querying repo', async () => {
-    let adminFactoryCalled = false;
-    const { repo } = createMockAiCredentialRepository();
+  // 13. ADMIN-ORDER-01: non-admin lookup -> adminClientFactory = 0, repoFactory = 0
+  await it('ADMIN-ORDER-01: non-admin lookup -> adminClientFactory = 0, repoFactory = 0', async () => {
+    let adminClientFactoryCalls = 0;
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
 
     const nonAdminRes = await getAdminAiCredentialTargetCore('user@example.com', {
       verifyAdmin: async () => ({ isAdmin: false, userId: randomUUID() }),
       adminClientFactory: () => {
-        adminFactoryCalled = true;
-        throw new Error('Admin client must never be instantiated for non-admin');
+        adminClientFactoryCalls++;
+        throw new Error('Must not be called');
       },
-      repo,
+      repoFactory,
       hasSystemKey: true,
     });
 
     assert.strictEqual(nonAdminRes.ok, false);
-    assert.strictEqual(adminFactoryCalled, false);
+    assert.strictEqual(adminClientFactoryCalls, 0);
+    assert.strictEqual(getRepoFactoryCalls(), 0);
     if (!nonAdminRes.ok) {
       assert.strictEqual(nonAdminRes.code, 'FORBIDDEN');
     }
   });
 
-  // 12. getAdminAiCredentialTargetCore: Target Lookup & Return Safe DTO
-  await it('getAdminAiCredentialTargetCore: returns target user metadata with email in data DTO', async () => {
-    const targetUserId = randomUUID();
-    const adminUserId = randomUUID();
-    const { repo } = createMockAiCredentialRepository();
+  // 14. ADMIN-ORDER-02: non-admin save -> adminClientFactory = 0, repoFactory = 0
+  await it('ADMIN-ORDER-02: non-admin save -> adminClientFactory = 0, repoFactory = 0', async () => {
+    let adminClientFactoryCalls = 0;
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
+
+    const nonAdminRes = await saveAdminAssignedCredentialCore(
+      { targetEmail: 'user@example.com', plaintext: 'AIzaSyDemoKey1234567890' },
+      {
+        verifyAdmin: async () => ({ isAdmin: false, userId: randomUUID() }),
+        adminClientFactory: () => {
+          adminClientFactoryCalls++;
+          throw new Error('Must not be called');
+        },
+        repoFactory,
+        hasSystemKey: true,
+      }
+    );
+
+    assert.strictEqual(nonAdminRes.ok, false);
+    assert.strictEqual(adminClientFactoryCalls, 0);
+    assert.strictEqual(getRepoFactoryCalls(), 0);
+    if (!nonAdminRes.ok) {
+      assert.strictEqual(nonAdminRes.code, 'FORBIDDEN');
+    }
+  });
+
+  // 15. ADMIN-ORDER-03: non-admin revoke -> adminClientFactory = 0, repoFactory = 0
+  await it('ADMIN-ORDER-03: non-admin revoke -> adminClientFactory = 0, repoFactory = 0', async () => {
+    let adminClientFactoryCalls = 0;
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
+
+    const nonAdminRes = await revokeAdminAssignedCredentialCore(
+      { targetEmail: 'user@example.com' },
+      {
+        verifyAdmin: async () => ({ isAdmin: false, userId: randomUUID() }),
+        adminClientFactory: () => {
+          adminClientFactoryCalls++;
+          throw new Error('Must not be called');
+        },
+        repoFactory,
+        hasSystemKey: true,
+      }
+    );
+
+    assert.strictEqual(nonAdminRes.ok, false);
+    assert.strictEqual(adminClientFactoryCalls, 0);
+    assert.strictEqual(getRepoFactoryCalls(), 0);
+    if (!nonAdminRes.ok) {
+      assert.strictEqual(nonAdminRes.code, 'FORBIDDEN');
+    }
+  });
+
+  // 16. ADMIN-ORDER-04: target NOT_FOUND -> repoFactory = 0
+  await it('ADMIN-ORDER-04: target NOT_FOUND -> repoFactory = 0', async () => {
+    let adminClientFactoryCalls = 0;
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
 
     const mockAdminClient: AdminUserListingClient = {
       auth: {
         admin: {
           listUsers: async () => ({
-            data: {
-              users: [{ id: targetUserId, email: 'target@example.com' }],
-              nextPage: null,
-            },
+            data: { users: [], nextPage: null },
             error: null,
           }),
         },
       },
     };
 
+    const res = await getAdminAiCredentialTargetCore('nonexistent@example.com', {
+      verifyAdmin: async () => ({ isAdmin: true, userId: randomUUID() }),
+      adminClientFactory: () => {
+        adminClientFactoryCalls++;
+        return mockAdminClient;
+      },
+      repoFactory,
+      hasSystemKey: false,
+    });
+
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(adminClientFactoryCalls, 1);
+    assert.strictEqual(getRepoFactoryCalls(), 0);
+    if (!res.ok) {
+      assert.strictEqual(res.code, 'NOT_FOUND');
+    }
+  });
+
+  // 17. ADMIN-ORDER-05: pagination incomplete/failure -> repoFactory = 0
+  await it('ADMIN-ORDER-05: pagination incomplete/failure -> repoFactory = 0', async () => {
+    let adminClientFactoryCalls = 0;
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository();
+
+    const mockClientFailing: AdminUserListingClient = {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: null,
+            error: { message: 'Database connection failed' },
+          }),
+        },
+      },
+    };
+
+    const res = await getAdminAiCredentialTargetCore('user@example.com', {
+      verifyAdmin: async () => ({ isAdmin: true, userId: randomUUID() }),
+      adminClientFactory: () => {
+        adminClientFactoryCalls++;
+        return mockClientFailing;
+      },
+      repoFactory,
+      hasSystemKey: false,
+    });
+
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(adminClientFactoryCalls, 1);
+    assert.strictEqual(getRepoFactoryCalls(), 0);
+  });
+
+  // 18. ADMIN-ORDER-06: authorized target lookup success -> verifyAdmin -> adminClientFactory -> lookup -> repoFactory -> repo operation
+  await it('ADMIN-ORDER-06: authorized target lookup success -> asserts exact chronological event order', async () => {
+    const targetUserId = randomUUID();
+    const adminUserId = randomUUID();
+    const eventLog: string[] = [];
+
+    const { repoFactory, getRepoFactoryCalls } = createMockAiCredentialRepository([], eventLog);
+
+    const mockAdminClient: AdminUserListingClient = {
+      auth: {
+        admin: {
+          listUsers: async () => {
+            eventLog.push('listUsers');
+            return {
+              data: {
+                users: [{ id: targetUserId, email: 'target@example.com' }],
+                nextPage: null,
+              },
+              error: null,
+            };
+          },
+        },
+      },
+    };
+
     const res = await getAdminAiCredentialTargetCore('target@example.com', {
-      verifyAdmin: async () => ({ isAdmin: true, userId: adminUserId }),
-      adminClientFactory: () => mockAdminClient,
-      repo,
+      verifyAdmin: async () => {
+        eventLog.push('verifyAdmin');
+        return { isAdmin: true, userId: adminUserId };
+      },
+      adminClientFactory: () => {
+        eventLog.push('adminClientFactory');
+        return mockAdminClient;
+      },
+      repoFactory,
       hasSystemKey: false,
     });
 
     assert.strictEqual(res.ok, true);
+    assert.strictEqual(getRepoFactoryCalls(), 1);
+    assert.deepStrictEqual(eventLog, [
+      'verifyAdmin',
+      'adminClientFactory',
+      'listUsers',
+      'repoFactory',
+      'getSafeMetadata',
+    ]);
     if (res.ok) {
       assert.strictEqual(res.data?.email, 'target@example.com');
       assert.strictEqual((res.data as any)?.ownerUserId, undefined); // Minimal DTO verification
@@ -477,73 +653,132 @@ async function runActionTests() {
     }
   });
 
-  // 13. saveAdminAssignedCredentialCore & revokeAdminAssignedCredentialCore
-  await it('saveAdminAssignedCredentialCore & revokeAdminAssignedCredentialCore: securely manages assigned credentials', async () => {
+  // 19. ADMIN-ORDER-07: authorized target save success -> verifyAdmin -> adminClientFactory -> lookup -> repoFactory -> save -> getSafeMetadata
+  await it('ADMIN-ORDER-07: authorized target save success -> asserts exact chronological event order', async () => {
     const targetUserId = randomUUID();
     const adminUserId = randomUUID();
-    const { repo, saveCalls, revokeCalls } = createMockAiCredentialRepository();
+    const eventLog: string[] = [];
+
+    const { repoFactory, getRepoFactoryCalls, saveCalls } = createMockAiCredentialRepository([], eventLog);
 
     const mockAdminClient: AdminUserListingClient = {
       auth: {
         admin: {
-          listUsers: async () => ({
-            data: {
-              users: [{ id: targetUserId, email: 'target@example.com' }],
-              nextPage: null,
-            },
-            error: null,
-          }),
+          listUsers: async () => {
+            eventLog.push('listUsers');
+            return {
+              data: {
+                users: [{ id: targetUserId, email: 'target@example.com' }],
+                nextPage: null,
+              },
+              error: null,
+            };
+          },
         },
       },
     };
 
-    // Save assigned credential
     const saveRes = await saveAdminAssignedCredentialCore(
       {
         targetEmail: 'target@example.com',
         plaintext: 'AIzaSyDemoAdminAssignedKey9999',
       },
       {
-        verifyAdmin: async () => ({ isAdmin: true, userId: adminUserId }),
-        adminClientFactory: () => mockAdminClient,
-        repo,
+        verifyAdmin: async () => {
+          eventLog.push('verifyAdmin');
+          return { isAdmin: true, userId: adminUserId };
+        },
+        adminClientFactory: () => {
+          eventLog.push('adminClientFactory');
+          return mockAdminClient;
+        },
+        repoFactory,
         hasSystemKey: false,
       }
     );
 
     assert.strictEqual(saveRes.ok, true);
+    assert.strictEqual(getRepoFactoryCalls(), 1);
     assert.strictEqual(saveCalls.length, 1);
     assert.strictEqual(saveCalls[0].ownerUserId, targetUserId);
     assert.strictEqual(saveCalls[0].source, 'ADMIN_ASSIGNED');
     assert.strictEqual(saveCalls[0].assignedByUserId, adminUserId);
+    assert.deepStrictEqual(eventLog, [
+      'verifyAdmin',
+      'adminClientFactory',
+      'listUsers',
+      'repoFactory',
+      'saveCredential',
+      'getSafeMetadata',
+    ]);
     if (saveRes.ok) {
       assert.strictEqual(saveRes.data?.metadata.hasAdminAssignedCredential, true);
       assert.strictEqual(saveRes.data?.metadata.adminAssignedKeyHint, '9999');
       assert.strictEqual(saveRes.data?.metadata.activeResolvedSource, 'ADMIN_ASSIGNED');
     }
+  });
 
-    // Revoke assigned credential
+  // 20. ADMIN-ORDER-08: authorized target revoke success -> verifyAdmin -> adminClientFactory -> lookup -> repoFactory -> revoke -> getSafeMetadata
+  await it('ADMIN-ORDER-08: authorized target revoke success -> asserts exact chronological event order', async () => {
+    const targetUserId = randomUUID();
+    const adminUserId = randomUUID();
+    const eventLog: string[] = [];
+
+    const { repoFactory, getRepoFactoryCalls, revokeCalls } = createMockAiCredentialRepository([], eventLog);
+
+    const mockAdminClient: AdminUserListingClient = {
+      auth: {
+        admin: {
+          listUsers: async () => {
+            eventLog.push('listUsers');
+            return {
+              data: {
+                users: [{ id: targetUserId, email: 'target@example.com' }],
+                nextPage: null,
+              },
+              error: null,
+            };
+          },
+        },
+      },
+    };
+
     const revokeRes = await revokeAdminAssignedCredentialCore(
       { targetEmail: 'target@example.com' },
       {
-        verifyAdmin: async () => ({ isAdmin: true, userId: adminUserId }),
-        adminClientFactory: () => mockAdminClient,
-        repo,
+        verifyAdmin: async () => {
+          eventLog.push('verifyAdmin');
+          return { isAdmin: true, userId: adminUserId };
+        },
+        adminClientFactory: () => {
+          eventLog.push('adminClientFactory');
+          return mockAdminClient;
+        },
+        repoFactory,
         hasSystemKey: false,
       }
     );
 
     assert.strictEqual(revokeRes.ok, true);
+    assert.strictEqual(getRepoFactoryCalls(), 1);
     assert.strictEqual(revokeCalls.length, 1);
     assert.strictEqual(revokeCalls[0].ownerUserId, targetUserId);
     assert.strictEqual(revokeCalls[0].source, 'ADMIN_ASSIGNED');
+    assert.deepStrictEqual(eventLog, [
+      'verifyAdmin',
+      'adminClientFactory',
+      'listUsers',
+      'repoFactory',
+      'revokeCredential',
+      'getSafeMetadata',
+    ]);
     if (revokeRes.ok) {
       assert.strictEqual(revokeRes.data?.metadata.hasAdminAssignedCredential, false);
       assert.strictEqual(revokeRes.data?.metadata.activeResolvedSource, null);
     }
   });
 
-  // 14. sanitizeActionError Invariants
+  // 21. sanitizeActionError Invariants
   await it('sanitizeActionError: handles AiError variants and generic errors safely', () => {
     // 1. Missing key ring / unavailable key
     const missingKeyErr = new AiError({
