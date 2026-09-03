@@ -7,6 +7,8 @@
  * Binds envelope_version, credential_id, owner_user_id, provider, and source into AAD.
  */
 
+import 'server-only';
+
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { AiError } from '../errors';
 import type { DatabaseCredentialSource, EncryptedEnvelope } from './types';
@@ -15,6 +17,7 @@ export const AES_KEY_BYTES = 32;
 export const AES_NONCE_BYTES = 12;
 export const AES_AUTH_TAG_BYTES = 16;
 export const ENVELOPE_VERSION = 1;
+export const MAX_CREDENTIAL_LENGTH = 512;
 
 /**
  * Builds deterministic canonical Additional Authenticated Data (AAD).
@@ -30,6 +33,67 @@ export function buildCanonicalAad(
   const canonicalString = `v${envelopeVersion}|${credentialId}|${ownerUserId}|${provider}|${source}`;
   return Buffer.from(canonicalString, 'utf8');
 }
+
+/**
+ * Generates a safe masked key hint from credential plaintext.
+ * Guarantees that keyHint NEVER equals plaintext for any credential.
+ */
+export function buildCredentialKeyHint(plaintext: string): string {
+  const normalized = plaintext.trim();
+  if (normalized.length > 4) {
+    const hint = normalized.slice(-4);
+    if (hint === normalized) {
+      return '••••';
+    }
+    return hint;
+  }
+  const mask = '••••';
+  return normalized === mask ? '•••••' : mask;
+}
+
+export const generateKeyHint = buildCredentialKeyHint;
+
+/**
+ * Strictly validates plaintext credential before encryption.
+ * Enforces non-empty string, length bounds, no ASCII control chars, no newlines/CR/NUL.
+ */
+export function validateCredentialPlaintext(raw: unknown): string {
+  if (typeof raw !== 'string') {
+    throw new AiError({
+      code: 'AI_INVALID_REQUEST',
+      message: 'Credential plaintext must be a string.',
+    });
+  }
+
+  const normalized = raw.trim();
+
+  if (normalized.length === 0) {
+    throw new AiError({
+      code: 'AI_INVALID_REQUEST',
+      message: 'Cannot encrypt an empty or whitespace-only credential.',
+    });
+  }
+
+  if (normalized.length > MAX_CREDENTIAL_LENGTH) {
+    throw new AiError({
+      code: 'AI_INVALID_REQUEST',
+      message: `Credential exceeds maximum allowed length of ${MAX_CREDENTIAL_LENGTH} characters.`,
+    });
+  }
+
+  // Reject ASCII control characters (0-31, 127), including newline, carriage return, NUL
+  if (/[\x00-\x1F\x7F]/.test(normalized)) {
+    throw new AiError({
+      code: 'AI_INVALID_REQUEST',
+      message: 'Credential contains forbidden ASCII control or newline characters.',
+    });
+  }
+
+  return normalized;
+}
+
+export const validatePlaintextApiKey = validateCredentialPlaintext;
+
 
 export interface EncryptCredentialParams {
   readonly plaintext: string;
@@ -55,12 +119,7 @@ export function encryptCredential(params: EncryptCredentialParams): EncryptedEnv
     preGeneratedCredentialId,
   } = params;
 
-  if (!plaintext || typeof plaintext !== 'string' || plaintext.trim() === '') {
-    throw new AiError({
-      code: 'AI_INVALID_REQUEST',
-      message: 'Cannot encrypt an empty or whitespace-only credential.',
-    });
-  }
+  const validPlaintext = validateCredentialPlaintext(plaintext);
 
   if (!Buffer.isBuffer(masterKey) || masterKey.length !== AES_KEY_BYTES) {
     throw new AiError({
@@ -85,7 +144,7 @@ export function encryptCredential(params: EncryptCredentialParams): EncryptedEnv
     cipher.setAAD(aad);
 
     const ciphertext = Buffer.concat([
-      cipher.update(plaintext.trim(), 'utf8'),
+      cipher.update(validPlaintext, 'utf8'),
       cipher.final(),
     ]);
 
@@ -94,8 +153,7 @@ export function encryptCredential(params: EncryptCredentialParams): EncryptedEnv
       throw new Error(`Unexpected auth tag length: ${authTag.length}`);
     }
 
-    const trimmed = plaintext.trim();
-    const keyHint = trimmed.length > 4 ? trimmed.slice(-4) : trimmed;
+    const keyHint = buildCredentialKeyHint(validPlaintext);
 
     return {
       envelopeVersion: ENVELOPE_VERSION,
@@ -130,6 +188,13 @@ export interface DecryptCredentialParams {
  */
 export function decryptCredential(params: DecryptCredentialParams): string {
   const { envelope, masterKey } = params;
+
+  if (envelope.envelopeVersion !== ENVELOPE_VERSION) {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: `Unsupported envelope version: ${envelope.envelopeVersion}`,
+    });
+  }
 
   if (!Buffer.isBuffer(masterKey) || masterKey.length !== AES_KEY_BYTES) {
     throw new AiError({

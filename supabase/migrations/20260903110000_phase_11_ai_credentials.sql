@@ -25,7 +25,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA private
   REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated;
 
 -- 3. Create typed private.ai_credentials table
-CREATE TABLE IF NOT EXISTS private.ai_credentials (
+CREATE TABLE private.ai_credentials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   source text NOT NULL CHECK (source IN ('PERSONAL', 'ADMIN_ASSIGNED')),

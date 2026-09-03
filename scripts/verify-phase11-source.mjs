@@ -95,13 +95,12 @@ check(
   'Default privileges on tables in schema private must grant SELECT, INSERT, UPDATE to service_role'
 );
 
-// 4. private.ai_credentials Table Schema
+// 4. private.ai_credentials Table Schema (Fail-Closed)
 check(
-  'PRIVATE_AI_CREDENTIALS_TABLE_EXISTS',
-  /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?private\.ai_credentials/i.test(
-    migrationSql
-  ),
-  'Migration must create table private.ai_credentials'
+  'PRIVATE_AI_CREDENTIALS_TABLE_FAIL_CLOSED',
+  /CREATE\s+TABLE\s+private\.ai_credentials/i.test(migrationSql) &&
+    !/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+private\.ai_credentials/i.test(migrationSql),
+  'Migration must create table private.ai_credentials with fail-closed CREATE TABLE (no IF NOT EXISTS)'
 );
 
 // Check typed crypto columns
@@ -432,6 +431,130 @@ check(
   'PHASE_12_FEATURES_ABSENT',
   phase12Files.length === 0,
   `Premature Phase 12 features found in: ${phase12Files.join(', ')}`
+);
+
+// 21. Governance: UNAPPLIED Migration and PARTIAL Status in PROJECT_STATUS.md
+const projectStatusContent = fs.readFileSync(path.join(ROOT, 'docs/PROJECT_STATUS.md'), 'utf8');
+check(
+  'PROJECT_STATUS_UNAPPLIED_MIGRATION',
+  projectStatusContent.includes('PHASE_11_MIGRATION=UNAPPLIED') &&
+    projectStatusContent.includes('Phase status:** PARTIAL') &&
+    projectStatusContent.includes('PHASE_11_OVERALL=PARTIAL'),
+  'PROJECT_STATUS.md must state that Phase 11 is PARTIAL and migration is UNAPPLIED'
+);
+
+// 22. Strict Wire UUID Validation
+check(
+  'STRICT_WIRE_UUID_VALIDATION',
+  repoTs.includes('isValidUuid(r.id)') &&
+    repoTs.includes('isValidUuid(r.owner_user_id)') &&
+    repoTs.includes('isValidUuid(r.assigned_by_user_id)'),
+  'repository.ts must strictly validate UUIDs for id, owner_user_id, and assigned_by_user_id'
+);
+
+// 23. Strict Wire Timestamp Validation
+check(
+  'STRICT_WIRE_TIMESTAMP_VALIDATION',
+  repoTs.includes('isValidTimestamp(r.created_at)') &&
+    repoTs.includes('isValidTimestamp(r.updated_at)'),
+  'repository.ts must strictly validate timestamps for created_at and updated_at'
+);
+
+// 24. Exact Envelope Version === 1 Check
+check(
+  'EXACT_ENVELOPE_VERSION_CHECK',
+  repoTs.includes('r.envelope_version !== 1') &&
+    (cryptoTs.includes('envelope.envelopeVersion !== 1') ||
+      cryptoTs.includes('envelope.envelopeVersion !== ENVELOPE_VERSION')),
+  'Envelope version must be checked strictly === 1 without coercion or default'
+);
+
+// 25. Plaintext Input Validation
+check(
+  'PLAINTEXT_INPUT_VALIDATOR',
+  repoTs.includes('validatePlaintextApiKey') &&
+    cryptoTs.includes('validateCredentialPlaintext') &&
+    cryptoTs.includes('MAX_CREDENTIAL_LENGTH'),
+  'repository.ts and crypto.ts must validate plaintext rejecting empty, length bounds, and control characters'
+);
+
+// 26. Safe Key-Hint Generator
+const metadataTs = fs.readFileSync(metadataTsPath, 'utf8');
+check(
+  'SAFE_KEY_HINT_GENERATOR',
+  metadataTs.includes('generateKeyHint') &&
+    cryptoTs.includes('buildCredentialKeyHint') &&
+    cryptoTs.includes("const mask = '••••'"),
+  'metadata.ts and crypto.ts must ensure keyHint never equals plaintext'
+);
+
+// 27. Admin Authority Environment-Only
+check(
+  'ADMIN_AUTHORITY_ENVIRONMENT_ONLY',
+  adminTs.includes('getAuthorizedAdminUserIds()') &&
+    !adminTs.includes('customEnv?:'),
+  'admin.ts authority functions must strictly read from process.env and not accept caller overrides'
+);
+
+// 28. Zero findTargetUserIdByEmail
+const emailTargetSearch = allSrcFiles.filter((f) => {
+  const c = fs.readFileSync(f, 'utf8');
+  return c.includes('findTargetUserIdByEmail');
+});
+check(
+  'ZERO_FIND_TARGET_USER_BY_EMAIL',
+  emailTargetSearch.length === 0,
+  `findTargetUserIdByEmail found in: ${emailTargetSearch.join(', ')}`
+);
+
+// 29. Async Test Runner Awaits All Tests
+const testSuiteTs = fs.readFileSync(path.join(ROOT, 'tests/phase11-ai-credentials.test.ts'), 'utf8');
+check(
+  'ASYNC_TEST_RUNNER_AWAITS_ALL',
+  testSuiteTs.includes('pendingTests') &&
+    testSuiteTs.includes('Promise.all(pendingTests)'),
+  'tests/phase11-ai-credentials.test.ts must collect and await all async tests via Promise.all'
+);
+
+// 30. Server-Only Boundaries on All Credential Runtime Modules
+const allCredentialRuntime = [
+  'src/lib/ai/credentials/bytea.ts',
+  'src/lib/ai/credentials/crypto.ts',
+  'src/lib/ai/credentials/keyring.ts',
+  'src/lib/ai/credentials/metadata.ts',
+  'src/lib/ai/credentials/repository.ts',
+  'src/lib/ai/credentials/resolver.ts',
+  'src/lib/ai/credentials/index.ts',
+];
+let serverOnlyAllPass = true;
+for (const rel of allCredentialRuntime) {
+  const p = path.join(ROOT, rel);
+  if (!fs.existsSync(p)) {
+    serverOnlyAllPass = false;
+    break;
+  }
+  const c = fs.readFileSync(p, 'utf8');
+  if (!c.includes("import 'server-only';") && !c.includes('import "server-only";')) {
+    serverOnlyAllPass = false;
+    break;
+  }
+}
+check(
+  'SERVER_ONLY_BOUNDARIES_ALL_CREDENTIAL_MODULES',
+  serverOnlyAllPass,
+  'All credential runtime modules must declare import "server-only"'
+);
+
+// 31. Structural and Runtime Verifiers Exist
+check(
+  'STRUCTURAL_VERIFIER_EXISTS',
+  fs.existsSync(path.join(ROOT, 'scripts/verify-phase11-structural.sql')),
+  'scripts/verify-phase11-structural.sql must exist'
+);
+check(
+  'RUNTIME_VERIFIER_EXISTS',
+  fs.existsSync(path.join(ROOT, 'scripts/verify-phase11-runtime.mjs')),
+  'scripts/verify-phase11-runtime.mjs must exist'
 );
 
 console.log(`\nPhase 11 Verification: ${passedChecks} passed, ${failedChecks} failed.`);

@@ -11,6 +11,8 @@
  * Missing or malformed keys throw AI_CREDENTIAL_KEY_UNAVAILABLE without leaking key material.
  */
 
+import 'server-only';
+
 import { AiError } from '../errors';
 import { AES_KEY_BYTES } from './crypto';
 import type { MasterKeyRing } from './types';

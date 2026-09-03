@@ -7,6 +7,8 @@
  * never enter client-facing data structures.
  */
 
+import 'server-only';
+
 import type { AiCredentialSafeMetadata, AiCredentialSource, EncryptedEnvelopeWire } from './types';
 
 export interface ResolveMetadataOptions {
@@ -62,3 +64,23 @@ export function buildSafeCredentialMetadata(options: ResolveMetadataOptions): Ai
     activeResolvedSource,
   };
 }
+
+/**
+ * Generates a safe masked key hint from credential plaintext.
+ * Strictly guarantees that keyHint NEVER equals plaintext for any input.
+ */
+export function generateKeyHint(plaintext: string): string {
+  const normalized = plaintext.trim();
+  if (normalized.length > 4) {
+    const hint = normalized.slice(-4);
+    if (hint === normalized) {
+      return '••••';
+    }
+    return hint;
+  }
+  const mask = '••••';
+  return normalized === mask ? '•••••' : mask;
+}
+
+export const buildCredentialKeyHint = generateKeyHint;
+

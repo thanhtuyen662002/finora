@@ -9,13 +9,17 @@
 
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { AiError } from '../errors';
 import { decodePostgresBytea, encodePostgresBytea } from './bytea';
 import {
   AES_AUTH_TAG_BYTES,
   AES_NONCE_BYTES,
   encryptCredential,
+  validateCredentialPlaintext,
+  validatePlaintextApiKey,
 } from './crypto';
+export { validateCredentialPlaintext, validatePlaintextApiKey };
 import { getMasterKey, resolveMasterKeyRing } from './keyring';
 import { buildSafeCredentialMetadata } from './metadata';
 import type {
@@ -25,6 +29,24 @@ import type {
   EncryptedEnvelopeWire,
   MasterKeyRing,
 } from './types';
+
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_REGEX.test(value.trim());
+}
+
+export function isValidTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return false;
+  }
+  const trimmed = value.trim();
+  const parsed = Date.parse(trimmed);
+  if (Number.isNaN(parsed)) {
+    return false;
+  }
+  return /^\d{4}-\d{2}-\d{2}/.test(trimmed);
+}
 
 export interface SaveCredentialParams {
   readonly ownerUserId: string;
@@ -44,61 +66,202 @@ export interface RevokeCredentialParams {
 
 /**
  * Validates wire record structure and constraints from the read RPC.
+ * Strictly verifies types without coercions (no Boolean(), Number() || 1, etc.).
  */
 export function validateWireRecord(record: unknown): EncryptedEnvelopeWire {
-  if (!record || typeof record !== 'object') {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: 'Wire credential record is not an object.',
+      message: 'Wire credential record is not a valid object.',
     });
   }
 
   const r = record as Record<string, unknown>;
 
-  if (typeof r.id !== 'string' || !r.id) {
+  // id: valid UUID
+  if (!isValidUuid(r.id)) {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: 'Wire credential record missing valid id.',
+      message: 'Wire credential record missing valid UUID id.',
     });
   }
 
-  if (typeof r.owner_user_id !== 'string' || !r.owner_user_id) {
+  // owner_user_id: valid UUID
+  if (!isValidUuid(r.owner_user_id)) {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: 'Wire credential record missing valid owner_user_id.',
+      message: 'Wire credential record missing valid UUID owner_user_id.',
     });
   }
 
+  // source: exact PERSONAL | ADMIN_ASSIGNED
   if (r.source !== 'PERSONAL' && r.source !== 'ADMIN_ASSIGNED') {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: `Invalid wire credential source: '${r.source}'.`,
+      message: `Invalid wire credential source: '${String(r.source)}'.`,
     });
   }
 
+  // provider: exact GEMINI
   if (r.provider !== 'GEMINI') {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: `Unsupported wire credential provider: '${r.provider}'.`,
+      message: `Unsupported wire credential provider: '${String(r.provider)}'.`,
     });
   }
 
+  // assigned_by_user_id: null OR valid UUID
+  let assignedByUserId: string | null = null;
+  if (r.assigned_by_user_id !== null && r.assigned_by_user_id !== undefined) {
+    if (!isValidUuid(r.assigned_by_user_id)) {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Wire credential record assigned_by_user_id is not a valid UUID.',
+      });
+    }
+    assignedByUserId = r.assigned_by_user_id;
+  }
+
+  // envelope_version: number/integer exactly 1. NO coercion, NO defaulting.
+  if (typeof r.envelope_version !== 'number' || !Number.isInteger(r.envelope_version) || r.envelope_version !== 1) {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: `Unsupported or invalid wire credential envelope_version: '${String(r.envelope_version)}'.`,
+    });
+  }
+
+  // is_active: actual boolean only
+  if (typeof r.is_active !== 'boolean') {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: 'Wire credential record is_active must be a strict boolean.',
+    });
+  }
+
+  // created_at: valid timestamp string
+  if (!isValidTimestamp(r.created_at)) {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: 'Wire credential record created_at is not a valid timestamp.',
+    });
+  }
+
+  // updated_at: valid timestamp string
+  if (!isValidTimestamp(r.updated_at)) {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: 'Wire credential record updated_at is not a valid timestamp.',
+    });
+  }
+
+  // revoked_at: active -> null; inactive -> valid timestamp
+  let revokedAt: string | null = null;
+  if (r.is_active) {
+    if (r.revoked_at !== null && r.revoked_at !== undefined) {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Active wire credential must have null revoked_at.',
+      });
+    }
+  } else {
+    if (!isValidTimestamp(r.revoked_at)) {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Inactive wire credential must have a valid revoked_at timestamp.',
+      });
+    }
+    revokedAt = r.revoked_at;
+  }
+
+  // Active vs inactive crypto fields
+  let keyId: string | null = null;
+  let nonce: string | null = null;
+  let ciphertext: string | null = null;
+  let authTag: string | null = null;
+  let keyHint: string | null = null;
+
+  if (r.is_active) {
+    // key_id: non-empty string
+    if (typeof r.key_id !== 'string' || r.key_id.trim() === '') {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Active wire credential must have non-empty key_id.',
+      });
+    }
+    keyId = r.key_id.trim();
+
+    // nonce: canonical bytea string (\x + 24 lowercase hex chars = 12 bytes)
+    if (typeof r.nonce !== 'string' || !/^\\x[0-9a-f]{24}$/.test(r.nonce)) {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Active wire credential must have a canonical 12-byte hex bytea nonce.',
+      });
+    }
+    nonce = r.nonce;
+
+    // ciphertext: canonical non-empty bytea string (\x + even lowercase hex chars)
+    if (
+      typeof r.ciphertext !== 'string' ||
+      !/^\\x[0-9a-f]+$/.test(r.ciphertext) ||
+      (r.ciphertext.length - 2) % 2 !== 0 ||
+      r.ciphertext.length <= 2
+    ) {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Active wire credential must have a canonical non-empty hex bytea ciphertext.',
+      });
+    }
+    ciphertext = r.ciphertext;
+
+    // auth_tag: canonical bytea string (\x + 32 lowercase hex chars = 16 bytes)
+    if (typeof r.auth_tag !== 'string' || !/^\\x[0-9a-f]{32}$/.test(r.auth_tag)) {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Active wire credential must have a canonical 16-byte hex bytea auth_tag.',
+      });
+    }
+    authTag = r.auth_tag;
+
+    // key_hint: safe non-empty masked/suffix metadata
+    if (typeof r.key_hint !== 'string' || r.key_hint.trim() === '') {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Active wire credential must have non-empty key_hint.',
+      });
+    }
+    keyHint = r.key_hint.trim();
+  } else {
+    // Inactive credentials MUST have all crypto fields nullified
+    if (
+      (r.key_id !== null && r.key_id !== undefined) ||
+      (r.nonce !== null && r.nonce !== undefined) ||
+      (r.ciphertext !== null && r.ciphertext !== undefined) ||
+      (r.auth_tag !== null && r.auth_tag !== undefined) ||
+      (r.key_hint !== null && r.key_hint !== undefined)
+    ) {
+      throw new AiError({
+        code: 'AI_CREDENTIAL_CORRUPTED',
+        message: 'Inactive wire credential must not retain cryptographic material or key hints.',
+      });
+    }
+  }
+
   return {
-    id: r.id as string,
-    owner_user_id: r.owner_user_id as string,
-    source: r.source as string,
-    provider: r.provider as string,
-    assigned_by_user_id: (r.assigned_by_user_id as string) || null,
-    envelope_version: Number(r.envelope_version) || 1,
-    key_id: (r.key_id as string) || null,
-    nonce: (r.nonce as string) || null,
-    ciphertext: (r.ciphertext as string) || null,
-    auth_tag: (r.auth_tag as string) || null,
-    key_hint: (r.key_hint as string) || null,
-    is_active: Boolean(r.is_active),
-    created_at: String(r.created_at || ''),
-    updated_at: String(r.updated_at || ''),
-    revoked_at: (r.revoked_at as string) || null,
+    id: r.id,
+    owner_user_id: r.owner_user_id,
+    source: r.source,
+    provider: r.provider,
+    assigned_by_user_id: assignedByUserId,
+    envelope_version: r.envelope_version,
+    key_id: keyId,
+    nonce,
+    ciphertext,
+    auth_tag: authTag,
+    key_hint: keyHint,
+    is_active: r.is_active,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    revoked_at: revokedAt,
   };
 }
 
@@ -110,6 +273,13 @@ export function hydrateWireRecordToEnvelope(wire: EncryptedEnvelopeWire): Encryp
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
       message: 'Cannot hydrate inactive or revoked credential.',
+    });
+  }
+
+  if (wire.envelope_version !== 1) {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: `Unsupported envelope version for hydration: ${wire.envelope_version}`,
     });
   }
 
@@ -125,7 +295,7 @@ export function hydrateWireRecordToEnvelope(wire: EncryptedEnvelopeWire): Encryp
   const ciphertext = decodePostgresBytea(wire.ciphertext);
 
   return {
-    envelopeVersion: 1,
+    envelopeVersion: wire.envelope_version,
     credentialId: wire.id,
     ownerUserId: wire.owner_user_id,
     source: wire.source as DatabaseCredentialSource,
@@ -148,10 +318,10 @@ export class AiCredentialRepository {
     ownerUserId: string,
     provider: 'GEMINI' = 'GEMINI'
   ): Promise<EncryptedEnvelopeWire[]> {
-    if (!ownerUserId || typeof ownerUserId !== 'string') {
+    if (!ownerUserId || typeof ownerUserId !== 'string' || !isValidUuid(ownerUserId)) {
       throw new AiError({
         code: 'AI_INVALID_REQUEST',
-        message: 'ownerUserId is required to read active credentials.',
+        message: 'A valid ownerUserId UUID is required to read active credentials.',
       });
     }
 
@@ -261,4 +431,12 @@ export class AiCredentialRepository {
     const records = await this.readActiveCredentials(ownerUserId, 'GEMINI');
     return buildSafeCredentialMetadata({ records, hasSystemKeyConfigured });
   }
+}
+
+/**
+ * Production factory for AiCredentialRepository using server-only admin service client.
+ */
+export function createAiCredentialRepository(): AiCredentialRepository {
+  const adminClient = createAdminClient();
+  return new AiCredentialRepository(adminClient);
 }

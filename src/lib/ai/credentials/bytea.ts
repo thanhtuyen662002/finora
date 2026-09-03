@@ -6,6 +6,8 @@
  * Strict parser rejects missing \x prefix, odd-length hex, invalid characters, and incorrect lengths.
  */
 
+import 'server-only';
+
 import { AiError } from '../errors';
 
 /**
@@ -23,7 +25,8 @@ export function encodePostgresBytea(buf: Buffer): string {
 
 /**
  * Decodes a PostgreSQL bytea hex string (\x...) into a Buffer.
- * Validates canonical prefix, even length, valid hexadecimal characters, and expected length if specified.
+ * Validates canonical prefix (\x), strictly lowercase hexadecimal characters,
+ * even length, non-empty content, and expected length if specified.
  */
 export function decodePostgresBytea(raw: string, expectedLength?: number): Buffer {
   if (typeof raw !== 'string') {
@@ -33,20 +36,20 @@ export function decodePostgresBytea(raw: string, expectedLength?: number): Buffe
     });
   }
 
-  // Canonical prefix is \x. Handle single or double backslash.
-  let hexData: string;
-  if (raw.startsWith('\\x') || raw.startsWith('\\X')) {
-    hexData = raw.slice(2);
-  } else if (raw.startsWith('\x18')) {
-    // Escaped binary artifact protection
+  // Canonical prefix is strictly \x. No uppercase \X or raw escapes allowed.
+  if (!raw.startsWith('\\x')) {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: 'Invalid bytea prefix.',
+      message: "Postgres bytea wire data missing canonical '\\x' prefix.",
     });
-  } else {
+  }
+
+  const hexData = raw.slice(2);
+
+  if (hexData.length === 0) {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: "Postgres bytea wire data missing '\\x' prefix.",
+      message: 'Postgres bytea hex data cannot be empty.',
     });
   }
 
@@ -57,10 +60,11 @@ export function decodePostgresBytea(raw: string, expectedLength?: number): Buffe
     });
   }
 
-  if (hexData.length > 0 && !/^[0-9a-fA-F]+$/.test(hexData)) {
+  // Strictly lowercase hex digits only (canonical format)
+  if (!/^[0-9a-f]+$/.test(hexData)) {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: 'Postgres bytea hex data contains non-hex characters.',
+      message: 'Postgres bytea hex data contains non-canonical or non-hex characters.',
     });
   }
 

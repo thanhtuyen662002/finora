@@ -37,29 +37,37 @@ import type {
 } from '../src/lib/ai/credentials/types';
 import { AiError } from '../src/lib/ai/errors';
 import {
+  parseAdminUserIds,
   getAuthorizedAdminUserIds,
   isAdminUserId,
   verifyAdminActor,
+  ENV_ADMIN_USER_IDS,
 } from '../src/lib/auth/admin';
+import {
+  validateCredentialPlaintext,
+  buildCredentialKeyHint,
+} from '../src/lib/ai/credentials/crypto';
+import {
+  createAiCredentialRepository,
+} from '../src/lib/ai/credentials/repository';
 
 async function runTests() {
   console.log('--- Running Phase 11 AI Credentials Tests ---');
   let totalTests = 0;
+  const pendingTests: Promise<void>[] = [];
 
   function test(name: string, fn: () => void | Promise<void>) {
     totalTests++;
-    try {
-      const res = fn();
-      if (res && typeof (res as Promise<void>).then === 'function') {
-        return (res as Promise<void>).then(() => {
-          console.log(`  ✓ ${name}`);
-        });
-      }
-      console.log(`  ✓ ${name}`);
-    } catch (err) {
-      console.error(`  ✗ ${name}`);
-      throw err;
-    }
+    const p = Promise.resolve()
+      .then(fn)
+      .then(() => {
+        console.log(`  ✓ ${name}`);
+      })
+      .catch((err) => {
+        console.error(`  ✗ ${name}`);
+        throw err;
+      });
+    pendingTests.push(p);
   }
 
   const testKey32A = randomBytes(32);
@@ -795,80 +803,120 @@ async function runTests() {
     );
   });
 
-  // --- ADMIN TESTS (Section 57) ---
+  // --- ADMIN AUTHORITY TESTS (Section 57 & Blocker D) ---
 
   const admin1 = 'c8b4e720-21a4-4780-928d-195992982d61';
   const admin2 = 'd7c3b2a1-1234-4567-89ab-cdef01234567';
   const nonAdmin = '11111111-2222-3333-4444-555555555555';
 
-  test('38. Authorized admin UUID accepted', () => {
-    const allowlistEnv = `${admin1}, ${admin2}`;
-    assert.strictEqual(isAdminUserId(admin1, allowlistEnv), true);
-    assert.strictEqual(isAdminUserId(admin2, allowlistEnv), true);
+  test('38. Pure parseAdminUserIds parses comma-separated UUIDs and discards malformed entries', () => {
+    const raw = `${admin1}, not-a-uuid, ${admin2},   , 12345`;
+    const parsed = parseAdminUserIds(raw);
+    assert.strictEqual(parsed.size, 2);
+    assert.strictEqual(parsed.has(admin1), true);
+    assert.strictEqual(parsed.has(admin2), true);
+    assert.strictEqual(parsed.has('not-a-uuid'), false);
   });
 
-  test('39. Non-admin UUID rejected', () => {
-    const allowlistEnv = `${admin1}, ${admin2}`;
-    assert.strictEqual(isAdminUserId(nonAdmin, allowlistEnv), false);
+  test('39. parseAdminUserIds with null, undefined, or empty returns empty Set', () => {
+    assert.strictEqual(parseAdminUserIds(null).size, 0);
+    assert.strictEqual(parseAdminUserIds(undefined).size, 0);
+    assert.strictEqual(parseAdminUserIds('').size, 0);
+    assert.strictEqual(parseAdminUserIds('   ').size, 0);
   });
 
-  test('40. Email match alone does NOT authorize admin access', () => {
-    const allowlistEnv = `${admin1}`;
-    // Passing email as userId is rejected because it is not a valid admin UUID
-    assert.strictEqual(isAdminUserId('admin@example.com', allowlistEnv), false);
+  test('40. Authorized admin UUID accepted strictly from process.env', () => {
+    const orig = process.env[ENV_ADMIN_USER_IDS];
+    try {
+      process.env[ENV_ADMIN_USER_IDS] = `${admin1}, ${admin2}`;
+      assert.strictEqual(isAdminUserId(admin1), true);
+      assert.strictEqual(isAdminUserId(admin2), true);
+    } finally {
+      process.env[ENV_ADMIN_USER_IDS] = orig;
+    }
   });
 
-  test('41. Profile metadata does not authorize', () => {
-    // Authority is solely FINORA_ADMIN_USER_IDS, profile objects have zero influence
-    const fakeProfile = { id: nonAdmin, is_admin: true, role: 'admin' };
-    assert.strictEqual(isAdminUserId(fakeProfile.id, `${admin1}`), false);
+  test('41. Non-admin UUID rejected strictly from process.env', () => {
+    const orig = process.env[ENV_ADMIN_USER_IDS];
+    try {
+      process.env[ENV_ADMIN_USER_IDS] = `${admin1}, ${admin2}`;
+      assert.strictEqual(isAdminUserId(nonAdmin), false);
+    } finally {
+      process.env[ENV_ADMIN_USER_IDS] = orig;
+    }
   });
 
-  test('42. Client-supplied actor ID does not authorize in verifyAdminActor', async () => {
-    const fakeClient = {
-      auth: {
-        getUser: async () => ({
-          data: { user: { id: nonAdmin } },
-          error: null,
-        }),
-      },
-    } as any;
-
-    const result = await verifyAdminActor(fakeClient, `${admin1}`);
-    assert.strictEqual(result.isAdmin, false);
-    assert.strictEqual(result.userId, nonAdmin);
+  test('42. Email match alone does NOT authorize admin access', () => {
+    const orig = process.env[ENV_ADMIN_USER_IDS];
+    try {
+      process.env[ENV_ADMIN_USER_IDS] = `${admin1}`;
+      assert.strictEqual(isAdminUserId('admin@example.com'), false);
+    } finally {
+      process.env[ENV_ADMIN_USER_IDS] = orig;
+    }
   });
 
-  test('43. Missing admin env fails closed', () => {
-    assert.strictEqual(isAdminUserId(admin1, ''), false);
-    assert.strictEqual(isAdminUserId(admin1, '  '), false);
-    assert.deepStrictEqual(getAuthorizedAdminUserIds(''), []);
+  test('43. Profile metadata does not authorize admin access', () => {
+    const orig = process.env[ENV_ADMIN_USER_IDS];
+    try {
+      process.env[ENV_ADMIN_USER_IDS] = `${admin1}`;
+      const fakeProfile = { id: nonAdmin, is_admin: true, role: 'admin' };
+      assert.strictEqual(isAdminUserId(fakeProfile.id), false);
+    } finally {
+      process.env[ENV_ADMIN_USER_IDS] = orig;
+    }
   });
 
-  test('44. Malformed allowlist entries filtered deterministically', () => {
-    const mixedEnv = `invalid-not-uuid, ${admin1}, also_not_uuid, ${admin2},   `;
-    const parsed = getAuthorizedAdminUserIds(mixedEnv);
-    assert.deepStrictEqual(parsed, [admin1, admin2]);
+  test('44. Client-supplied actor ID does not authorize in verifyAdminActor', async () => {
+    const orig = process.env[ENV_ADMIN_USER_IDS];
+    try {
+      process.env[ENV_ADMIN_USER_IDS] = `${admin1}`;
+      const fakeClient = {
+        auth: {
+          getUser: async () => ({
+            data: { user: { id: nonAdmin } },
+            error: null,
+          }),
+        },
+      } as any;
+
+      const result = await verifyAdminActor(fakeClient);
+      assert.strictEqual(result.isAdmin, false);
+      assert.strictEqual(result.userId, nonAdmin);
+    } finally {
+      process.env[ENV_ADMIN_USER_IDS] = orig;
+    }
   });
 
   test('45. Admin actor verification succeeds for authorized user from session', async () => {
-    const fakeClient = {
-      auth: {
-        getUser: async () => ({
-          data: { user: { id: admin1 } },
-          error: null,
-        }),
-      },
-    } as any;
+    const orig = process.env[ENV_ADMIN_USER_IDS];
+    try {
+      process.env[ENV_ADMIN_USER_IDS] = `${admin1}`;
+      const fakeClient = {
+        auth: {
+          getUser: async () => ({
+            data: { user: { id: admin1 } },
+            error: null,
+          }),
+        },
+      } as any;
 
-    const result = await verifyAdminActor(fakeClient, `${admin1}`);
-    assert.strictEqual(result.isAdmin, true);
-    assert.strictEqual(result.userId, admin1);
+      const result = await verifyAdminActor(fakeClient);
+      assert.strictEqual(result.isAdmin, true);
+      assert.strictEqual(result.userId, admin1);
+    } finally {
+      process.env[ENV_ADMIN_USER_IDS] = orig;
+    }
   });
 
-  // --- REPOSITORY & WIRE BOUNDARY TESTS ---
+  test('45b. Production authority functions reject caller-supplied allowlist overrides', () => {
+    assert.strictEqual(isAdminUserId.length, 1);
+    assert.strictEqual(verifyAdminActor.length, 1);
+  });
 
-  test('46. Valid wire record validation passes', () => {
+  // --- REPOSITORY & WIRE BOUNDARY STRICT VALIDATION TESTS ---
+
+  test('46. Valid wire record validation passes without coercion', () => {
     const record = {
       id: randomUUID(),
       owner_user_id: userA,
@@ -890,6 +938,7 @@ async function runTests() {
     const validated = validateWireRecord(record);
     assert.strictEqual(validated.id, record.id);
     assert.strictEqual(validated.source, 'PERSONAL');
+    assert.strictEqual(validated.envelope_version, 1);
   });
 
   test('47. Wire record with invalid source rejected with AI_CREDENTIAL_CORRUPTED', () => {
@@ -898,6 +947,11 @@ async function runTests() {
       owner_user_id: userA,
       source: 'INVALID_SOURCE',
       provider: 'GEMINI',
+      envelope_version: 1,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
     };
 
     assert.throws(
@@ -912,6 +966,11 @@ async function runTests() {
       owner_user_id: userA,
       source: 'PERSONAL',
       provider: 'OPENAI',
+      envelope_version: 1,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
     };
 
     assert.throws(
@@ -947,6 +1006,7 @@ async function runTests() {
     assert.deepStrictEqual(envelope.nonce, nonceBuf);
     assert.deepStrictEqual(envelope.authTag, tagBuf);
     assert.deepStrictEqual(envelope.ciphertext, cipherBuf);
+    assert.strictEqual(envelope.envelopeVersion, 1);
   });
 
   test('50. Hydrating inactive wire record rejected', () => {
@@ -957,11 +1017,11 @@ async function runTests() {
       provider: 'GEMINI',
       assigned_by_user_id: null,
       envelope_version: 1,
-      key_id: 'key_v1',
-      nonce: '\\x0102030405060708090a0b0c',
-      ciphertext: '\\xaabb',
-      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
-      key_hint: '1234',
+      key_id: null,
+      nonce: null,
+      ciphertext: null,
+      auth_tag: null,
+      key_hint: null,
       is_active: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -994,7 +1054,6 @@ async function runTests() {
     assert.strictEqual(meta.activeResolvedSource, 'PERSONAL');
     assert.strictEqual(meta.hasSystemKeyConfigured, true);
 
-    // Verify properties strictly do not contain ciphertext, nonce, auth_tag, key_id
     const metaStr = JSON.stringify(meta);
     assert.strictEqual(metaStr.includes('key_v1'), false);
     assert.strictEqual(metaStr.includes('ciphertext'), false);
@@ -1044,6 +1103,433 @@ async function runTests() {
     assert.strictEqual(meta.activeResolvedSource, null);
   });
 
+  // --- NEW TESTS: BLOCKER A, B, C, D, E, F SECURITY REQUIREMENTS ---
+
+  test('55. Wire validation strictly rejects non-UUID credential id', () => {
+    const baseRecord = {
+      id: 'not-a-uuid',
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    assert.throws(
+      () => validateWireRecord(baseRecord),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('56. Wire validation strictly rejects non-UUID owner_user_id', () => {
+    const record = {
+      id: randomUUID(),
+      owner_user_id: 'invalid-owner-id',
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    assert.throws(
+      () => validateWireRecord(record),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('57. Wire validation strictly rejects non-UUID assigned_by_user_id when present', () => {
+    const record = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'ADMIN_ASSIGNED',
+      provider: 'GEMINI',
+      assigned_by_user_id: 'not-a-valid-admin-uuid',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    assert.throws(
+      () => validateWireRecord(record),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('58. Wire validation strictly rejects invalid or coerced envelope_version', () => {
+    const template = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    // version 0
+    assert.throws(
+      () => validateWireRecord({ ...template, envelope_version: 0 }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // version 2
+    assert.throws(
+      () => validateWireRecord({ ...template, envelope_version: 2 }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // string '1' (no coercion allowed)
+    assert.throws(
+      () => validateWireRecord({ ...template, envelope_version: '1' }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // missing envelope_version
+    assert.throws(
+      () => validateWireRecord({ ...template, envelope_version: undefined }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('59. Wire validation strictly rejects invalid is_active types (no coercion)', () => {
+    const template = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    // string 'true'
+    assert.throws(
+      () => validateWireRecord({ ...template, is_active: 'true' }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // number 1
+    assert.throws(
+      () => validateWireRecord({ ...template, is_active: 1 }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // missing
+    assert.throws(
+      () => validateWireRecord({ ...template, is_active: undefined }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('60. Wire validation strictly rejects invalid timestamps', () => {
+    const template = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      revoked_at: null,
+    };
+
+    // invalid created_at
+    assert.throws(
+      () => validateWireRecord({ ...template, created_at: 'not-a-date', updated_at: new Date().toISOString() }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // invalid updated_at
+    assert.throws(
+      () => validateWireRecord({ ...template, created_at: new Date().toISOString(), updated_at: '' }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('61. Wire validation rejects active record with non-null revoked_at', () => {
+    const record = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: new Date().toISOString(), // forbidden on active
+    };
+
+    assert.throws(
+      () => validateWireRecord(record),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('62. Wire validation rejects inactive record with null revoked_at', () => {
+    const record = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: null,
+      nonce: null,
+      ciphertext: null,
+      auth_tag: null,
+      key_hint: null,
+      is_active: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null, // must be non-null on inactive
+    };
+
+    assert.throws(
+      () => validateWireRecord(record),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('63. Wire validation rejects inactive record retaining cryptographic material', () => {
+    const record = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: new Date().toISOString(),
+    };
+
+    assert.throws(
+      () => validateWireRecord(record),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('64. Wire validation rejects active record missing crypto fields or non-canonical bytea', () => {
+    const template = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      envelope_version: 1,
+      key_id: 'k1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    // missing nonce
+    assert.throws(
+      () => validateWireRecord({ ...template, nonce: null }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // uppercase bytea (non-canonical)
+    assert.throws(
+      () => validateWireRecord({ ...template, nonce: '\\x0102030405060708090A0B0C' }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // wrong length tag (15 bytes instead of 16)
+    assert.throws(
+      () => validateWireRecord({ ...template, auth_tag: '\\x0102030405060708090a0b0c0d0e0f' }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('65. Plaintext validation enforces length, non-empty, and ASCII control character rejection', () => {
+    // Trim policy
+    assert.strictEqual(validateCredentialPlaintext('  valid_key_123  '), 'valid_key_123');
+
+    // Empty / whitespace
+    assert.throws(
+      () => validateCredentialPlaintext(''),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+    assert.throws(
+      () => validateCredentialPlaintext('   '),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+
+    // Exceeds 512 chars
+    assert.throws(
+      () => validateCredentialPlaintext('A'.repeat(513)),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+
+    // Control characters (NUL, newline, carriage return, tabs, DEL)
+    assert.throws(
+      () => validateCredentialPlaintext('key\x00abc'),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+    assert.throws(
+      () => validateCredentialPlaintext('key\nnewline'),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+    assert.throws(
+      () => validateCredentialPlaintext('key\rcarriage'),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+    assert.throws(
+      () => validateCredentialPlaintext('key\x1fabc'),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+  });
+
+  test('66. KeyHint strictly ensures keyHint NEVER equals plaintext for short keys', () => {
+    // Normal long key (> 4 chars) -> suffix only
+    assert.strictEqual(buildCredentialKeyHint('AIzaSyD-secret-9281'), '9281');
+
+    // Exactly 4 chars -> masked with 4 bullets, NOT plaintext
+    const hint4 = buildCredentialKeyHint('ABCD');
+    assert.strictEqual(hint4, '••••');
+    assert.notStrictEqual(hint4, 'ABCD');
+
+    // 1 char -> masked with 4 bullets, NOT plaintext
+    const hint1 = buildCredentialKeyHint('X');
+    assert.strictEqual(hint1, '••••');
+    assert.notStrictEqual(hint1, 'X');
+
+    // Encrypting a short key produces masked keyHint
+    const envShort = encryptCredential({
+      plaintext: 'AIza',
+      ownerUserId: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      keyId: 'key_v1',
+      masterKey: testKey32A,
+    });
+    assert.strictEqual(envShort.keyHint, '••••');
+    assert.notStrictEqual(envShort.keyHint, 'AIza');
+  });
+
+  test('67. Decryption strictly validates envelopeVersion === 1', () => {
+    const env = encryptCredential({
+      plaintext: 'my_test_key_123',
+      ownerUserId: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      keyId: 'key_v1',
+      masterKey: testKey32A,
+    });
+
+    const tamperedVersionEnv: EncryptedEnvelope = {
+      ...env,
+      envelopeVersion: 2 as any,
+    };
+
+    assert.throws(
+      () => decryptCredential({ envelope: tamperedVersionEnv, masterKey: testKey32A }),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('68. Hydration strictly validates envelope_version === 1', () => {
+    const wire: EncryptedEnvelopeWire = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      assigned_by_user_id: null,
+      envelope_version: 2,
+      key_id: 'key_v1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '1234',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    assert.throws(
+      () => hydrateWireRecordToEnvelope(wire),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('69. readActiveCredentials strictly rejects non-UUID ownerUserId', async () => {
+    const repo = new AiCredentialRepository({} as any);
+    await assert.rejects(
+      () => repo.readActiveCredentials('not-a-valid-uuid'),
+      (err: any) => err instanceof AiError && err.code === 'AI_INVALID_REQUEST'
+    );
+  });
+
+  test('70. createAiCredentialRepository factory creates repository with admin client', () => {
+    const origUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const origKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    try {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://fake-project.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fake.service.key';
+      const repo = createAiCredentialRepository();
+      assert.ok(repo instanceof AiCredentialRepository);
+    } finally {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = origUrl;
+      process.env.SUPABASE_SERVICE_ROLE_KEY = origKey;
+    }
+  });
+
+  // Await all collected tests before printing final success message
+  await Promise.all(pendingTests);
   console.log(`\nAll ${totalTests} Phase 11 AI Credentials tests passed successfully!`);
 }
 
@@ -1051,3 +1537,4 @@ runTests().catch((err) => {
   console.error('Test run failed:', err);
   process.exit(1);
 });
+

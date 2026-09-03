@@ -6,7 +6,8 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 11 — AI Credentials
-- **Phase status:** IMPLEMENTED (SOURCE, TESTS, AND GATES PASS)
+- **Phase status:** PARTIAL (Pass A source corrected, verifiers in place, migration UNAPPLIED)
+- **Phase 11 migration status:** UNAPPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 9 completion SHA:** `0043b543efdbfd02756d80c6a93d4e6c0c745d42`
@@ -860,12 +861,17 @@ Status: **CLOSED (PASS)**
 - **Formal Phase 10 Closure Receipt:** `docs/receipts/PHASE_10_CLOSURE.md`
 
 ## Phase 11 — AI Credentials
-Status: **CONTRACT DISCOVERY (READY FOR FINAL INDEPENDENT AUDIT)**
+Status: **PARTIAL (PASS A SOURCE CORRECTED, VERIFIERS IN PLACE, MIGRATION UNAPPLIED)**
 - **Contract Discovery Document:** `docs/PHASE_11_CONTRACT_DISCOVERY.md`
 - **Selected Storage Architecture:** `PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROLE_RPC`
+- **Migration `20260903110000_phase_11_ai_credentials.sql`:** UNAPPLIED (Corrected in place, do not deploy without authorization)
+- **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Read-only, prepared for post-migration execution)
+- **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
+- **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate PASS)
+- **Test Suite:** `tests/phase11-ai-credentials.test.ts` (71/71 tests PASS, async runner fail-closed)
 
 ## Next Recommended Action
-Final independent audit of Phase 11 AI Credentials Contract Discovery before authorizing database migrations and code implementation.
+Independent security audit of Pass A corrective source and structural/runtime verifiers before database deployment authorization.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -915,13 +921,14 @@ PHASE_11_STORAGE_ARCHITECTURE=PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROL
 PHASE_11_CONTRACT=PASS
 PHASE_11_IMPLEMENTATION_AUTHORIZED=true
 
+PHASE_11_MIGRATION=UNAPPLIED
 PHASE_11_SOURCE_GATE=PASS
 PHASE_11_TEST_SUITE=PASS
 PHASE_11_TYPECHECK=PASS
 PHASE_11_LINT=PASS
 PHASE_11_BUILD=PASS
-PHASE_11_OVERALL=PASS
-FINORA_PHASE_11=PASS
+PHASE_11_OVERALL=PARTIAL
+FINORA_PHASE_11=PARTIAL
 
 PHASE_12_AUTHORIZED=false
 ```
