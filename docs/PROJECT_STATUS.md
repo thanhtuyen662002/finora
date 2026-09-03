@@ -6,8 +6,10 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 11 — AI Credentials
-- **Phase status:** PARTIAL (Pre-deployment final gate corrective complete, verifiers in place, migration UNAPPLIED)
-- **Phase 11 migration status:** UNAPPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
+- **Phase status:** PARTIAL (Pass B source/server-action/UI gates accepted; production runtime/live persistence pending)
+- **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
+- **Phase 11 remote database:** PASS
+- **Phase 11 structural gate:** PASS
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
 - **Accepted Phase 9 completion SHA:** `0043b543efdbfd02756d80c6a93d4e6c0c745d42`
@@ -868,7 +870,7 @@ Status: **PARTIAL (PASS B AUTHORIZATION ORDER & GOVERNANCE CLOSURE COMPLETE, PAS
 - **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Comprehensive production assertion script verifying full migration contract)
 - **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
 - **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 99 checks PASS)
-- **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (36 security and architecture checks PASS)
+- **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (46 security and architecture checks PASS)
 - **Test Suite:** `tests/phase11-ai-credentials.test.ts` (79/79 tests PASS, async runner fail-closed)
 - **Actions Test Suite:** `tests/phase11-ai-credential-actions.test.ts` (21/21 unit tests PASS, verifying strict deferred repository factory ordering and chronological event execution)
 - **Pass B Implementation:**

@@ -59,7 +59,7 @@
 ## 3. Verification & Gate Evidence
 
 1. **Static UI & Architecture Verifier (`scripts/verify-phase11-ui.mjs`):**
-   - 36 / 36 checks PASSED.
+   - 46 / 46 checks PASSED.
 2. **Static Source Gate Verifier (`scripts/verify-phase11-source.mjs`):**
    - 99 / 99 checks PASSED.
 3. **Runtime Verifier (`scripts/verify-phase11-runtime.mjs`):**

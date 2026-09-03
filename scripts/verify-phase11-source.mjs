@@ -433,15 +433,22 @@ check(
   `Premature Phase 12 features found in: ${phase12Files.join(', ')}`
 );
 
-// 21. Governance: Migration Status and PARTIAL Status in PROJECT_STATUS.md
+// 21. Governance: Factual Remote State and Absence of UNAPPLIED in Current State in PROJECT_STATUS.md
 const projectStatusContent = fs.readFileSync(path.join(ROOT, 'docs/PROJECT_STATUS.md'), 'utf8');
+const currentStateMatch = projectStatusContent.match(/## Current State([\s\S]*?)(?=## Phase \d+|$)/);
+const currentStateSection = currentStateMatch ? currentStateMatch[1] : '';
+const hasUnappliedInCurrentState = currentStateSection.includes('UNAPPLIED');
+
 check(
-  'PROJECT_STATUS_UNAPPLIED_MIGRATION',
-  (projectStatusContent.includes('PHASE_11_MIGRATION=UNAPPLIED') ||
-    projectStatusContent.includes('PHASE_11_MIGRATION_STATUS=APPLIED')) &&
-    projectStatusContent.includes('Phase status:** PARTIAL') &&
+  'PROJECT_STATUS_PHASE11_REMOTE_STATE_FACTUAL',
+  !hasUnappliedInCurrentState &&
+    !projectStatusContent.includes('PHASE_11_MIGRATION=UNAPPLIED') &&
+    projectStatusContent.includes('PHASE_11_MIGRATION_STATUS=APPLIED') &&
+    projectStatusContent.includes('PHASE_11_REMOTE_DATABASE=PASS') &&
+    projectStatusContent.includes('PHASE_11_STRUCTURAL_GATE=PASS') &&
+    projectStatusContent.includes('PHASE_11_PRODUCTION_CREDENTIAL_ROW_COUNT_AT_LAST_AUDIT=0') &&
     projectStatusContent.includes('PHASE_11_OVERALL=PARTIAL'),
-  'PROJECT_STATUS.md must state that Phase 11 is PARTIAL and migration is recorded'
+  'PROJECT_STATUS.md must state that Phase 11 is PARTIAL, migration is APPLIED, remote DB & structural gate PASS, and current state must not reference UNAPPLIED'
 );
 
 // 22. Strict Wire UUID Validation
