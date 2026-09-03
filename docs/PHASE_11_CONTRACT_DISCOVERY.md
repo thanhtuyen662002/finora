@@ -16,9 +16,9 @@ This document serves as the authoritative architectural discovery and contract b
 ## 2. Preflight & Invariant Baseline
 
 ### 2.1 Git & Codebase Baseline
-- **Authoritative Base Main SHA:** `4fa006f911ce96dbcdef6e5e50f8b914680876a4`
-- **Base Tree:** `be3bfbdebf4b4af8b71894b9b0a6bf248b0893cb`
-- **Base Parent:** `366ff1d9006b619dd8aa382e368e626123b61ce1`
+- **Authoritative Base Main SHA:** `49fd089cc1e9a359e1ce04ddeb24b14b313efa07`
+- **Base Tree:** `f8038bf3d4be55c138bc0db611811ea9daf5ac8a`
+- **Base Parent:** `4fa006f911ce96dbcdef6e5e50f8b914680876a4`
 - **Scope Identifier:** `AI_CREDENTIALS`
 - **Contract Status:** `READY_FOR_FINAL_INDEPENDENT_AUDIT`
 - **Implementation Status:** `PHASE_11_IMPLEMENTATION_AUTHORIZED=false`
@@ -37,7 +37,7 @@ This authorizes future implementation changes strictly scoped to:
 - `tests/phase10-ai-foundation.test.ts` (regression coverage for credential error propagation)
 - `scripts/verify-phase10-source.mjs` (verifying updated error taxonomy)
 
-All other Phase 10 invariants (SDK boundary isolation, operation-driven model dispatch, structured result schema validation, abort/timeout semantics, money string formatting, server-only execution) remain strictly immutable.
+All other Phase 10 invariants (SDK boundary isolation, operation-driven model dispatch, structured result runtime validation, abort/timeout semantics, money string formatting, server-only execution) remain strictly immutable.
 
 ### 2.3 Corrected Phase 10 Port Interface
 The authoritative Phase 10 dependency injection interface is strictly:
@@ -294,7 +294,7 @@ CREATE TABLE private.ai_credentials (
   owner_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   source text NOT NULL CHECK (source IN ('PERSONAL', 'ADMIN_ASSIGNED')),
   provider text NOT NULL DEFAULT 'GEMINI' CHECK (provider IN ('GEMINI')),
-  assigned_by_user_id uuid REFERENCES auth.users(id) ON DELETE RESTRICT,
+  assigned_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   
   -- Cryptographic envelope fields (Typed)
   envelope_version smallint NOT NULL CHECK (envelope_version = 1),
@@ -313,10 +313,20 @@ CREATE TABLE private.ai_credentials (
   -- Constraint 1: One active credential per user per provider per source
   CONSTRAINT uq_ai_credentials_slot UNIQUE (owner_user_id, provider, source),
 
-  -- Constraint 2: Source and assignment integrity
+  -- Constraint 2: Source and assignment integrity with conditional provenance
   CONSTRAINT chk_ai_credentials_source_assignment CHECK (
-    (source = 'PERSONAL' AND assigned_by_user_id IS NULL) OR
-    (source = 'ADMIN_ASSIGNED' AND assigned_by_user_id IS NOT NULL)
+    (
+      source = 'PERSONAL'
+      AND assigned_by_user_id IS NULL
+    )
+    OR
+    (
+      source = 'ADMIN_ASSIGNED'
+      AND (
+        is_active = false
+        OR assigned_by_user_id IS NOT NULL
+      )
+    )
   ),
 
   -- Constraint 3: Cryptographic material integrity when ACTIVE
@@ -346,16 +356,32 @@ REVOKE ALL ON TABLE private.ai_credentials FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON TABLE private.ai_credentials TO service_role;
 ```
 
-#### Foreign Key Delete Semantics:
+#### Foreign Key Delete Semantics & Conditional Provenance:
 - **`owner_user_id REFERENCES auth.users(id) ON DELETE CASCADE`:** If the user identity is deleted from the system, all associated credential records and encrypted payloads are automatically deleted. This aligns with Finora's privacy posture.
-- **`assigned_by_user_id REFERENCES auth.users(id) ON DELETE RESTRICT`:** If an authorized administrator attempts to delete their user account while active `ADMIN_ASSIGNED` credentials reference them, the operation **fails closed (`RESTRICT`)**. This preserves assignment audit provenance. To delete the administrator, their assigned credentials must first be revoked or reassigned.
+- **`assigned_by_user_id REFERENCES auth.users(id) ON DELETE SET NULL` with Conditional Provenance Check:**
+  - **Active Admin-Assigned Credential:** An active `ADMIN_ASSIGNED` credential row requires `assigned_by_user_id IS NOT NULL` per `chk_ai_credentials_source_assignment`. If an authorized administrator attempts to delete their user account while active `ADMIN_ASSIGNED` credentials reference them, the database foreign key action triggers `SET NULL`, but the check constraint rejects the update, causing the admin deletion to **fail closed (`FAIL`)**.
+  - **Revoked Admin-Assigned Credential:** When an admin-assigned credential is revoked (`is_active = false`), cryptographic material is erased (`nonce = NULL`, `ciphertext = NULL`, `auth_tag = NULL`, `key_id = NULL`, `key_hint = NULL`). If the referenced administrator identity is subsequently deleted, `ON DELETE SET NULL` is permitted by the check constraint. The historical inactive record is retained with `assigned_by_user_id = NULL`, leaving no broken foreign key references.
+  - **Explicit Assignment Invariants:**
+    ```text
+    PERSONAL:
+    assigned_by_user_id = NULL (always)
+
+    ACTIVE ADMIN_ASSIGNED:
+    assigned_by_user_id IS NOT NULL (always enforced)
+
+    INACTIVE ADMIN_ASSIGNED:
+    assigned_by_user_id MAY be non-null
+    assigned_by_user_id MAY become NULL only because referenced admin identity was deleted
+    ```
+    Application code is strictly forbidden from arbitrarily clearing `assigned_by_user_id` on an active assignment.
 
 #### Service-Role Least Privilege Invariants:
 - `service_role` is granted strictly `SELECT, INSERT, UPDATE`.
-- `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` are **NOT** granted to `service_role`.
+- `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` are strictly **NOT** granted to `service_role`.
 - Credential revocation is performed via `UPDATE` setting `is_active = false` and erasing sensitive ciphertext/nonce/auth_tag fields.
 - Credential replacement is performed via `INSERT ... ON CONFLICT DO UPDATE`.
 - Credential read is performed via `SELECT`.
+- Historical inactive metadata does not require `DELETE`.
 
 ### 5.3 RLS Defense in Depth
 Even though `private.ai_credentials` is completely unexposed to PostgREST, RLS is enabled as a defense-in-depth measure:
@@ -470,17 +496,17 @@ Phase 11 implementation extends `AiErrorCode` in `src/lib/ai/errors.ts` to disti
 
 ```typescript
 export type AiErrorCode =
-  // Existing Phase 10 error codes...
+  // Authoritative Phase 10 error codes:
   | 'AI_NOT_CONFIGURED'
-  | 'AI_AUTH_FAILED'
   | 'AI_PROVIDER_UNAVAILABLE'
-  | 'AI_INVALID_REQUEST'
+  | 'AI_AUTH_FAILED'
   | 'AI_RATE_LIMITED'
   | 'AI_TIMEOUT'
   | 'AI_ABORTED'
-  | 'AI_BAD_RESPONSE'
-  | 'AI_SCHEMA_VALIDATION_FAILED'
-  | 'AI_UNKNOWN_ERROR'
+  | 'AI_INVALID_REQUEST'
+  | 'AI_INVALID_RESPONSE'
+  | 'AI_STRUCTURED_OUTPUT_INVALID'
+  | 'AI_PROVIDER_ERROR'
   // Phase 11 credential error extensions (Authorized):
   | 'AI_CREDENTIAL_CORRUPTED'
   | 'AI_CREDENTIAL_KEY_UNAVAILABLE'
@@ -666,8 +692,9 @@ The structural verification gate must prove:
 | `SEC-ERROR-01` | Error Propagation | Resolver throws `AI_CREDENTIAL_CORRUPTED` | Router catch preserves `AI_CREDENTIAL_CORRUPTED` without remapping to `AI_AUTH_FAILED`. |
 | `SEC-ERROR-02` | Error Propagation | Resolver throws `AI_CREDENTIAL_KEY_UNAVAILABLE` | Router catch preserves `AI_CREDENTIAL_KEY_UNAVAILABLE` without remapping to `AI_AUTH_FAILED`. |
 | `SEC-ERROR-03` | Error Propagation | Unexpected resolver runtime exception | Router wraps generic runtime errors in `AI_CREDENTIAL_RESOLUTION_FAILED`. |
-| `SEC-FK-01` | Provenance FK | Delete assigning admin with active credential | Foreign key `ON DELETE RESTRICT` aborts deletion of administrator account until assignment is revoked. |
-| `SEC-FK-02` | Provenance FK | Delete assigning admin after revocation | Once active credential assignment is revoked or reassigned, administrator deletion succeeds. |
+| `SEC-FK-01` | Provenance FK | Active ADMIN_ASSIGNED references Admin A; attempt to delete Admin A | Foreign key attempts SET NULL, but `chk_ai_credentials_source_assignment` rejects active row without assigner; admin deletion fails closed (FAIL). |
+| `SEC-FK-02` | Provenance FK | Revoke ADMIN_ASSIGNED (`is_active=false`, crypto erased), then delete Admin A | Admin A deletion succeeds; `assigned_by_user_id` becomes NULL; inactive credential metadata remains. |
+| `SEC-FK-03` | Provenance FK | Attempt to create or reactivate ADMIN_ASSIGNED with `assigned_by_user_id=NULL` | Database constraint `chk_ai_credentials_source_assignment` rejects; fails closed. |
 
 ### 10.3 Phase 10 Non-Regression Verification Contract
 When Phase 11 implementation is authorized and executed, the following Phase 10 test suites must be executed and confirmed passing without regressions:
@@ -675,14 +702,16 @@ When Phase 11 implementation is authorized and executed, the following Phase 10 
 2. `node scripts/verify-phase10-source.mjs`
 
 **Required Non-Regression Assertions:**
-- **Provider Abstraction:** `src/lib/ai/providers/registry.ts` and `src/lib/ai/types.ts` remain decoupled from business logic and concrete SDK details.
+- **Provider Registration:** Provider registration and lookup remain authoritative in `AiRouter` (`src/lib/ai/router.ts`) implementing `AiProvider` contract (`src/lib/ai/provider.ts`), remaining decoupled from business logic and concrete SDK details.
 - **Operation Fail-Closed:** Unknown or unconfigured AI operations throw `AI_INVALID_REQUEST` without attempting execution.
-- **Structured Schema Validation:** Strict Zod schema validation parses and validates all model responses; malformed responses throw `AI_SCHEMA_VALIDATION_FAILED`.
+- **Structured Runtime Validation:** Structured responses parse unknown JSON via `parseAndValidateJson` and validate through `AiOutputValidator<T>`; malformed JSON or schema-invalid structured output throws `AI_STRUCTURED_OUTPUT_INVALID`.
+- **Empty Response Detection:** Empty text or provider response fails closed throwing `AI_INVALID_RESPONSE`.
+- **Unexpected Provider Error:** Unhandled provider failure throws `AI_PROVIDER_ERROR`.
 - **Abort vs Timeout Semantics:** `AbortSignal` cancellation throws `AI_ABORTED`; runtime timeout throws `AI_TIMEOUT`.
-- **Gemini SDK Boundary Isolation:** `@google/genai` is imported strictly within `src/lib/ai/providers/gemini.ts` and marked server-only.
-- **Credential Error Propagation:** Authorized port extension correctly forwards `AI_CREDENTIAL_CORRUPTED` and `AI_CREDENTIAL_KEY_UNAVAILABLE` through router.
-- **Exception Sanitization:** Generic resolver exceptions are wrapped in `AI_CREDENTIAL_RESOLUTION_FAILED` without exposing secret material or call stacks.
-- **No Unvalidated Output Casts:** All output processing preserves validated domain contracts.
+- **Gemini SDK Boundary Isolation:** `@google/genai` is imported strictly within `src/lib/ai/providers/gemini.ts` and marked `server-only`.
+- **Credential Error Propagation:** Authorized port extension correctly preserves normalized `AiError` instances (`AI_CREDENTIAL_CORRUPTED`, `AI_CREDENTIAL_KEY_UNAVAILABLE`) and wraps unexpected resolver exceptions in `AI_CREDENTIAL_RESOLUTION_FAILED`.
+- **Exception Sanitization:** Exception messages sanitize API keys and Bearer tokens without exposing secret material or call stacks.
+- **No Unvalidated Output Casts:** All output processing preserves validated domain contracts without unvalidated generic typecasts.
 
 ### 10.4 Live Persistence Smoke Contract (Future Phase 11 Closure)
 When Phase 11 implementation is executed, production closure will require human verification:
