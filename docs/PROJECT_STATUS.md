@@ -6,12 +6,15 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 11 — AI Credentials
-- **Phase status:** PARTIAL (Pass B source, server actions, UI gates, and production runtime persistence verified; pending independent final UI smoke)
+- **Phase status:** CLOSED (PASS)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
 - **Phase 11 structural gate:** PASS
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
+- **Accepted Phase 11 completion SHA:** `50d9cd1ba40d48e34ffa1982d18c58e2a37c16a1`
+- **Phase 11 closure receipt:** `docs/receipts/PHASE_11_CLOSURE.md`
+- **Phase 11 structural receipt:** `docs/receipts/PHASE_11_STRUCTURAL_GATE.md`
 - **Accepted Phase 9 completion SHA:** `0043b543efdbfd02756d80c6a93d4e6c0c745d42`
 - **Phase 9 closure receipt:** `docs/receipts/PHASE_9_CLOSURE.md`
 - **Phase 10 contract discovery:** `docs/PHASE_10_CONTRACT_DISCOVERY.md`
@@ -863,7 +866,7 @@ Status: **CLOSED (PASS)**
 - **Formal Phase 10 Closure Receipt:** `docs/receipts/PHASE_10_CLOSURE.md`
 
 ## Phase 11 — AI Credentials
-Status: **PARTIAL (PASS B COMPLETE & PRODUCTION RUNTIME PERSISTENCE VERIFIED; PENDING INDEPENDENT FINAL UI SMOKE)**
+Status: **CLOSED (PASS)**
 - **Contract Discovery Document:** `docs/PHASE_11_CONTRACT_DISCOVERY.md`
 - **Selected Storage Architecture:** `PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROLE_RPC`
 - **Migration `20260903110000_phase_11_ai_credentials.sql`:** APPLIED in production database
@@ -892,9 +895,14 @@ Status: **PARTIAL (PASS B COMPLETE & PRODUCTION RUNTIME PERSISTENCE VERIFIED; PE
   - `PHASE_11_ADMIN_ASSIGNED_REVOKE_ZEROIZATION=PASS` (Admin-assigned credential revocation and zeroization verified)
   - `PHASE_11_TWO_USER_RUNTIME=PASS` (Two-user runtime isolation and resolution verified)
   - `PHASE_11_ADMIN_ASSIGNED_RUNTIME=PASS` (Full admin-assigned workflow verified in production)
+- **UI Governance & Smoke Acceptance:**
+  - `PHASE_11_UI_GOVERNANCE_CORRECTIVE=PASS` (System Key state-neutral card, zero-leak boundary verified)
+  - `PHASE_11_FINAL_UI_SMOKE=PASS` (Independent production UI smoke accepted on deployed source SHA `50d9cd1ba40d48e34ffa1982d18c58e2a37c16a1`)
+  - `PHASE_11_CLOSURE_RECEIPT=docs/receipts/PHASE_11_CLOSURE.md`
+- **Historical Audit Record:** Pass B interim state prior to final UI smoke and closure was `PHASE_11_OVERALL=PARTIAL`.
 
 ## Next Recommended Action
-Independent final UI smoke review before formal closure of Phase 11.
+Phase 12 (AI Features: Natural-Language Transaction Parsing, Categorization, Financial Assistant) Discovery and Architectural Planning.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -968,9 +976,10 @@ PHASE_11_ADMIN_ASSIGNED_REVOKE_ZEROIZATION=PASS
 PHASE_11_TWO_USER_RUNTIME=PASS
 PHASE_11_ADMIN_ASSIGNED_RUNTIME=PASS
 
-PHASE_11_UI_GOVERNANCE_CORRECTIVE=PENDING_INDEPENDENT_UI_SMOKE
-PHASE_11_OVERALL=PARTIAL
-FINORA_PHASE_11=PARTIAL
+PHASE_11_UI_GOVERNANCE_CORRECTIVE=PASS
+PHASE_11_FINAL_UI_SMOKE=PASS
+PHASE_11_OVERALL=PASS
+FINORA_PHASE_11=PASS
 
-PHASE_12_AUTHORIZED=false
+PHASE_12_AUTHORIZED=true
 ```
