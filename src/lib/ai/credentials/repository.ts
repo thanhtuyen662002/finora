@@ -68,6 +68,36 @@ export interface RevokeCredentialParams {
  * Validates wire record structure and constraints from the read RPC.
  * Strictly verifies types without coercions (no Boolean(), Number() || 1, etc.).
  */
+export const KEY_HINT_MAX_LENGTH = 4;
+
+/**
+ * Validates untrusted wire key_hint from database/RPC response.
+ * Enforces string type, 1 <= length <= 4, and no ASCII control characters/newlines.
+ * Fails closed with AI_CREDENTIAL_CORRUPTED.
+ */
+export function validateWireKeyHint(raw: unknown): string {
+  if (typeof raw !== 'string') {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: 'Wire credential record key_hint must be a string.',
+    });
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length < 1 || trimmed.length > KEY_HINT_MAX_LENGTH) {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: `Wire credential record key_hint length must be between 1 and ${KEY_HINT_MAX_LENGTH}, got ${trimmed.length}.`,
+    });
+  }
+  if (/[\x00-\x1F\x7F]/.test(raw) || /[\x00-\x1F\x7F]/.test(trimmed)) {
+    throw new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: 'Wire credential record key_hint contains forbidden control characters.',
+    });
+  }
+  return trimmed;
+}
+
 export function validateWireRecord(record: unknown): EncryptedEnvelopeWire {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new AiError({
@@ -222,14 +252,8 @@ export function validateWireRecord(record: unknown): EncryptedEnvelopeWire {
     }
     authTag = r.auth_tag;
 
-    // key_hint: safe non-empty masked/suffix metadata
-    if (typeof r.key_hint !== 'string' || r.key_hint.trim() === '') {
-      throw new AiError({
-        code: 'AI_CREDENTIAL_CORRUPTED',
-        message: 'Active wire credential must have non-empty key_hint.',
-      });
-    }
-    keyHint = r.key_hint.trim();
+    // key_hint: safe bounded masked/suffix metadata (1 <= length <= 4, no control chars)
+    keyHint = validateWireKeyHint(r.key_hint);
   } else {
     // Inactive credentials MUST have all crypto fields nullified
     if (

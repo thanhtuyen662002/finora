@@ -312,7 +312,7 @@ Encrypted AI API credentials (application-level AES-256-GCM envelope encryption)
 **DB Constraints:**
 - `uq_ai_credentials_slot`: `UNIQUE (owner_user_id, provider, source)` (one slot per owner/provider/source).
 - `chk_ai_credentials_provenance`: Enforces `PERSONAL` has null `assigned_by_user_id`, and active `ADMIN_ASSIGNED` requires non-null `assigned_by_user_id`.
-- `chk_ai_credentials_crypto_material`: Enforces active credentials have 12-byte nonce and 16-byte auth tag; revoked credentials have null crypto material and non-null `revoked_at`.
+- `chk_ai_credentials_crypto_material`: Enforces active credentials have 12-byte nonce, 16-byte auth tag, and bounded `key_hint` (1..4 characters without control characters); revoked credentials have null crypto material and non-null `revoked_at`.
 
 **Privilege Model:**
 - Schema `private`: `REVOKE ALL FROM PUBLIC, anon, authenticated`; `GRANT USAGE TO service_role`.

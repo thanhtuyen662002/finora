@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 11 — AI Credentials
-- **Phase status:** PARTIAL (Pass A source corrected, verifiers in place, migration UNAPPLIED)
+- **Phase status:** PARTIAL (Pre-deployment final gate corrective complete, verifiers in place, migration UNAPPLIED)
 - **Phase 11 migration status:** UNAPPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
@@ -861,17 +861,18 @@ Status: **CLOSED (PASS)**
 - **Formal Phase 10 Closure Receipt:** `docs/receipts/PHASE_10_CLOSURE.md`
 
 ## Phase 11 — AI Credentials
-Status: **PARTIAL (PASS A SOURCE CORRECTED, VERIFIERS IN PLACE, MIGRATION UNAPPLIED)**
+Status: **PARTIAL (PRE-DEPLOYMENT GATE CORRECTIVE COMPLETE, VERIFIERS IN PLACE, MIGRATION UNAPPLIED)**
 - **Contract Discovery Document:** `docs/PHASE_11_CONTRACT_DISCOVERY.md`
 - **Selected Storage Architecture:** `PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROLE_RPC`
 - **Migration `20260903110000_phase_11_ai_credentials.sql`:** UNAPPLIED (Corrected in place, do not deploy without authorization)
-- **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Read-only, prepared for post-migration execution)
+- **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Comprehensive production assertion script verifying full migration contract)
 - **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
-- **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate PASS)
-- **Test Suite:** `tests/phase11-ai-credentials.test.ts` (71/71 tests PASS, async runner fail-closed)
+- **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 93 checks PASS)
+- **Test Suite:** `tests/phase11-ai-credentials.test.ts` (79/79 tests PASS, async runner fail-closed)
+- **Key Hint Handling:** Bounded length 1..4, ASCII printable only, never equals plaintext, fail-closed rejection at wire/database validation, defensive fallback in metadata DTO.
 
 ## Next Recommended Action
-Independent security audit of Pass A corrective source and structural/runtime verifiers before database deployment authorization.
+Independent security audit of pre-deployment gate corrective source and structural/runtime verifiers before database deployment authorization.
 
 ```text
 PHASE_8_OVERALL=PASS

@@ -133,16 +133,17 @@ function generateKeyHint(key) {
   const normalized = key.trim();
   if (normalized.length > 4) {
     const hint = normalized.slice(-4);
-    if (hint === normalized) {
-      return '••••';
+    if (hint !== normalized) {
+      return hint;
     }
-    return hint;
   }
   const mask = '••••';
-  return normalized === mask ? '•••••' : mask;
+  return normalized === mask ? '****' : mask;
 }
 assert(generateKeyHint('1234') !== '1234', 'KeyHint for short key (4 chars) does NOT equal plaintext');
 assert(generateKeyHint('AIza') !== 'AIza', 'KeyHint for 4-char key does NOT equal plaintext');
+assert(generateKeyHint('••••') === '****', 'KeyHint for mask plaintext returns ****');
+assert(generateKeyHint('••••').length === 4, 'KeyHint length is exactly 4');
 assert(generateKeyHint('AIzaSy1234567890') === '7890', 'KeyHint for standard key returns last 4');
 
 // 3. Automated Test Suite Execution

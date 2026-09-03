@@ -72,7 +72,7 @@ CREATE TABLE private.ai_credentials (
       AND nonce IS NOT NULL AND octet_length(nonce) = 12
       AND ciphertext IS NOT NULL AND octet_length(ciphertext) > 0
       AND auth_tag IS NOT NULL AND octet_length(auth_tag) = 16
-      AND key_hint IS NOT NULL AND length(btrim(key_hint)) > 0
+      AND key_hint IS NOT NULL AND length(key_hint) BETWEEN 1 AND 4
     )
     OR
     (

@@ -23,11 +23,18 @@ import {
   getMasterKey,
   resolveMasterKeyRing,
 } from '../src/lib/ai/credentials/keyring';
-import { buildSafeCredentialMetadata } from '../src/lib/ai/credentials/metadata';
+import {
+  buildSafeCredentialMetadata,
+  sanitizeSafeKeyHint,
+  generateKeyHint,
+} from '../src/lib/ai/credentials/metadata';
 import {
   AiCredentialRepository,
+  createAiCredentialRepository,
   hydrateWireRecordToEnvelope,
   validateWireRecord,
+  validateWireKeyHint,
+  KEY_HINT_MAX_LENGTH,
 } from '../src/lib/ai/credentials/repository';
 import { AiCredentialResolver } from '../src/lib/ai/credentials/resolver';
 import type {
@@ -47,9 +54,6 @@ import {
   validateCredentialPlaintext,
   buildCredentialKeyHint,
 } from '../src/lib/ai/credentials/crypto';
-import {
-  createAiCredentialRepository,
-} from '../src/lib/ai/credentials/repository';
 
 async function runTests() {
   console.log('--- Running Phase 11 AI Credentials Tests ---');
@@ -1526,6 +1530,219 @@ async function runTests() {
       process.env.NEXT_PUBLIC_SUPABASE_URL = origUrl;
       process.env.SUPABASE_SERVICE_ROLE_KEY = origKey;
     }
+  });
+
+  test('71. DB key_hint containing full credential (> 4 chars) rejected with AI_CREDENTIAL_CORRUPTED', () => {
+    const rawWire = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      assigned_by_user_id: null,
+      envelope_version: 1,
+      key_id: 'key_v1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: 'AIzaSySecretApiKeyLeakedEntirely',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    assert.throws(
+      () => validateWireRecord(rawWire),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('72. DB key_hint > allowed length (5 chars) rejected with AI_CREDENTIAL_CORRUPTED', () => {
+    const rawWire = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL',
+      provider: 'GEMINI',
+      assigned_by_user_id: null,
+      envelope_version: 1,
+      key_id: 'key_v1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '12345',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    assert.throws(
+      () => validateWireRecord(rawWire),
+      (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+  });
+
+  test('73. DB key_hint with newline / control character rejected with AI_CREDENTIAL_CORRUPTED', () => {
+    for (const badHint of ['12\n4', '12\r4', '1\x0034', '\x1b[31', '12\t4']) {
+      const rawWire = {
+        id: randomUUID(),
+        owner_user_id: userA,
+        source: 'PERSONAL',
+        provider: 'GEMINI',
+        assigned_by_user_id: null,
+        envelope_version: 1,
+        key_id: 'key_v1',
+        nonce: '\\x0102030405060708090a0b0c',
+        ciphertext: '\\xaabb',
+        auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+        key_hint: badHint,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        revoked_at: null,
+      };
+
+      assert.throws(
+        () => validateWireRecord(rawWire),
+        (err: any) => err instanceof AiError && err.code === 'AI_CREDENTIAL_CORRUPTED',
+        `Should reject bad hint: ${JSON.stringify(badHint)}`
+      );
+    }
+  });
+
+  test('74. DB key_hint with valid 4-character hint accepted by validateWireRecord', () => {
+    for (const validHint of ['1234', '••••', '****', 'abcd', '9999']) {
+      const rawWire = {
+        id: randomUUID(),
+        owner_user_id: userA,
+        source: 'PERSONAL',
+        provider: 'GEMINI',
+        assigned_by_user_id: null,
+        envelope_version: 1,
+        key_id: 'key_v1',
+        nonce: '\\x0102030405060708090a0b0c',
+        ciphertext: '\\xaabb',
+        auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+        key_hint: validHint,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        revoked_at: null,
+      };
+
+      const validated = validateWireRecord(rawWire);
+      assert.strictEqual(validated.key_hint, validHint);
+    }
+  });
+
+  test('75. Safe metadata builder defensively sanitizes key_hint and cannot reproduce credential', () => {
+    const fullSecret = 'AIzaSyVerySecretKey1234567890';
+    const rawWireWithSecretLeak = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL' as const,
+      provider: 'GEMINI' as const,
+      assigned_by_user_id: null,
+      envelope_version: 1 as const,
+      key_id: 'key_v1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: fullSecret, // Corrupted wire with leaked full secret
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+
+    const metadata = buildSafeCredentialMetadata({
+      records: [rawWireWithSecretLeak],
+      hasSystemKeyConfigured: false,
+    });
+
+    assert.strictEqual(metadata.hasPersonalCredential, true);
+    // Leaked full secret must be defensively replaced with safe fallback mask
+    assert.strictEqual(metadata.personalKeyHint, '••••');
+    assert.notStrictEqual(metadata.personalKeyHint, fullSecret);
+    assert.ok(!fullSecret.includes(metadata.personalKeyHint!));
+  });
+
+  test('76. buildCredentialKeyHint explicit behavior and invariants', () => {
+    // 1-char credential
+    const hint1 = buildCredentialKeyHint('x');
+    assert.strictEqual(hint1, '••••');
+    assert.strictEqual(hint1.length, 4);
+    assert.notStrictEqual(hint1, 'x');
+
+    // 4-char credential
+    const hint4 = buildCredentialKeyHint('abcd');
+    assert.strictEqual(hint4, '••••');
+    assert.strictEqual(hint4.length, 4);
+    assert.notStrictEqual(hint4, 'abcd');
+
+    // credential "••••"
+    const hintMask = buildCredentialKeyHint('••••');
+    assert.strictEqual(hintMask, '****');
+    assert.strictEqual(hintMask.length, 4);
+    assert.notStrictEqual(hintMask, '••••');
+
+    // normal long credential
+    const hintLong = buildCredentialKeyHint('AIzaSy1234567890');
+    assert.strictEqual(hintLong, '7890');
+    assert.strictEqual(hintLong.length, 4);
+    assert.notStrictEqual(hintLong, 'AIzaSy1234567890');
+
+    // Invariants for random credentials
+    const testCases = [
+      'a', 'ab', 'abc', 'abcd', 'abcde', 'AIzaSyDUMMY_KEY_XYZ_9999',
+      '••••', '****', '12345', 'super-secret-production-token-1234'
+    ];
+    for (const tc of testCases) {
+      const hint = buildCredentialKeyHint(tc);
+      assert.ok(hint.length >= 1 && hint.length <= 4, `Length must be 1..4 for ${tc}`);
+      assert.notStrictEqual(hint, tc.trim(), `Hint must never equal plaintext for ${tc}`);
+    }
+  });
+
+  test('77. validateWireKeyHint helper strictly enforces contract', () => {
+    // Valid hints (1..4 chars, no control chars)
+    assert.strictEqual(validateWireKeyHint('7890'), '7890');
+    assert.strictEqual(validateWireKeyHint('a'), 'a');
+    assert.strictEqual(validateWireKeyHint('••••'), '••••');
+    assert.strictEqual(validateWireKeyHint('****'), '****');
+    assert.strictEqual(KEY_HINT_MAX_LENGTH, 4);
+
+    // Invalid non-string
+    assert.throws(() => validateWireKeyHint(null), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+    assert.throws(() => validateWireKeyHint(1234), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+
+    // Invalid empty
+    assert.throws(() => validateWireKeyHint(''), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+    assert.throws(() => validateWireKeyHint('   '), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+
+    // Invalid > 4 chars
+    assert.throws(() => validateWireKeyHint('12345'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+    assert.throws(() => validateWireKeyHint('ABCDEF'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+
+    // Invalid control characters
+    assert.throws(() => validateWireKeyHint('ab\nc'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+    assert.throws(() => validateWireKeyHint('a\x00b'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+  });
+
+  test('78. sanitizeSafeKeyHint helper defensively bounds metadata hints', () => {
+    // Valid hints
+    assert.strictEqual(sanitizeSafeKeyHint('7890'), '7890');
+    assert.strictEqual(sanitizeSafeKeyHint('••••'), '••••');
+    assert.strictEqual(sanitizeSafeKeyHint('a'), 'a');
+
+    // Unsafe or invalid hints return null
+    assert.strictEqual(sanitizeSafeKeyHint(null), null);
+    assert.strictEqual(sanitizeSafeKeyHint(undefined), null);
+    assert.strictEqual(sanitizeSafeKeyHint(''), null);
+    assert.strictEqual(sanitizeSafeKeyHint('   '), null);
+    assert.strictEqual(sanitizeSafeKeyHint('12345'), null);
+    assert.strictEqual(sanitizeSafeKeyHint('AIzaSySecretLeaked'), null);
+    assert.strictEqual(sanitizeSafeKeyHint('ab\ncd'), null);
   });
 
   // Await all collected tests before printing final success message

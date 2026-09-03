@@ -36,19 +36,24 @@ export function buildCanonicalAad(
 
 /**
  * Generates a safe masked key hint from credential plaintext.
- * Guarantees that keyHint NEVER equals plaintext for any credential.
+ * Strictly guarantees:
+ * - 1 <= keyHint.length <= 4 (exactly 4 characters)
+ * - keyHint !== normalized plaintext for every accepted credential
+ * - never leaks full secret for credentials > 4 characters
  */
 export function buildCredentialKeyHint(plaintext: string): string {
   const normalized = plaintext.trim();
   if (normalized.length > 4) {
     const hint = normalized.slice(-4);
-    if (hint === normalized) {
-      return '••••';
+    if (hint !== normalized) {
+      return hint;
     }
-    return hint;
   }
   const mask = '••••';
-  return normalized === mask ? '•••••' : mask;
+  if (normalized === mask) {
+    return '****';
+  }
+  return mask;
 }
 
 export const generateKeyHint = buildCredentialKeyHint;

@@ -545,16 +545,131 @@ check(
   'All credential runtime modules must declare import "server-only"'
 );
 
-// 31. Structural and Runtime Verifiers Exist
+// 31. Structural and Runtime Verifiers Exist & Structural Script Completeness
+const structuralPath = path.join(ROOT, 'scripts/verify-phase11-structural.sql');
 check(
   'STRUCTURAL_VERIFIER_EXISTS',
-  fs.existsSync(path.join(ROOT, 'scripts/verify-phase11-structural.sql')),
+  fs.existsSync(structuralPath),
   'scripts/verify-phase11-structural.sql must exist'
 );
 check(
   'RUNTIME_VERIFIER_EXISTS',
   fs.existsSync(path.join(ROOT, 'scripts/verify-phase11-runtime.mjs')),
   'scripts/verify-phase11-runtime.mjs must exist'
+);
+
+const structuralSql = fs.existsSync(structuralPath)
+  ? fs.readFileSync(structuralPath, 'utf8')
+  : '';
+
+// Substantive structural verifier contract assertions
+check(
+  'STRUCTURAL_MIGRATION_HISTORY_ASSERTION',
+  structuralSql.includes('supabase_migrations.schema_migrations') &&
+    structuralSql.includes('20260903110000'),
+  'Structural verifier must check supabase_migrations.schema_migrations for version 20260903110000'
+);
+
+check(
+  'STRUCTURAL_OWNER_FK_CASCADE',
+  /owner_user_id.*REFERENCES\s+auth\\?\.users.*ON\s+DELETE\s+CASCADE/i.test(
+    structuralSql
+  ),
+  'Structural verifier must assert owner_user_id references auth.users(id) ON DELETE CASCADE'
+);
+
+check(
+  'STRUCTURAL_ASSIGNED_BY_FK_SET_NULL',
+  /assigned_by_user_id.*REFERENCES\s+auth\\?\.users.*ON\s+DELETE\s+SET\s+NULL/i.test(
+    structuralSql
+  ),
+  'Structural verifier must assert assigned_by_user_id references auth.users(id) ON DELETE SET NULL'
+);
+
+check(
+  'STRUCTURAL_EXACT_UNIQUE_SLOT',
+  /UNIQUE\s*\\?\(\s*owner_user_id\s*,\s*provider\s*,\s*source\s*\\?\)/i.test(
+    structuralSql
+  ),
+  'Structural verifier must assert exact UNIQUE (owner_user_id, provider, source) constraint'
+);
+
+check(
+  'STRUCTURAL_SOURCE_CHECK',
+  /source.*(?:PERSONAL.*ADMIN_ASSIGNED|ADMIN_ASSIGNED.*PERSONAL)/i.test(
+    structuralSql
+  ),
+  'Structural verifier must assert source IN (PERSONAL, ADMIN_ASSIGNED)'
+);
+
+check(
+  'STRUCTURAL_PROVIDER_CHECK',
+  /provider\s*=\s*(?:''|')GEMINI(?:''|')/i.test(structuralSql),
+  'Structural verifier must assert provider = GEMINI'
+);
+
+check(
+  'STRUCTURAL_ENVELOPE_VERSION_CHECK',
+  /envelope_version\s*=\s*1/i.test(structuralSql),
+  'Structural verifier must assert envelope_version = 1'
+);
+
+check(
+  'STRUCTURAL_PROVENANCE_CHECK',
+  /source.*PERSONAL.*assigned_by_user_id/is.test(structuralSql) &&
+    /source.*ADMIN_ASSIGNED.*assigned_by_user_id/is.test(structuralSql),
+  'Structural verifier must assert assignment provenance constraint'
+);
+
+check(
+  'STRUCTURAL_CRYPTO_MATERIAL_CHECK',
+  /octet_length.*nonce.*12/is.test(structuralSql) &&
+    /octet_length.*auth_tag.*16/is.test(structuralSql) &&
+    /is_active.*false/is.test(structuralSql),
+  'Structural verifier must assert crypto material integrity'
+);
+
+check(
+  'STRUCTURAL_KEY_HINT_BOUND',
+  /key_hint.*length.*key_hint.*BETWEEN/is.test(structuralSql),
+  'Structural verifier must assert active key_hint length BETWEEN 1 AND 4'
+);
+
+check(
+  'STRUCTURAL_EXACT_RPC_SIGNATURES',
+  structuralSql.includes('ai_credentials_read_for_service') &&
+    structuralSql.includes('ai_credentials_write_for_service') &&
+    structuralSql.includes('ai_credentials_revoke_for_service') &&
+    /smallint.*text.*bytea.*bytea.*bytea/i.test(structuralSql),
+  'Structural verifier must assert exact identity signatures for all 3 RPC facade functions'
+);
+
+check(
+  'STRUCTURAL_REFERENCES_ABSENT',
+  structuralSql.includes('REFERENCES') &&
+    /service_role.*NOT\s+have.*REFERENCES/i.test(structuralSql),
+  'Structural verifier must assert absence of REFERENCES privilege for service_role'
+);
+
+check(
+  'STRUCTURAL_TRIGGER_ABSENT',
+  structuralSql.includes('TRIGGER') &&
+    /service_role.*NOT\s+have.*TRIGGER/i.test(structuralSql),
+  'Structural verifier must assert absence of TRIGGER privilege for service_role'
+);
+
+check(
+  'STRUCTURAL_FINAL_PASS_MARKER',
+  structuralSql.includes("RAISE NOTICE 'PHASE_11_STRUCTURAL_GATE=PASS';"),
+  'Structural verifier must output PHASE_11_STRUCTURAL_GATE=PASS notice upon completion'
+);
+
+check(
+  'MIGRATION_KEY_HINT_BOUNDED',
+  /key_hint\s+IS\s+NOT\s+NULL\s+AND\s+length\s*\(\s*key_hint\s*\)\s+BETWEEN\s+1\s+AND\s+4/i.test(
+    migrationSql
+  ),
+  'Migration crypto material CHECK must enforce length(key_hint) BETWEEN 1 AND 4'
 );
 
 console.log(`\nPhase 11 Verification: ${passedChecks} passed, ${failedChecks} failed.`);

@@ -17,7 +17,24 @@ export interface ResolveMetadataOptions {
 }
 
 /**
+ * Defensively sanitizes an untrusted key_hint.
+ * Ensures the hint strictly satisfies:
+ * - string type
+ * - length between 1 and 4
+ * - zero ASCII control characters
+ * Returns sanitized string or null if invalid.
+ */
+export function sanitizeSafeKeyHint(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (trimmed.length < 1 || trimmed.length > 4) return null;
+  if (/[\x00-\x1F\x7F]/.test(raw) || /[\x00-\x1F\x7F]/.test(trimmed)) return null;
+  return trimmed;
+}
+
+/**
  * Builds safe metadata summary from wire records and system configuration.
+ * Never trusts arbitrary DB key_hint; defensively validates and bounds all hints.
  */
 export function buildSafeCredentialMetadata(options: ResolveMetadataOptions): AiCredentialSafeMetadata {
   const { records, hasSystemKeyConfigured } = options;
@@ -35,11 +52,13 @@ export function buildSafeCredentialMetadata(options: ResolveMetadataOptions): Ai
 
     if (record.source === 'PERSONAL') {
       hasPersonalCredential = true;
-      personalKeyHint = record.key_hint;
+      const safeHint = sanitizeSafeKeyHint(record.key_hint);
+      personalKeyHint = safeHint ?? '••••';
       personalKeyUpdatedAt = record.updated_at;
     } else if (record.source === 'ADMIN_ASSIGNED') {
       hasAdminAssignedCredential = true;
-      adminAssignedKeyHint = record.key_hint;
+      const safeHint = sanitizeSafeKeyHint(record.key_hint);
+      adminAssignedKeyHint = safeHint ?? '••••';
       adminAssignedKeyUpdatedAt = record.updated_at;
     }
   }
@@ -67,19 +86,23 @@ export function buildSafeCredentialMetadata(options: ResolveMetadataOptions): Ai
 
 /**
  * Generates a safe masked key hint from credential plaintext.
- * Strictly guarantees that keyHint NEVER equals plaintext for any input.
+ * Strictly guarantees:
+ * - 1 <= keyHint.length <= 4 (exactly 4 characters)
+ * - keyHint !== normalized plaintext for every accepted credential
+ * - never leaks full secret for credentials > 4 characters
  */
 export function generateKeyHint(plaintext: string): string {
   const normalized = plaintext.trim();
   if (normalized.length > 4) {
     const hint = normalized.slice(-4);
-    if (hint === normalized) {
-      return '••••';
+    if (hint !== normalized) {
+      return hint;
     }
-    return hint;
   }
-  const mask = '••••';
-  return normalized === mask ? '•••••' : mask;
+  if (normalized === '••••') {
+    return '****';
+  }
+  return '••••';
 }
 
 export const buildCredentialKeyHint = generateKeyHint;
