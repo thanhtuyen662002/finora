@@ -39,14 +39,18 @@ if (fs.existsSync(typesPath)) {
 
 // 2. Server Actions Architecture & Security Boundaries
 const actionsPath = path.join(ROOT, 'src/features/ai/credentials/actions.ts');
+const actionCorePath = path.join(ROOT, 'src/features/ai/credentials/action-core.ts');
 check('ACTIONS_FILE_EXISTS', fs.existsSync(actionsPath), 'actions.ts must exist');
+check('ACTION_CORE_FILE_EXISTS', fs.existsSync(actionCorePath), 'action-core.ts must exist');
 
-if (fs.existsSync(actionsPath)) {
+if (fs.existsSync(actionsPath) && fs.existsSync(actionCorePath)) {
   const actionsContent = fs.readFileSync(actionsPath, 'utf8');
+  const actionCoreContent = fs.readFileSync(actionCorePath, 'utf8');
   check('ACTIONS_USE_SERVER', actionsContent.includes("'use server'") || actionsContent.includes('"use server"'), "actions.ts must declare 'use server'");
-  check('ACTIONS_AUTH_GET_USER', actionsContent.includes('auth.getUser()'), 'actions.ts must verify authenticated user via auth.getUser()');
-  check('ACTIONS_VERIFY_ADMIN_ACTOR', actionsContent.includes('verifyAdminActor'), 'actions.ts must enforce verifyAdminActor before admin operations');
-  check('ACTIONS_SANITIZE_ERROR', actionsContent.includes('sanitizeActionError'), 'actions.ts must sanitize internal errors');
+  check('ACTION_CORE_SERVER_ONLY', actionCoreContent.includes("import 'server-only'") || actionCoreContent.includes('import "server-only"'), "action-core.ts must declare import 'server-only'");
+  check('ACTIONS_AUTH_GET_USER', actionsContent.includes('auth.getUser()') || actionCoreContent.includes('getUser'), 'actions layer must verify authenticated user via auth.getUser()');
+  check('ACTIONS_VERIFY_ADMIN_ACTOR', actionsContent.includes('verifyAdminActor') || actionCoreContent.includes('verifyAdmin'), 'actions layer must enforce verifyAdminActor before admin operations');
+  check('ACTIONS_SANITIZE_ERROR', actionCoreContent.includes('sanitizeActionError'), 'action-core.ts must sanitize internal errors');
   check('ACTIONS_GET_MY_METADATA', actionsContent.includes('export async function getMyAiCredentialMetadata'), 'getMyAiCredentialMetadata must be exported');
   check('ACTIONS_SAVE_MY_PERSONAL', actionsContent.includes('export async function saveMyPersonalAiCredential'), 'saveMyPersonalAiCredential must be exported');
   check('ACTIONS_REVOKE_MY_PERSONAL', actionsContent.includes('export async function revokeMyPersonalAiCredential'), 'revokeMyPersonalAiCredential must be exported');
@@ -54,7 +58,7 @@ if (fs.existsSync(actionsPath)) {
   check('ACTIONS_SAVE_ADMIN_ASSIGNED', actionsContent.includes('export async function saveAdminAssignedCredential'), 'saveAdminAssignedCredential must be exported');
   check('ACTIONS_REVOKE_ADMIN_ASSIGNED', actionsContent.includes('export async function revokeAdminAssignedCredential'), 'revokeAdminAssignedCredential must be exported');
   check('ACTIONS_CHECK_IS_ADMIN', actionsContent.includes('export async function checkIsAdmin'), 'checkIsAdmin must be exported');
-  check('ACTIONS_VALIDATE_PLAINTEXT', actionsContent.includes('validatePlaintextApiKey'), 'actions.ts must validate plaintext api key');
+  check('ACTIONS_VALIDATE_PLAINTEXT', actionCoreContent.includes('validatePlaintextApiKey'), 'action-core.ts must validate plaintext api key');
 }
 
 // 3. Settings UI Verification

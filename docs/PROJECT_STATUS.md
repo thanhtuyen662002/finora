@@ -868,9 +868,9 @@ Status: **PARTIAL (PASS B UI & SERVER ACTIONS IMPLEMENTED, VERIFIERS PASS, MIGRA
 - **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Comprehensive production assertion script verifying full migration contract)
 - **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
 - **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 99 checks PASS)
-- **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (34 security and architecture checks PASS)
+- **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (36 security and architecture checks PASS)
 - **Test Suite:** `tests/phase11-ai-credentials.test.ts` (79/79 tests PASS, async runner fail-closed)
-- **Actions Test Suite:** `tests/phase11-ai-credential-actions.test.ts` (6/6 unit tests PASS)
+- **Actions Test Suite:** `tests/phase11-ai-credential-actions.test.ts` (14/14 unit tests PASS)
 - **Pass B Implementation:**
   - Authenticated Personal Credential Management via `'use server'` action layer (`src/features/ai/credentials/actions.ts`)
   - Admin-Assigned Credential Management with strict `verifyAdminActor` checks and exact email resolution

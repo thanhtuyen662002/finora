@@ -428,187 +428,200 @@ export default function AdminPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Lookup by Email */}
-              <form onSubmit={handleLookupTarget} className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="targetEmailInput" className="text-xs font-semibold">
-                    Địa chỉ Email người dùng cần tra cứu / cấp khóa
-                  </Label>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <Input
-                      id="targetEmailInput"
-                      type="email"
-                      placeholder="user@example.com"
-                      value={targetEmail}
-                      onChange={(e) => setTargetEmail(e.target.value)}
-                      disabled={isLookingUpTarget}
-                      className="font-mono text-xs flex-1"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={!targetEmail.trim() || isLookingUpTarget}
-                      size="sm"
-                      className="shrink-0"
-                    >
-                      {isLookingUpTarget ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                          Đang tra cứu...
-                        </>
-                      ) : (
-                        <>
-                          <Search className="h-3.5 w-3.5 mr-1.5" />
-                          Tra cứu người dùng
-                        </>
-                      )}
-                    </Button>
+              {isCheckingAdmin ? (
+                <div className="py-8 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <span className="text-xs">Đang xác thực quyền quản trị...</span>
+                </div>
+              ) : !isAdmin ? (
+                <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-semibold">Quyền truy cập quản trị bị từ chối</h4>
+                    <p className="text-xs mt-1 text-destructive/90">
+                      Bạn không có quyền quản trị viên để tra cứu, quản lý hoặc cấp khóa AI cho người dùng khác.
+                    </p>
                   </div>
                 </div>
-              </form>
-
-              {targetLookupError && (
-                <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>{targetLookupError}</span>
-                </div>
-              )}
-
-              {targetLookupSuccess && (
-                <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>{targetLookupSuccess}</span>
-                </div>
-              )}
-
-              {/* Target User Status Panel */}
-              {targetUserDTO && (
-                <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
-                    <div>
-                      <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-                        Tài khoản mục tiêu
-                      </span>
-                      <p className="text-sm font-medium text-foreground mt-0.5">
-                        {targetUserDTO.email}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-xs text-muted-foreground block text-right">User ID (UUID)</span>
-                      <span className="font-mono text-[11px] bg-muted px-2 py-0.5 rounded border text-foreground">
-                        {targetUserDTO.ownerUserId}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div className="p-2.5 rounded-lg border bg-background space-y-1">
-                      <span className="text-muted-foreground block text-[11px]">Nguồn khóa đang kích hoạt:</span>
-                      <span className="font-semibold text-foreground">
-                        {targetUserDTO.metadata.activeResolvedSource === 'PERSONAL'
-                          ? 'Khóa cá nhân'
-                          : targetUserDTO.metadata.activeResolvedSource === 'ADMIN_ASSIGNED'
-                          ? 'Admin cấp'
-                          : targetUserDTO.metadata.activeResolvedSource === 'SYSTEM'
-                          ? 'Hệ thống'
-                          : 'Chưa có'}
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 rounded-lg border bg-background space-y-1">
-                      <span className="text-muted-foreground block text-[11px]">Khóa cá nhân (User sở hữu):</span>
-                      <span className="font-medium text-foreground">
-                        {targetUserDTO.metadata.hasPersonalCredential
-                          ? `Đã lưu (•••• ${targetUserDTO.metadata.personalKeyHint})`
-                          : 'Chưa cấu hình'}
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 rounded-lg border bg-background space-y-1">
-                      <span className="text-muted-foreground block text-[11px]">Khóa Admin cấp:</span>
-                      <span className="font-semibold text-foreground">
-                        {targetUserDTO.metadata.hasAdminAssignedCredential
-                          ? `Đã cấp (•••• ${targetUserDTO.metadata.adminAssignedKeyHint})`
-                          : 'Chưa cấp'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {assignError && (
-                    <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span>{assignError}</span>
-                    </div>
-                  )}
-
-                  {assignSuccess && (
-                    <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span>{assignSuccess}</span>
-                    </div>
-                  )}
-
-                  {/* Form to Assign or Replace Key */}
-                  <form onSubmit={handleAssignCredential} className="space-y-3 pt-2 border-t">
+              ) : (
+                <>
+                  {/* Lookup by Email */}
+                  <form onSubmit={handleLookupTarget} className="space-y-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="adminAssignKeyInput" className="text-xs font-medium">
-                        {targetUserDTO.metadata.hasAdminAssignedCredential
-                          ? 'Thay thế khóa Admin cấp cho người dùng này'
-                          : 'Cấp khóa Google Gemini API mới cho người dùng này'}
+                      <Label htmlFor="targetEmailInput" className="text-xs font-semibold">
+                        Địa chỉ Email người dùng cần tra cứu / cấp khóa
                       </Label>
-                      <Input
-                        id="adminAssignKeyInput"
-                        type="password"
-                        autoComplete="off"
-                        placeholder="AIzaSy..."
-                        value={adminAssignKeyInput}
-                        onChange={(e) => setAdminAssignKeyInput(e.target.value)}
-                        disabled={isAssigningKey}
-                        className="font-mono text-xs"
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        Khóa sẽ được mã hóa và lưu trữ tại bảng thông tin bảo mật. Người dùng không cần cấu hình khóa cá nhân.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      {targetUserDTO.metadata.hasAdminAssignedCredential ? (
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <Input
+                          id="targetEmailInput"
+                          type="email"
+                          placeholder="user@example.com"
+                          value={targetEmail}
+                          onChange={(e) => setTargetEmail(e.target.value)}
+                          disabled={isLookingUpTarget}
+                          className="font-mono text-xs flex-1"
+                        />
                         <Button
-                          type="button"
-                          variant="destructive"
+                          type="submit"
+                          disabled={!targetEmail.trim() || isLookingUpTarget}
                           size="sm"
-                          disabled={isRevokingAssignedKey || isAssigningKey}
-                          onClick={handleRevokeAssignedCredential}
+                          className="shrink-0"
                         >
-                          {isRevokingAssignedKey ? (
+                          {isLookingUpTarget ? (
                             <>
                               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                              Đang thu hồi...
+                              Đang tra cứu...
                             </>
                           ) : (
-                            'Thu hồi khóa đã cấp'
+                            <>
+                              <Search className="h-3.5 w-3.5 mr-1.5" />
+                              Tra cứu người dùng
+                            </>
                           )}
                         </Button>
-                      ) : (
-                        <span />
-                      )}
-
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={!adminAssignKeyInput.trim() || isAssigningKey || isRevokingAssignedKey}
-                      >
-                        {isAssigningKey ? (
-                          <>
-                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                            Đang mã hóa & cấp khóa...
-                          </>
-                        ) : (
-                          'Cấp khóa cho người dùng'
-                        )}
-                      </Button>
+                      </div>
                     </div>
                   </form>
-                </div>
+
+                  {targetLookupError && (
+                    <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{targetLookupError}</span>
+                    </div>
+                  )}
+
+                  {targetLookupSuccess && (
+                    <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{targetLookupSuccess}</span>
+                    </div>
+                  )}
+
+                  {/* Target User Status Panel */}
+                  {targetUserDTO && (
+                    <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+                        <div>
+                          <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                            Tài khoản mục tiêu
+                          </span>
+                          <p className="text-sm font-medium text-foreground mt-0.5">
+                            {targetUserDTO.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div className="p-2.5 rounded-lg border bg-background space-y-1">
+                          <span className="text-muted-foreground block text-[11px]">Nguồn khóa đang kích hoạt:</span>
+                          <span className="font-semibold text-foreground">
+                            {targetUserDTO.metadata.activeResolvedSource === 'PERSONAL'
+                              ? 'Khóa cá nhân'
+                              : targetUserDTO.metadata.activeResolvedSource === 'ADMIN_ASSIGNED'
+                              ? 'Admin cấp'
+                              : targetUserDTO.metadata.activeResolvedSource === 'SYSTEM'
+                              ? 'Hệ thống'
+                              : 'Chưa có'}
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg border bg-background space-y-1">
+                          <span className="text-muted-foreground block text-[11px]">Khóa cá nhân (User sở hữu):</span>
+                          <span className="font-medium text-foreground">
+                            {targetUserDTO.metadata.hasPersonalCredential
+                              ? `Đã lưu (•••• ${targetUserDTO.metadata.personalKeyHint})`
+                              : 'Chưa cấu hình'}
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg border bg-background space-y-1">
+                          <span className="text-muted-foreground block text-[11px]">Khóa Admin cấp:</span>
+                          <span className="font-semibold text-foreground">
+                            {targetUserDTO.metadata.hasAdminAssignedCredential
+                              ? `Đã cấp (•••• ${targetUserDTO.metadata.adminAssignedKeyHint})`
+                              : 'Chưa cấp'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {assignError && (
+                        <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span>{assignError}</span>
+                        </div>
+                      )}
+
+                      {assignSuccess && (
+                        <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span>{assignSuccess}</span>
+                        </div>
+                      )}
+
+                      {/* Form to Assign or Replace Key */}
+                      <form onSubmit={handleAssignCredential} className="space-y-3 pt-2 border-t">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="adminAssignKeyInput" className="text-xs font-medium">
+                            {targetUserDTO.metadata.hasAdminAssignedCredential
+                              ? 'Thay thế khóa Admin cấp cho người dùng này'
+                              : 'Cấp khóa Google Gemini API mới cho người dùng này'}
+                          </Label>
+                          <Input
+                            id="adminAssignKeyInput"
+                            type="password"
+                            autoComplete="off"
+                            placeholder="AIzaSy..."
+                            value={adminAssignKeyInput}
+                            onChange={(e) => setAdminAssignKeyInput(e.target.value)}
+                            disabled={isAssigningKey}
+                            className="font-mono text-xs"
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            Khóa sẽ được mã hóa và lưu trữ tại bảng thông tin bảo mật. Người dùng không cần cấu hình khóa cá nhân.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          {targetUserDTO.metadata.hasAdminAssignedCredential ? (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={isRevokingAssignedKey || isAssigningKey}
+                              onClick={handleRevokeAssignedCredential}
+                            >
+                              {isRevokingAssignedKey ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                  Đang thu hồi...
+                                </>
+                              ) : (
+                                'Thu hồi khóa đã cấp'
+                              )}
+                            </Button>
+                          ) : (
+                            <span />
+                          )}
+
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={!adminAssignKeyInput.trim() || isAssigningKey || isRevokingAssignedKey}
+                          >
+                            {isAssigningKey ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                Đang mã hóa & cấp khóa...
+                              </>
+                            ) : (
+                              'Cấp khóa cho người dùng'
+                            )}
+                          </Button>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

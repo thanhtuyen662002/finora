@@ -3,5 +3,21 @@
  * Phase 11 — Client-Safe Contracts and Server Actions
  */
 
-export * from './types';
-export * from './actions';
+export type {
+  AiCredentialSafeMetadata,
+  AiCredentialSource,
+  ActionResult,
+  ActionSuccess,
+  ActionFailure,
+  AdminTargetUserDTO,
+} from './types';
+
+export {
+  getMyAiCredentialMetadata,
+  saveMyPersonalAiCredential,
+  revokeMyPersonalAiCredential,
+  checkIsAdmin,
+  getAdminAiCredentialTarget,
+  saveAdminAssignedCredential,
+  revokeAdminAssignedCredential,
+} from './actions';

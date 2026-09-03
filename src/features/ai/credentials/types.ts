@@ -26,6 +26,5 @@ export type ActionResult<T = undefined> = ActionSuccess<T> | ActionFailure;
 
 export interface AdminTargetUserDTO {
   readonly email: string;
-  readonly ownerUserId: string;
   readonly metadata: AiCredentialSafeMetadata;
 }

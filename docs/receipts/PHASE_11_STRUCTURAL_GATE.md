@@ -49,7 +49,7 @@
 ## 3. Verification & Gate Evidence
 
 1. **Static UI & Architecture Verifier (`scripts/verify-phase11-ui.mjs`):**
-   - 34 / 34 checks PASSED.
+   - 36 / 36 checks PASSED.
 2. **Static Source Gate Verifier (`scripts/verify-phase11-source.mjs`):**
    - 99 / 99 checks PASSED.
 3. **Runtime Verifier (`scripts/verify-phase11-runtime.mjs`):**
@@ -57,7 +57,7 @@
 4. **Comprehensive Automated Test Suite (`tests/phase11-ai-credentials.test.ts`):**
    - 79 / 79 unit tests PASSED.
 5. **Server Actions Test Suite (`tests/phase11-ai-credential-actions.test.ts`):**
-   - 6 / 6 unit tests PASSED.
+   - 14 / 14 unit tests PASSED.
 6. **TypeScript & Linter:**
    - `npm run typecheck`: 0 errors.
    - `eslint .`: 0 errors.
