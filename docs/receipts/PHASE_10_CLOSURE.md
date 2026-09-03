@@ -110,3 +110,12 @@ FINORA_PHASE_10=PASS
 
 **State Statement:**
 Phase 10 is **CLOSED**. Reopen only if an independently demonstrated regression affects the accepted AI foundation invariants.
+
+### 4.1 Phase 11 Credential Port Integration Allowance
+Future Phase 11 is explicitly authorized for a narrow credential port integration extension:
+```text
+PHASE_10_CLOSED=true
+PHASE_11_NARROW_PHASE10_CREDENTIAL_PORT_EXTENSION=AUTHORIZED
+```
+This permits strictly scoped modifications to `src/lib/ai/errors.ts`, `src/lib/ai/router.ts`, `tests/phase10-ai-foundation.test.ts`, and `scripts/verify-phase10-source.mjs` solely to propagate normalized credential errors (`AI_CREDENTIAL_CORRUPTED`, `AI_CREDENTIAL_KEY_UNAVAILABLE`, `AI_CREDENTIAL_RESOLUTION_FAILED`). All other Phase 10 invariants remain closed and immutable without invalidating Phase 10 closure.
+

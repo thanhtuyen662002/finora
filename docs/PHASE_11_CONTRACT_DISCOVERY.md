@@ -16,15 +16,28 @@ This document serves as the authoritative architectural discovery and contract b
 ## 2. Preflight & Invariant Baseline
 
 ### 2.1 Git & Codebase Baseline
-- **Authoritative Base Main SHA:** `366ff1d9006b619dd8aa382e368e626123b61ce1`
-- **Base Tree:** `bc5a69b80e0e44ba6da4b8f4d0842ba34180b9d9`
-- **Base Parent:** `b4e4b475f20900f52513702201ef8c0debb95f5d`
+- **Authoritative Base Main SHA:** `4fa006f911ce96dbcdef6e5e50f8b914680876a4`
+- **Base Tree:** `be3bfbdebf4b4af8b71894b9b0a6bf248b0893cb`
+- **Base Parent:** `366ff1d9006b619dd8aa382e368e626123b61ce1`
 - **Scope Identifier:** `AI_CREDENTIALS`
-- **Contract Status:** `READY_FOR_INDEPENDENT_AUDIT`
+- **Contract Status:** `READY_FOR_FINAL_INDEPENDENT_AUDIT`
 - **Implementation Status:** `PHASE_11_IMPLEMENTATION_AUTHORIZED=false`
 
-### 2.2 Phase 10 Closure Preservation
-Phase 10 remains closed and accepted (`PHASE_10_OVERALL=PASS`, `FINORA_PHASE_10=PASS`, accepted source SHA `b4e4b475f20900f52513702201ef8c0debb95f5d`). No Phase 10 source code is modified in this corrective.
+### 2.2 Phase 10 Closure Preservation & Authorized Narrow Port Extension
+Phase 10 remains closed and accepted (`PHASE_10_OVERALL=PASS`, `FINORA_PHASE_10=PASS`, accepted source SHA `b4e4b475f20900f52513702201ef8c0debb95f5d`). No Phase 10 source code is modified in this docs corrective.
+
+To enable proper credential error taxonomy propagation, Phase 11 implementation is explicitly authorized for one narrow Phase 10 credential port integration extension:
+```text
+PHASE_10_CLOSED=true
+PHASE_11_NARROW_PHASE10_CREDENTIAL_PORT_EXTENSION=AUTHORIZED
+```
+This authorizes future implementation changes strictly scoped to:
+- `src/lib/ai/errors.ts` (adding normalized credential error codes)
+- `src/lib/ai/router.ts` (propagating `AiError` instances from `resolveCredential` and wrapping unexpected resolver failures in `AI_CREDENTIAL_RESOLUTION_FAILED`)
+- `tests/phase10-ai-foundation.test.ts` (regression coverage for credential error propagation)
+- `scripts/verify-phase10-source.mjs` (verifying updated error taxonomy)
+
+All other Phase 10 invariants (SDK boundary isolation, operation-driven model dispatch, structured result schema validation, abort/timeout semantics, money string formatting, server-only execution) remain strictly immutable.
 
 ### 2.3 Corrected Phase 10 Port Interface
 The authoritative Phase 10 dependency injection interface is strictly:
@@ -120,7 +133,7 @@ private.ai_credentials [Table unexposed to PostgREST]
 ### 4.2 The Service-Role RPC Facade Contract
 The RPC facade consists of a minimal set of functions residing in the exposed `public` schema.
 
-#### Function 1: Read Active Credential Records
+#### Function 1: Read Active Credential Records (Scalar Return Boundary)
 ```sql
 CREATE OR REPLACE FUNCTION public.ai_credentials_read_for_service(
   p_owner_user_id uuid,
@@ -158,6 +171,7 @@ AS $$
     AND c.is_active = true;
 $$;
 ```
+*Note on RPC Return Boundary:* `read_for_service` explicitly returns scalar fields / `RETURNS TABLE` columns. It **MUST NOT** return the private table's composite row type (`RETURNS SETOF private.ai_credentials` is strictly forbidden).
 
 #### Function 2: Upsert Active Credential Record
 ```sql
@@ -187,7 +201,7 @@ BEGIN
   ) VALUES (
     p_id, p_owner_user_id, p_source, p_provider, p_assigned_by_user_id,
     p_envelope_version, p_key_id, p_nonce, p_ciphertext, p_auth_tag,
-    p_key_hint, true, now(), NULL
+    p_key_hint, true, pg_catalog.now(), NULL
   )
   ON CONFLICT (owner_user_id, provider, source)
   DO UPDATE SET
@@ -200,7 +214,7 @@ BEGIN
     auth_tag = EXCLUDED.auth_tag,
     key_hint = EXCLUDED.key_hint,
     is_active = true,
-    updated_at = now(),
+    updated_at = pg_catalog.now(),
     revoked_at = NULL;
 END;
 $$;
@@ -222,8 +236,8 @@ BEGIN
   UPDATE private.ai_credentials
   SET 
     is_active = false,
-    revoked_at = now(),
-    updated_at = now(),
+    revoked_at = pg_catalog.now(),
+    updated_at = pg_catalog.now(),
     nonce = NULL,
     ciphertext = NULL,
     auth_tag = NULL,
@@ -239,7 +253,7 @@ $$;
 
 ### 4.3 Mandatory RPC Security & Privilege Invariants
 1. **`SECURITY INVOKER`:** Functions execute with the caller's privileges (which is `service_role` when called from `createAdminClient()`). No `SECURITY DEFINER` is used.
-2. **`SET search_path = ''`:** Mitigates schema-hijacking vulnerabilities. All table references are fully qualified (`private.ai_credentials`).
+2. **`SET search_path = ''`:** Mitigates schema-hijacking vulnerabilities. All table references and built-in functions are fully qualified (`private.ai_credentials`, `pg_catalog.now()`).
 3. **Strict Privilege Lockout:**
    ```sql
    REVOKE EXECUTE ON FUNCTION public.ai_credentials_read_for_service(uuid, text) FROM PUBLIC, anon, authenticated;
@@ -264,9 +278,11 @@ CREATE SCHEMA IF NOT EXISTS private;
 REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated;
 GRANT USAGE ON SCHEMA private TO service_role;
 
--- Safe default privileges for future objects
-ALTER DEFAULT PRIVILEGES IN SCHEMA private REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated;
-ALTER DEFAULT PRIVILEGES IN SCHEMA private GRANT ALL ON TABLES TO service_role;
+-- Safe default privileges for future objects (least privilege)
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA private REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA private GRANT SELECT, INSERT, UPDATE ON TABLES TO service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA private REVOKE ALL ON ROUTINES FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA private REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated;
 ```
 
 ### 5.2 Typed Table Definition: `private.ai_credentials`
@@ -278,7 +294,7 @@ CREATE TABLE private.ai_credentials (
   owner_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   source text NOT NULL CHECK (source IN ('PERSONAL', 'ADMIN_ASSIGNED')),
   provider text NOT NULL DEFAULT 'GEMINI' CHECK (provider IN ('GEMINI')),
-  assigned_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  assigned_by_user_id uuid REFERENCES auth.users(id) ON DELETE RESTRICT,
   
   -- Cryptographic envelope fields (Typed)
   envelope_version smallint NOT NULL CHECK (envelope_version = 1),
@@ -290,8 +306,8 @@ CREATE TABLE private.ai_credentials (
   
   -- Lifecycle & Audit
   is_active boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT pg_catalog.now(),
+  updated_at timestamptz NOT NULL DEFAULT pg_catalog.now(),
   revoked_at timestamptz,
 
   -- Constraint 1: One active credential per user per provider per source
@@ -325,15 +341,30 @@ CREATE TABLE private.ai_credentials (
 
 -- Revoke all direct privileges on the table
 REVOKE ALL ON TABLE private.ai_credentials FROM PUBLIC, anon, authenticated;
-GRANT ALL ON TABLE private.ai_credentials TO service_role;
+
+-- Service role least privilege: grant SELECT, INSERT, UPDATE only
+GRANT SELECT, INSERT, UPDATE ON TABLE private.ai_credentials TO service_role;
 ```
+
+#### Foreign Key Delete Semantics:
+- **`owner_user_id REFERENCES auth.users(id) ON DELETE CASCADE`:** If the user identity is deleted from the system, all associated credential records and encrypted payloads are automatically deleted. This aligns with Finora's privacy posture.
+- **`assigned_by_user_id REFERENCES auth.users(id) ON DELETE RESTRICT`:** If an authorized administrator attempts to delete their user account while active `ADMIN_ASSIGNED` credentials reference them, the operation **fails closed (`RESTRICT`)**. This preserves assignment audit provenance. To delete the administrator, their assigned credentials must first be revoked or reassigned.
+
+#### Service-Role Least Privilege Invariants:
+- `service_role` is granted strictly `SELECT, INSERT, UPDATE`.
+- `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` are **NOT** granted to `service_role`.
+- Credential revocation is performed via `UPDATE` setting `is_active = false` and erasing sensitive ciphertext/nonce/auth_tag fields.
+- Credential replacement is performed via `INSERT ... ON CONFLICT DO UPDATE`.
+- Credential read is performed via `SELECT`.
 
 ### 5.3 RLS Defense in Depth
 Even though `private.ai_credentials` is completely unexposed to PostgREST, RLS is enabled as a defense-in-depth measure:
 ```sql
 ALTER TABLE private.ai_credentials ENABLE ROW LEVEL SECURITY;
 ```
-**No browser policies are created.** Direct browser access to this table is completely forbidden.
+- **Browser Policies:** Exactly **0** (no policies exist; browser client access is completely barred).
+- **Service-Role Execution:** In Supabase production, `service_role` possesses `BYPASSRLS=true`. Service-role RPC calls execute safely under the granted table privileges.
+- Authenticated ownership RLS policies must **NOT** be added to the private table.
 
 ### 5.4 Secret Material Erased on Revocation
 In accordance with Finora's privacy-first posture, secret credentials are **not** financial audit records and must not be retained after user revocation. When a credential is revoked:
@@ -402,23 +433,123 @@ When an AI operation is requested, the resolver evaluates credentials in the fol
    └── No credential available → Throws AI_NOT_CONFIGURED
 ```
 
-### 7.2 Strict Invariant: No Silent Fallback on Failure
-Fallback occurs **ONLY** when a higher-priority credential is **absent, unconfigured, or explicitly revoked**.
-Once a higher-priority credential is selected, any subsequent failure **FAILS CLOSED** and **MUST NEVER** fall back to lower-priority credentials:
+### 7.2 Authenticated User Context Required (Blocker B)
+`AiCredentialContext.userId` is optional at the generic Phase 10 type layer. However, for Finora end-user AI resolution:
+- **`context.userId` missing:** MUST NOT be interpreted as permission to use the `SYSTEM` credential.
+- **Fail-Closed Resolution:**
+  ```text
+  context.userId missing
+  → no credential resolution
+  → no PERSONAL lookup
+  → no ADMIN_ASSIGNED lookup
+  → no SYSTEM fallback
+  → Throws AI_NOT_CONFIGURED (or null credential)
+  ```
+- The resolver **MUST** verify authenticated user context before querying or evaluating any credential source.
 
-1. **Storage / Decryption Corruption:**
-   - If AES-GCM auth tag verification fails or ciphertext is tampered with, throw `AI_CREDENTIAL_CORRUPTED`.
-   - **Do NOT fall back** to Admin or System keys.
-2. **Missing Master Key:**
-   - If the `key_id` in the envelope is missing from `FINORA_AI_CREDENTIAL_KEY_RING_JSON`, throw `AI_CREDENTIAL_KEY_UNAVAILABLE`.
-   - **Do NOT fall back** to Admin or System keys.
-3. **Provider Authentication Rejection:**
-   - If Google Gemini returns HTTP 400/401/403 (invalid, expired, or revoked API key), throw `AI_AUTH_FAILED`.
-   - **Do NOT fall back** to Admin or System keys.
+### 7.3 SYSTEM Is a User Fallback, Not Anonymous Quota
+The server environment variable `FINORA_SYSTEM_GEMINI_API_KEY` is defined strictly as:
+> **Default Gemini quota for an authenticated Finora user who has no active personal or admin-assigned credential.**
+
+It explicitly **DOES NOT** mean:
+- Anonymous user fallback
+- Unauthenticated server route fallback
+- Missing-user-context fallback
+- Generic public system quota
+
+All Phase 12 server routes will be strictly required to authenticate the user session via Supabase Auth before invoking AI operations.
+
+### 7.4 Provider Validation
+Phase 11 implements credentials for the Google Gemini provider only:
+- `context.providerId === 'gemini'` → Eligible for Phase 11 multi-tier resolution.
+- `context.providerId !== 'gemini'` (unknown or unsupported provider) → Returns `null` / throws `AI_NOT_CONFIGURED`.
+- The resolver **MUST NEVER** return the Gemini system key for an arbitrary or unsupported future provider ID.
+
+### 7.5 Extended Normalized Error Taxonomy (Blocker A)
+Phase 11 implementation extends `AiErrorCode` in `src/lib/ai/errors.ts` to distinguish storage/decryption failures from provider authentication rejections:
+
+```typescript
+export type AiErrorCode =
+  // Existing Phase 10 error codes...
+  | 'AI_NOT_CONFIGURED'
+  | 'AI_AUTH_FAILED'
+  | 'AI_PROVIDER_UNAVAILABLE'
+  | 'AI_INVALID_REQUEST'
+  | 'AI_RATE_LIMITED'
+  | 'AI_TIMEOUT'
+  | 'AI_ABORTED'
+  | 'AI_BAD_RESPONSE'
+  | 'AI_SCHEMA_VALIDATION_FAILED'
+  | 'AI_UNKNOWN_ERROR'
+  // Phase 11 credential error extensions (Authorized):
+  | 'AI_CREDENTIAL_CORRUPTED'
+  | 'AI_CREDENTIAL_KEY_UNAVAILABLE'
+  | 'AI_CREDENTIAL_RESOLUTION_FAILED';
+```
+
+**Semantics & Mapping:**
+- `AI_CREDENTIAL_CORRUPTED`: AES-GCM authentication tag mismatch, tampered ciphertext, corrupted nonce, or malformed cryptographic envelope.
+- `AI_CREDENTIAL_KEY_UNAVAILABLE`: The envelope references a `key_id` that is not present in `FINORA_AI_CREDENTIAL_KEY_RING_JSON`, or the server encryption key ring is unavailable.
+- `AI_CREDENTIAL_RESOLUTION_FAILED`: Unexpected internal credential repository failure, database communication error during resolution, or unhandled resolver exception.
+- `AI_AUTH_FAILED`: Reserved strictly for upstream provider authentication failures (e.g., Google Gemini returns HTTP 400/401/403 rejecting the decrypted plaintext API key).
+
+**Sanitization Invariant:** No secret-bearing details (raw keys, key hints, nonces, or auth tags) may appear in error messages, logs, or error metadata.
+
+### 7.6 Router Credential Catch Contract (Blocker A)
+Phase 10's generic credential catch block in `src/lib/ai/router.ts` caught all resolver errors and converted them indiscriminately to `AI_AUTH_FAILED`.
+Under the Phase 11 authorized port extension, the router must preserve normalized `AiError` instances:
+
+```typescript
+try {
+  credential = await context.credentialProvider.resolveCredential(credentialContext);
+} catch (error) {
+  // Preserve intentional normalized credential errors
+  if (error instanceof AiError) {
+    return {
+      ok: false,
+      error,
+    };
+  }
+
+  // Wrap unexpected resolver exceptions in AI_CREDENTIAL_RESOLUTION_FAILED
+  return {
+    ok: false,
+    error: new AiError({
+      code: 'AI_CREDENTIAL_RESOLUTION_FAILED',
+      message: 'Failed to resolve AI credential.',
+      providerId,
+    }),
+  };
+}
+```
+The router **MUST NOT** map arbitrary credential storage or decryption failures to `AI_AUTH_FAILED`.
+
+### 7.7 Credential Error Fallback Rule (Strict Fail-Closed)
+Fallback to a lower-priority credential source occurs **ONLY** when a higher-priority credential is **absent, unconfigured, or explicitly revoked (`is_active = false`)**.
+Once a higher-priority credential source is selected for resolution, any subsequent error **FAILS CLOSED** and **MUST NEVER** fall back to lower-priority credentials:
+
+```text
+selected PERSONAL corrupted
+→ AI_CREDENTIAL_CORRUPTED
+→ NO ADMIN fallback
+→ NO SYSTEM fallback
+
+selected PERSONAL key_id unavailable
+→ AI_CREDENTIAL_KEY_UNAVAILABLE
+→ NO fallback
+
+selected ADMIN_ASSIGNED corrupted
+→ AI_CREDENTIAL_CORRUPTED
+→ NO SYSTEM fallback
+
+selected Gemini credential rejected (HTTP 401/403)
+→ AI_AUTH_FAILED
+→ NO fallback
+```
 
 **Security & Financial Justification:** Silently falling back when a user's personal key fails would mask configuration errors, violate user intent, and surreptitiously consume instance administrator or system quota.
 
-### 7.3 Decoupling: Deterministic Finance Unaffected
+### 7.8 Decoupling: Deterministic Finance Unaffected
 Finora's core personal finance OS (balances, transactions, transfers, budgets, goals, reports) is completely decoupled from AI. Missing master keys, unconfigured AI credentials, or AI provider outages **MUST NOT** impact core financial tracking. Credential encryption is evaluated lazily only when AI features are invoked.
 
 ---
@@ -512,25 +643,48 @@ The structural verification gate must prove:
 10. Zero direct `supabase.schema('private')` calls in application repository code.
 11. Zero `process.env.GEMINI_API_KEY` lookups in provider adapters.
 
-### 10.2 Two-User Runtime Security Test Matrix
+### 10.2 Phase 11 Security & Error Runtime Test Matrix
 
-| Test ID | Scenario | Verification Criteria |
-| :--- | :--- | :--- |
-| `SEC-01` | User A saves personal key | Key encrypted with AES-256-GCM. Typed envelope stored in `private.ai_credentials`. No plaintext in database. |
-| `SEC-02` | User A reads metadata | Receives masked hint (`••••••••••92K`) and `activeResolvedSource = PERSONAL`. No ciphertext or plaintext in response. |
-| `SEC-03` | User B queries metadata | User B sees `hasPersonalCredential = false`. Cannot view User A's metadata or status. |
-| `SEC-04` | Direct Data API attack on `private` | Unprivileged HTTP request targeting `/rest/v1/private/ai_credentials` fails closed (404/403). |
-| `SEC-05` | Direct Data API attack on RPC | Authenticated client invoking `rpc/ai_credentials_read_for_service` rejected with 403 Forbidden. |
-| `SEC-06` | Priority: Personal > Admin | User with both active personal and admin-assigned keys resolves `PERSONAL`. |
-| `SEC-07` | Priority: Admin > System | User with admin-assigned key and system key configured resolves `ADMIN_ASSIGNED`. |
-| `SEC-08` | Fallback: Revoked Personal | Revoking personal key allows resolver to select `ADMIN_ASSIGNED` or `SYSTEM`. |
-| `SEC-09` | Invariant: Auth Tag Mismatch | Tampered ciphertext or AAD throws `AI_CREDENTIAL_CORRUPTED`. **No fallback** to lower priority. |
-| `SEC-10` | Invariant: Missing Key ID | Envelope with unknown master key ID throws `AI_CREDENTIAL_KEY_UNAVAILABLE`. **No fallback** to lower priority. |
-| `SEC-11` | Invariant: Gemini 401/403 | Invalid Gemini key throws `AI_AUTH_FAILED`. **No fallback** to lower priority. |
-| `SEC-12` | Non-admin assigns key | Request rejected with HTTP 403 Forbidden. |
-| `SEC-13` | AAD Transplantation Attack | Swapping `owner_user_id` or `source` across records causes AES-GCM decryption failure. |
+| Test ID | Category | Scenario | Verification Criteria |
+| :--- | :--- | :--- | :--- |
+| `SEC-01` | Encryption | User A saves personal key | Key encrypted with AES-256-GCM. Typed envelope stored in `private.ai_credentials`. No plaintext in database. |
+| `SEC-02` | Metadata DTO | User A reads metadata | Receives masked hint (`••••••••••92K`) and `activeResolvedSource = PERSONAL`. No ciphertext or plaintext in response. |
+| `SEC-03` | Isolation | User B queries metadata | User B sees `hasPersonalCredential = false`. Cannot view User A's metadata or status. |
+| `SEC-04` | PostgREST API | Direct Data API attack on `private` | Unprivileged HTTP request targeting `/rest/v1/private/ai_credentials` fails closed (404/403). |
+| `SEC-05` | PostgREST API | Direct Data API attack on RPC | Authenticated client invoking `rpc/ai_credentials_read_for_service` rejected with 403 Forbidden. |
+| `SEC-06` | Priority | Priority: Personal > Admin | User with both active personal and admin-assigned keys resolves `PERSONAL`. |
+| `SEC-07` | Priority | Priority: Admin > System | User with admin-assigned key and system key configured resolves `ADMIN_ASSIGNED`. |
+| `SEC-08` | Priority | Fallback: Revoked Personal | Revoking personal key allows resolver to select `ADMIN_ASSIGNED` or `SYSTEM`. |
+| `SEC-09` | Error Fail-Closed | Invariant: Auth Tag Mismatch | Tampered ciphertext or AAD throws `AI_CREDENTIAL_CORRUPTED`. **No fallback** to lower priority. |
+| `SEC-10` | Error Fail-Closed | Invariant: Missing Key ID | Envelope with unknown master key ID throws `AI_CREDENTIAL_KEY_UNAVAILABLE`. **No fallback** to lower priority. |
+| `SEC-11` | Error Fail-Closed | Invariant: Gemini 401/403 | Invalid Gemini key throws `AI_AUTH_FAILED`. **No fallback** to lower priority. |
+| `SEC-12` | Authorization | Non-admin assigns key | Request rejected with HTTP 403 Forbidden. |
+| `SEC-13` | Cryptography | AAD Transplantation Attack | Swapping `owner_user_id` or `source` across records causes AES-GCM decryption failure. |
+| `SEC-USER-01` | Context Invariant | Missing `context.userId` with System Key | When `context.userId` is absent, resolver does **NOT** return `SYSTEM` key; fails closed with `AI_NOT_CONFIGURED`. |
+| `SEC-USER-02` | Context Invariant | Authenticated User A with System Key | Authenticated user with no personal or admin-assigned key resolves `SYSTEM`. |
+| `SEC-PROVIDER-01`| Provider Invariant| Unsupported provider request | Resolver rejects non-Gemini provider IDs even if Gemini system key is configured (`AI_NOT_CONFIGURED`). |
+| `SEC-ERROR-01` | Error Propagation | Resolver throws `AI_CREDENTIAL_CORRUPTED` | Router catch preserves `AI_CREDENTIAL_CORRUPTED` without remapping to `AI_AUTH_FAILED`. |
+| `SEC-ERROR-02` | Error Propagation | Resolver throws `AI_CREDENTIAL_KEY_UNAVAILABLE` | Router catch preserves `AI_CREDENTIAL_KEY_UNAVAILABLE` without remapping to `AI_AUTH_FAILED`. |
+| `SEC-ERROR-03` | Error Propagation | Unexpected resolver runtime exception | Router wraps generic runtime errors in `AI_CREDENTIAL_RESOLUTION_FAILED`. |
+| `SEC-FK-01` | Provenance FK | Delete assigning admin with active credential | Foreign key `ON DELETE RESTRICT` aborts deletion of administrator account until assignment is revoked. |
+| `SEC-FK-02` | Provenance FK | Delete assigning admin after revocation | Once active credential assignment is revoked or reassigned, administrator deletion succeeds. |
 
-### 10.3 Live Persistence Smoke Contract (Future Phase 11 Closure)
+### 10.3 Phase 10 Non-Regression Verification Contract
+When Phase 11 implementation is authorized and executed, the following Phase 10 test suites must be executed and confirmed passing without regressions:
+1. `npx tsx tests/phase10-ai-foundation.test.ts`
+2. `node scripts/verify-phase10-source.mjs`
+
+**Required Non-Regression Assertions:**
+- **Provider Abstraction:** `src/lib/ai/providers/registry.ts` and `src/lib/ai/types.ts` remain decoupled from business logic and concrete SDK details.
+- **Operation Fail-Closed:** Unknown or unconfigured AI operations throw `AI_INVALID_REQUEST` without attempting execution.
+- **Structured Schema Validation:** Strict Zod schema validation parses and validates all model responses; malformed responses throw `AI_SCHEMA_VALIDATION_FAILED`.
+- **Abort vs Timeout Semantics:** `AbortSignal` cancellation throws `AI_ABORTED`; runtime timeout throws `AI_TIMEOUT`.
+- **Gemini SDK Boundary Isolation:** `@google/genai` is imported strictly within `src/lib/ai/providers/gemini.ts` and marked server-only.
+- **Credential Error Propagation:** Authorized port extension correctly forwards `AI_CREDENTIAL_CORRUPTED` and `AI_CREDENTIAL_KEY_UNAVAILABLE` through router.
+- **Exception Sanitization:** Generic resolver exceptions are wrapped in `AI_CREDENTIAL_RESOLUTION_FAILED` without exposing secret material or call stacks.
+- **No Unvalidated Output Casts:** All output processing preserves validated domain contracts.
+
+### 10.4 Live Persistence Smoke Contract (Future Phase 11 Closure)
 When Phase 11 implementation is executed, production closure will require human verification:
 1. **Initial Unconfigured State:** `/settings` displays default status with no personal key.
 2. **Personal Key Save:** Save personal API key. Outbound request body contains plaintext (expected transport). Response contains masked suffix only (`••••••••••92K`).
