@@ -209,7 +209,7 @@ export default function AdminPage() {
         subtitle="Cấu hình hệ thống, AI Provider, người dùng và tỷ giá hối đoái."
       >
         <Badge variant="outline" className="font-mono text-xs px-2.5 py-1">
-          Bản thử nghiệm giao diện Phase 1
+          Admin Console
         </Badge>
       </PageHeader>
 
@@ -500,15 +500,13 @@ export default function AdminPage() {
                   {/* Target User Status Panel */}
                   {targetUserDTO && (
                     <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
-                        <div>
-                          <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-                            Tài khoản mục tiêu
-                          </span>
-                          <p className="text-sm font-medium text-foreground mt-0.5">
-                            {targetUserDTO.email}
-                          </p>
-                        </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b pb-2">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                          Tài khoản mục tiêu
+                        </span>
+                        <p className="text-sm font-semibold font-mono text-foreground">
+                          {targetUserDTO.email}
+                        </p>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -561,7 +559,7 @@ export default function AdminPage() {
                       {/* Form to Assign or Replace Key */}
                       <form onSubmit={handleAssignCredential} className="space-y-3 pt-2 border-t">
                         <div className="space-y-1.5">
-                          <Label htmlFor="adminAssignKeyInput" className="text-xs font-medium">
+                          <Label htmlFor="adminAssignKeyInput" className="text-xs font-semibold">
                             {targetUserDTO.metadata.hasAdminAssignedCredential
                               ? 'Thay thế khóa Admin cấp cho người dùng này'
                               : 'Cấp khóa Google Gemini API mới cho người dùng này'}
@@ -574,10 +572,10 @@ export default function AdminPage() {
                             value={adminAssignKeyInput}
                             onChange={(e) => setAdminAssignKeyInput(e.target.value)}
                             disabled={isAssigningKey}
-                            className="font-mono text-xs"
+                            className="font-mono text-xs w-full"
                           />
                           <p className="text-[11px] text-muted-foreground">
-                            Khóa sẽ được mã hóa và lưu trữ tại bảng thông tin bảo mật. Người dùng không cần cấu hình khóa cá nhân.
+                            Khóa người dùng được mã hóa AES-256-GCM và quản lý qua lớp credential server-side của Finora. Giá trị khóa không được đọc ngược ra giao diện.
                           </p>
                         </div>
 
@@ -600,7 +598,7 @@ export default function AdminPage() {
                               )}
                             </Button>
                           ) : (
-                            <span />
+                            <div />
                           )}
 
                           <Button
@@ -639,7 +637,7 @@ export default function AdminPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSaveAIConfig} className="space-y-4 max-w-2xl">
+              <form onSubmit={handleSaveAIConfig} className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Nhà cung cấp AI mặc định</Label>
                   <Input value="Google Gemini API (Vertex / AI Studio)" disabled />
@@ -647,20 +645,20 @@ export default function AdminPage() {
 
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <Label htmlFor="systemKey">Khóa API mặc định hệ thống (System Key — Preview)</Label>
+                    <Label htmlFor="systemKey">Khóa API mặc định hệ thống (System Key)</Label>
                     <span className="text-xs text-muted-foreground font-mono flex items-center">
                       <Lock className="h-3 w-3 mr-1" />
-                      Credential management preview
+                      Server-side config
                     </span>
                   </div>
                   <Input
                     id="systemKey"
-                    value="AIzaSy••••••••••••••••••••••••••••"
+                    value="Chưa cấu hình (Server-side)"
                     disabled
-                    className="font-mono bg-muted"
+                    className="font-mono bg-muted text-muted-foreground text-xs"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Bản xem trước quản lý khóa — Cơ chế mã hóa và lưu trữ an toàn server-side chưa được triển khai ở Phase 1.
+                    Khóa hệ thống được quản lý bằng cấu hình server. Không hiển thị giá trị khóa trong giao diện.
                   </p>
                 </div>
 
@@ -692,14 +690,19 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-3">
+                <div className="p-3 rounded-lg border bg-muted/20 text-xs text-muted-foreground flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span>Cấu hình model hiện là preview giao diện và chưa được lưu vào backend.</span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
                   {savedSuccess ? (
                     <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center">
                       <CheckCircle2 className="h-4 w-4 mr-1" />
                       Đã cập nhật cấu hình mô phỏng (Preview only — Chưa lưu backend)
                     </span>
                   ) : (
-                    <span />
+                    <div />
                   )}
                   <Button type="submit">Lưu cấu hình</Button>
                 </div>

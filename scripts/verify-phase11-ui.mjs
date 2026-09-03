@@ -183,7 +183,7 @@ check('ADMIN_FILE_EXISTS', fs.existsSync(adminPath), 'admin/page.tsx must exist'
 if (fs.existsSync(adminPath)) {
   const adminContent = fs.readFileSync(adminPath, 'utf8');
   check('ADMIN_USE_CLIENT', adminContent.includes("'use client'") || adminContent.includes('"use client"'), "admin/page.tsx must start with 'use client'");
-  check('ADMIN_IMPORTS_ACTIONS', adminContent.includes('getAdminAiCredentialTarget') && adminContent.includes('saveAdminAssignedCredential'), 'admin page must import admin actions');
+  check('ADMIN_IMPORTS_ACTIONS', adminContent.includes('getAdminAiCredentialTarget') && adminContent.includes('saveAdminAssignedCredential') && adminContent.includes('revokeAdminAssignedCredential'), 'admin page must import admin actions');
   check('ADMIN_PASSWORD_INPUT', adminContent.includes('type="password"'), 'admin page must use type="password" for credential assignment');
   check('ADMIN_AUTOCOMPLETE_OFF', adminContent.includes('autoComplete="off"'), 'admin page must specify autoComplete="off"');
   check('ADMIN_NO_SERVER_CRYPTO', !adminContent.includes("from 'node:crypto'") && !adminContent.includes("from 'crypto'"), 'admin page must not import crypto');
@@ -194,6 +194,13 @@ if (fs.existsSync(adminPath)) {
     adminContent.includes('!isAdmin') && adminContent.includes('Access Denied'),
     'admin page must hide functional form and show Access Denied when non-admin'
   );
+  check('ADMIN_FAKE_KEY_PREVIEW_ABSENT', !adminContent.includes('AIzaSy••••'), 'admin page must not render fake API-key-shaped System Key preview');
+  check('ADMIN_OBSOLETE_PHASE1_WORDING_ABSENT', !adminContent.includes('chưa được triển khai ở Phase 1'), 'admin page must not claim Phase 1 credential storage is unbuilt');
+  check('ADMIN_ASSIGN_REVOKE_WIRED', adminContent.includes('handleAssignCredential') && adminContent.includes('handleRevokeAssignedCredential'), 'admin page must wire assign and revoke handlers');
+  check('ADMIN_NO_PLAINTEXT_READBACK', !adminContent.includes('plaintextKey') && !adminContent.includes('decryptedKey'), 'admin page must not introduce plaintext readback');
+  check('ADMIN_AI_PROVIDER_NO_MAX_W_2XL', !adminContent.includes('max-w-2xl'), 'admin page must not have max-w-2xl mismatch in AI tab layout');
+  check('ADMIN_MODEL_PREVIEW_WORDING_PRESENT', adminContent.includes('Cấu hình model hiện là preview giao diện và chưa được lưu vào backend'), 'admin page must preserve preview-only model wording');
+  check('ADMIN_CONSOLE_BADGE_PRESENT', adminContent.includes('Admin Console'), 'admin page header badge must reflect Admin Console');
 }
 
 // 6. Client Storage & Secret Boundary Checks
