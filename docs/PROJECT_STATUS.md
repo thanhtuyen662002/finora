@@ -913,8 +913,12 @@ Status: **DISCOVERY / CONTRACT PENDING INDEPENDENT AUDIT**
   - Preview-and-confirm invariant strictly enforced (AI produces structured in-memory draft; explicit user save required).
   - Server-only execution (`import 'server-only'`), authenticated session required (`auth.getUser()`).
   - Financial domain data fetched via authenticated RLS client only (service role strictly isolated to Phase 11 credential subsystem).
-  - Ephemeral request-scoped opaque tokens (`ACC_1`, `CAT_1`, `SRC_1`) prevent raw UUID exposure and model hallucinations.
-  - Strict string-decimal monetary handling via `src/lib/money.ts` (never JavaScript numbers).
+  - Ephemeral request-scoped opaque tokens (`ACC_1`, `CAT_1`, `SRC_1`, `STR_1`) prevent raw UUID exposure and model hallucinations.
+  - Strict string-decimal monetary handling via `src/lib/money/index.ts` (never JavaScript numbers).
+  - Dual boundary schema: `AiTransactionParseOutput` (model/provider boundary, 0 UUIDs) vs `ParsedTransactionDraft` (server/application boundary, post-validation UUIDs + warning codes).
+  - Deterministic server-generated warning codes (`TransactionDraftWarningCode`), 0 trusted model warning strings.
+  - Numeric confidence rejected (`PHASE_12A_NUMERIC_CONFIDENCE=false`) in favor of deterministic null fields + warning codes.
+  - Full domain cross-validation (Account/Currency, Category/Type, Income Stream/Parent).
   - Zero persistent raw prompt / raw response storage; zero database schema changes for Phase 12A (`PHASE_12_FIRST_PASS_DATABASE_CHANGE=NONE`).
 - **Pass Decomposition:**
   - `Phase 12A`: Natural-Language Transaction Draft & Smart Category Suggestion (1 Gemini call, draft preview)
