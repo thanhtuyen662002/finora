@@ -34,10 +34,13 @@ export function buildCanonicalAad(
   return Buffer.from(canonicalString, 'utf8');
 }
 
+export const PRINTABLE_ASCII_KEY_HINT = /^[\x20-\x7E]{1,4}$/;
+
 /**
  * Generates a safe masked key hint from credential plaintext.
  * Strictly guarantees:
  * - 1 <= keyHint.length <= 4 (exactly 4 characters)
+ * - Printable ASCII only (/^[\x20-\x7E]{1,4}$/)
  * - keyHint !== normalized plaintext for every accepted credential
  * - never leaks full secret for credentials > 4 characters
  */
@@ -45,15 +48,18 @@ export function buildCredentialKeyHint(plaintext: string): string {
   const normalized = plaintext.trim();
   if (normalized.length > 4) {
     const hint = normalized.slice(-4);
-    if (hint !== normalized) {
+    if (hint !== normalized && PRINTABLE_ASCII_KEY_HINT.test(hint)) {
       return hint;
     }
   }
-  const mask = '••••';
-  if (normalized === mask) {
+  const defaultMask = '****';
+  if (normalized === defaultMask) {
+    return '####';
+  }
+  if (normalized === '####') {
     return '****';
   }
-  return mask;
+  return defaultMask;
 }
 
 export const generateKeyHint = buildCredentialKeyHint;

@@ -73,6 +73,7 @@ CREATE TABLE private.ai_credentials (
       AND ciphertext IS NOT NULL AND octet_length(ciphertext) > 0
       AND auth_tag IS NOT NULL AND octet_length(auth_tag) = 16
       AND key_hint IS NOT NULL AND length(key_hint) BETWEEN 1 AND 4
+      AND key_hint ~ '^[ -~]{1,4}$'
     )
     OR
     (

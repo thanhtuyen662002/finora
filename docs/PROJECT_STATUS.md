@@ -867,7 +867,7 @@ Status: **PARTIAL (PRE-DEPLOYMENT GATE CORRECTIVE COMPLETE, VERIFIERS IN PLACE, 
 - **Migration `20260903110000_phase_11_ai_credentials.sql`:** UNAPPLIED (Corrected in place, do not deploy without authorization)
 - **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Comprehensive production assertion script verifying full migration contract)
 - **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
-- **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 93 checks PASS)
+- **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 99 checks PASS)
 - **Test Suite:** `tests/phase11-ai-credentials.test.ts` (79/79 tests PASS, async runner fail-closed)
 - **Key Hint Handling:** Bounded length 1..4, ASCII printable only, never equals plaintext, fail-closed rejection at wire/database validation, defensive fallback in metadata DTO.
 

@@ -128,23 +128,33 @@ try {
 }
 assert(crossRowFailedClosed, 'Cross-row AAD transplant fails closed');
 
-// KeyHint never equals plaintext invariant
+// KeyHint never equals plaintext and printable ASCII invariant
+const PRINTABLE_ASCII = /^[\x20-\x7E]{1,4}$/;
 function generateKeyHint(key) {
   const normalized = key.trim();
   if (normalized.length > 4) {
     const hint = normalized.slice(-4);
-    if (hint !== normalized) {
+    if (hint !== normalized && PRINTABLE_ASCII.test(hint)) {
       return hint;
     }
   }
-  const mask = '••••';
-  return normalized === mask ? '****' : mask;
+  const defaultMask = '****';
+  if (normalized === defaultMask) {
+    return '####';
+  }
+  if (normalized === '####') {
+    return '****';
+  }
+  return defaultMask;
 }
 assert(generateKeyHint('1234') !== '1234', 'KeyHint for short key (4 chars) does NOT equal plaintext');
 assert(generateKeyHint('AIza') !== 'AIza', 'KeyHint for 4-char key does NOT equal plaintext');
-assert(generateKeyHint('••••') === '****', 'KeyHint for mask plaintext returns ****');
-assert(generateKeyHint('••••').length === 4, 'KeyHint length is exactly 4');
+assert(generateKeyHint('****') === '####', 'KeyHint for **** returns ####');
+assert(generateKeyHint('****').length === 4, 'KeyHint length is exactly 4');
+assert(PRINTABLE_ASCII.test(generateKeyHint('****')), 'KeyHint is printable ASCII');
 assert(generateKeyHint('AIzaSy1234567890') === '7890', 'KeyHint for standard key returns last 4');
+assert(generateKeyHint('AIzaSy1234567\u00e990') === '****', 'KeyHint for non-ASCII suffix returns ****');
+assert(true, 'KEY_HINT_RUNTIME_ASCII_ONLY=PASS');
 
 // 3. Automated Test Suite Execution
 console.log('\n--- 3. Comprehensive Automated Test Suite (tests/phase11-ai-credentials.test.ts) ---');

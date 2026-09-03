@@ -484,8 +484,50 @@ check(
   'SAFE_KEY_HINT_GENERATOR',
   metadataTs.includes('generateKeyHint') &&
     cryptoTs.includes('buildCredentialKeyHint') &&
-    cryptoTs.includes("const mask = '••••'"),
-  'metadata.ts and crypto.ts must ensure keyHint never equals plaintext'
+    cryptoTs.includes("defaultMask = '****'") &&
+    !cryptoTs.includes('••••'),
+  'metadata.ts and crypto.ts must ensure keyHint never equals plaintext and contains no unicode bullet mask'
+);
+
+check(
+  'KEY_HINT_WRITER_PRINTABLE_ASCII_ONLY',
+  cryptoTs.includes('PRINTABLE_ASCII_KEY_HINT') &&
+    cryptoTs.includes('[\\x20-\\x7E]') &&
+    cryptoTs.includes("defaultMask = '****'") &&
+    cryptoTs.includes("normalized === defaultMask") &&
+    cryptoTs.includes("'####'"),
+  'crypto.ts buildCredentialKeyHint must output printable ASCII only and preserve keyHint !== plaintext'
+);
+
+const credFiles = fs.readdirSync(path.join(ROOT, 'src/lib/ai/credentials')).map((f) => path.join(ROOT, 'src/lib/ai/credentials', f));
+let unicodeMaskRuntimeCount = 0;
+for (const f of credFiles) {
+  if (fs.readFileSync(f, 'utf8').includes('••••')) {
+    unicodeMaskRuntimeCount++;
+  }
+}
+check(
+  'KEY_HINT_UNICODE_MASK_RUNTIME_COUNT=0',
+  unicodeMaskRuntimeCount === 0,
+  `Expected 0 runtime credential files containing unicode bullet mask, found ${unicodeMaskRuntimeCount}`
+);
+
+check(
+  'WIRE_KEY_HINT_PRINTABLE_ASCII_ONLY',
+  repoTs.includes('validateWireKeyHint') &&
+    repoTs.includes('PRINTABLE_ASCII_KEY_HINT') &&
+    repoTs.includes('KEY_HINT_MAX_LENGTH') &&
+    !repoTs.includes('••••'),
+  'repository.ts validateWireKeyHint must strictly validate printable ASCII 1..4 without mutating string'
+);
+
+check(
+  'METADATA_KEY_HINT_PRINTABLE_ASCII_ONLY',
+  metadataTs.includes('sanitizeSafeKeyHint') &&
+    metadataTs.includes('PRINTABLE_ASCII_KEY_HINT') &&
+    metadataTs.includes("personalKeyHint = safeHint ?? '****'") &&
+    !metadataTs.includes('••••'),
+  'metadata.ts sanitizeSafeKeyHint must accept only printable ASCII 1..4 and fall back to ASCII mask'
 );
 
 // 27. Admin Authority Environment-Only
@@ -636,6 +678,13 @@ check(
 );
 
 check(
+  'STRUCTURAL_KEY_HINT_PRINTABLE_ASCII_ASSERTION',
+  structuralSql.includes('[ -~') &&
+    structuralSql.includes('STRUCTURAL_KEY_HINT_PRINTABLE_ASCII=PASS'),
+  'Structural verifier must assert printable ASCII check on active key_hint'
+);
+
+check(
   'STRUCTURAL_EXACT_RPC_SIGNATURES',
   structuralSql.includes('ai_credentials_read_for_service') &&
     structuralSql.includes('ai_credentials_write_for_service') &&
@@ -670,6 +719,12 @@ check(
     migrationSql
   ),
   'Migration crypto material CHECK must enforce length(key_hint) BETWEEN 1 AND 4'
+);
+
+check(
+  'MIGRATION_KEY_HINT_PRINTABLE_ASCII_CHECK',
+  /key_hint\s*~\s*'\^\[ -~\]\{1,4\}\$'/i.test(migrationSql),
+  'Migration crypto material CHECK must restrict key_hint to printable ASCII ^[ -~]{1,4}$'
 );
 
 console.log(`\nPhase 11 Verification: ${passedChecks} passed, ${failedChecks} failed.`);

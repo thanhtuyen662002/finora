@@ -15,6 +15,7 @@ import { decodePostgresBytea, encodePostgresBytea } from './bytea';
 import {
   AES_AUTH_TAG_BYTES,
   AES_NONCE_BYTES,
+  PRINTABLE_ASCII_KEY_HINT,
   encryptCredential,
   validateCredentialPlaintext,
   validatePlaintextApiKey,
@@ -72,7 +73,7 @@ export const KEY_HINT_MAX_LENGTH = 4;
 
 /**
  * Validates untrusted wire key_hint from database/RPC response.
- * Enforces string type, 1 <= length <= 4, and no ASCII control characters/newlines.
+ * Enforces string type, 1 <= length <= 4, and printable ASCII only (^[\x20-\x7E]{1,4}$).
  * Fails closed with AI_CREDENTIAL_CORRUPTED.
  */
 export function validateWireKeyHint(raw: unknown): string {
@@ -82,20 +83,13 @@ export function validateWireKeyHint(raw: unknown): string {
       message: 'Wire credential record key_hint must be a string.',
     });
   }
-  const trimmed = raw.trim();
-  if (trimmed.length < 1 || trimmed.length > KEY_HINT_MAX_LENGTH) {
+  if (raw.trim().length === 0 || !PRINTABLE_ASCII_KEY_HINT.test(raw)) {
     throw new AiError({
       code: 'AI_CREDENTIAL_CORRUPTED',
-      message: `Wire credential record key_hint length must be between 1 and ${KEY_HINT_MAX_LENGTH}, got ${trimmed.length}.`,
+      message: `Wire credential record key_hint must be 1 to ${KEY_HINT_MAX_LENGTH} printable ASCII characters.`,
     });
   }
-  if (/[\x00-\x1F\x7F]/.test(raw) || /[\x00-\x1F\x7F]/.test(trimmed)) {
-    throw new AiError({
-      code: 'AI_CREDENTIAL_CORRUPTED',
-      message: 'Wire credential record key_hint contains forbidden control characters.',
-    });
-  }
-  return trimmed;
+  return raw;
 }
 
 export function validateWireRecord(record: unknown): EncryptedEnvelopeWire {

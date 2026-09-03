@@ -1441,14 +1441,14 @@ async function runTests() {
     // Normal long key (> 4 chars) -> suffix only
     assert.strictEqual(buildCredentialKeyHint('AIzaSyD-secret-9281'), '9281');
 
-    // Exactly 4 chars -> masked with 4 bullets, NOT plaintext
+    // Exactly 4 chars -> masked with 4 ASCII asterisks, NOT plaintext
     const hint4 = buildCredentialKeyHint('ABCD');
-    assert.strictEqual(hint4, '••••');
+    assert.strictEqual(hint4, '****');
     assert.notStrictEqual(hint4, 'ABCD');
 
-    // 1 char -> masked with 4 bullets, NOT plaintext
+    // 1 char -> masked with 4 asterisks, NOT plaintext
     const hint1 = buildCredentialKeyHint('X');
-    assert.strictEqual(hint1, '••••');
+    assert.strictEqual(hint1, '****');
     assert.notStrictEqual(hint1, 'X');
 
     // Encrypting a short key produces masked keyHint
@@ -1460,7 +1460,7 @@ async function runTests() {
       keyId: 'key_v1',
       masterKey: testKey32A,
     });
-    assert.strictEqual(envShort.keyHint, '••••');
+    assert.strictEqual(envShort.keyHint, '****');
     assert.notStrictEqual(envShort.keyHint, 'AIza');
   });
 
@@ -1611,7 +1611,7 @@ async function runTests() {
   });
 
   test('74. DB key_hint with valid 4-character hint accepted by validateWireRecord', () => {
-    for (const validHint of ['1234', '••••', '****', 'abcd', '9999']) {
+    for (const validHint of ['1234', '****', 'abcd', '9999', '####', '7890']) {
       const rawWire = {
         id: randomUUID(),
         owner_user_id: userA,
@@ -1662,7 +1662,7 @@ async function runTests() {
 
     assert.strictEqual(metadata.hasPersonalCredential, true);
     // Leaked full secret must be defensively replaced with safe fallback mask
-    assert.strictEqual(metadata.personalKeyHint, '••••');
+    assert.strictEqual(metadata.personalKeyHint, '****');
     assert.notStrictEqual(metadata.personalKeyHint, fullSecret);
     assert.ok(!fullSecret.includes(metadata.personalKeyHint!));
   });
@@ -1670,53 +1670,71 @@ async function runTests() {
   test('76. buildCredentialKeyHint explicit behavior and invariants', () => {
     // 1-char credential
     const hint1 = buildCredentialKeyHint('x');
-    assert.strictEqual(hint1, '••••');
+    assert.strictEqual(hint1, '****');
     assert.strictEqual(hint1.length, 4);
     assert.notStrictEqual(hint1, 'x');
 
     // 4-char credential
     const hint4 = buildCredentialKeyHint('abcd');
-    assert.strictEqual(hint4, '••••');
+    assert.strictEqual(hint4, '****');
     assert.strictEqual(hint4.length, 4);
     assert.notStrictEqual(hint4, 'abcd');
 
-    // credential "••••"
-    const hintMask = buildCredentialKeyHint('••••');
-    assert.strictEqual(hintMask, '****');
-    assert.strictEqual(hintMask.length, 4);
-    assert.notStrictEqual(hintMask, '••••');
+    // short ASCII credential "1234" -> ASCII mask -> hint !== plaintext
+    const hint1234 = buildCredentialKeyHint('1234');
+    assert.strictEqual(hint1234, '****');
+    assert.notStrictEqual(hint1234, '1234');
 
-    // normal long credential
+    // plaintext "****" -> different ASCII hint ("####") -> hint !== plaintext
+    const hintAsterisks = buildCredentialKeyHint('****');
+    assert.strictEqual(hintAsterisks, '####');
+    assert.strictEqual(hintAsterisks.length, 4);
+    assert.notStrictEqual(hintAsterisks, '****');
+
+    // plaintext "####" -> different ASCII hint ("****") -> hint !== plaintext
+    const hintHashes = buildCredentialKeyHint('####');
+    assert.strictEqual(hintHashes, '****');
+    assert.notStrictEqual(hintHashes, '####');
+
+    // credential ending in non-ASCII characters -> ASCII mask
+    const hintNonAscii = buildCredentialKeyHint('AIzaSy1234567\u00e990');
+    assert.strictEqual(hintNonAscii, '****');
+    assert.notStrictEqual(hintNonAscii, 'AIzaSy1234567\u00e990');
+
+    // normal long credential ending "7890" -> hint "7890"
     const hintLong = buildCredentialKeyHint('AIzaSy1234567890');
     assert.strictEqual(hintLong, '7890');
     assert.strictEqual(hintLong.length, 4);
     assert.notStrictEqual(hintLong, 'AIzaSy1234567890');
 
-    // Invariants for random credentials
+    // Invariants for diverse credentials
     const testCases = [
       'a', 'ab', 'abc', 'abcd', 'abcde', 'AIzaSyDUMMY_KEY_XYZ_9999',
-      '••••', '****', '12345', 'super-secret-production-token-1234'
+      '1234', '****', '####', '12345', 'super-secret-production-token-1234',
+      'secret-\u2022\u2022\u2022\u2022', 'key-\u00e9\u00e0\u00f4\u00fb'
     ];
     for (const tc of testCases) {
       const hint = buildCredentialKeyHint(tc);
       assert.ok(hint.length >= 1 && hint.length <= 4, `Length must be 1..4 for ${tc}`);
+      assert.ok(/^[\x20-\x7E]{1,4}$/.test(hint), `Hint must be printable ASCII for ${tc}`);
       assert.notStrictEqual(hint, tc.trim(), `Hint must never equal plaintext for ${tc}`);
     }
   });
 
   test('77. validateWireKeyHint helper strictly enforces contract', () => {
-    // Valid hints (1..4 chars, no control chars)
+    // Valid hints (1..4 chars, printable ASCII only)
     assert.strictEqual(validateWireKeyHint('7890'), '7890');
+    assert.strictEqual(validateWireKeyHint('abcd'), 'abcd');
     assert.strictEqual(validateWireKeyHint('a'), 'a');
-    assert.strictEqual(validateWireKeyHint('••••'), '••••');
     assert.strictEqual(validateWireKeyHint('****'), '****');
+    assert.strictEqual(validateWireKeyHint('####'), '####');
     assert.strictEqual(KEY_HINT_MAX_LENGTH, 4);
 
     // Invalid non-string
     assert.throws(() => validateWireKeyHint(null), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
     assert.throws(() => validateWireKeyHint(1234), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
 
-    // Invalid empty
+    // Invalid empty or all whitespace
     assert.throws(() => validateWireKeyHint(''), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
     assert.throws(() => validateWireKeyHint('   '), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
 
@@ -1724,16 +1742,42 @@ async function runTests() {
     assert.throws(() => validateWireKeyHint('12345'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
     assert.throws(() => validateWireKeyHint('ABCDEF'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
 
-    // Invalid control characters
+    // Invalid Unicode bullets (\u2022\u2022\u2022\u2022) -> AI_CREDENTIAL_CORRUPTED
+    assert.throws(
+      () => validateWireKeyHint('\u2022\u2022\u2022\u2022'),
+      (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // Invalid non-ASCII ("éabc") -> AI_CREDENTIAL_CORRUPTED
+    assert.throws(
+      () => validateWireKeyHint('\u00e9abc'),
+      (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // Invalid emoji -> AI_CREDENTIAL_CORRUPTED
+    assert.throws(
+      () => validateWireKeyHint('\u{1F511}'),
+      (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED'
+    );
+
+    // Invalid control characters / newline / tab
     assert.throws(() => validateWireKeyHint('ab\nc'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
     assert.throws(() => validateWireKeyHint('a\x00b'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+    assert.throws(() => validateWireKeyHint('a\tb'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
+    assert.throws(() => validateWireKeyHint('a\rb'), (err: any) => err.code === 'AI_CREDENTIAL_CORRUPTED');
   });
 
   test('78. sanitizeSafeKeyHint helper defensively bounds metadata hints', () => {
-    // Valid hints
+    // Valid printable ASCII hints (1..4 chars)
     assert.strictEqual(sanitizeSafeKeyHint('7890'), '7890');
-    assert.strictEqual(sanitizeSafeKeyHint('••••'), '••••');
+    assert.strictEqual(sanitizeSafeKeyHint('abcd'), 'abcd');
+    assert.strictEqual(sanitizeSafeKeyHint('****'), '****');
     assert.strictEqual(sanitizeSafeKeyHint('a'), 'a');
+
+    // Unicode hint -> rejected (returns null, never returned unchanged)
+    assert.strictEqual(sanitizeSafeKeyHint('\u2022\u2022\u2022\u2022'), null);
+    assert.strictEqual(sanitizeSafeKeyHint('\u00e9abc'), null);
+    assert.strictEqual(sanitizeSafeKeyHint('\u{1F511}'), null);
 
     // Unsafe or invalid hints return null
     assert.strictEqual(sanitizeSafeKeyHint(null), null);
@@ -1743,6 +1787,33 @@ async function runTests() {
     assert.strictEqual(sanitizeSafeKeyHint('12345'), null);
     assert.strictEqual(sanitizeSafeKeyHint('AIzaSySecretLeaked'), null);
     assert.strictEqual(sanitizeSafeKeyHint('ab\ncd'), null);
+    assert.strictEqual(sanitizeSafeKeyHint('ab\tcd'), null);
+
+    // When building metadata with Unicode hint on wire, safe fallback mask is used
+    const rawWireUnicode = {
+      id: randomUUID(),
+      owner_user_id: userA,
+      source: 'PERSONAL' as const,
+      provider: 'GEMINI' as const,
+      assigned_by_user_id: null,
+      envelope_version: 1 as const,
+      key_id: 'key_v1',
+      nonce: '\\x0102030405060708090a0b0c',
+      ciphertext: '\\xaabb',
+      auth_tag: '\\x0102030405060708090a0b0c0d0e0f10',
+      key_hint: '\u2022\u2022\u2022\u2022',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+    const metaUnicode = buildSafeCredentialMetadata({
+      records: [rawWireUnicode],
+      hasSystemKeyConfigured: false,
+    });
+    // Metadata fallback is ASCII mask '****'
+    assert.strictEqual(metaUnicode.personalKeyHint, '****');
+    assert.ok(/^[\x20-\x7E]{1,4}$/.test(metaUnicode.personalKeyHint!));
   });
 
   // Await all collected tests before printing final success message

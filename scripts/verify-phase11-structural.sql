@@ -348,7 +348,7 @@ BEGIN
     END IF;
     RAISE NOTICE '[PASS] Assignment provenance CHECK constraint verified';
 
-    -- Crypto-Material Integrity CHECK (active rows have bounded key_hint BETWEEN 1 AND 4)
+    -- Crypto-Material Integrity CHECK (active rows have bounded key_hint BETWEEN 1 AND 4 and printable ASCII only)
     IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint c
@@ -361,6 +361,7 @@ BEGIN
           AND pg_get_constraintdef(c.oid) ~* 'octet_length\(nonce\)\s*=\s*12'
           AND pg_get_constraintdef(c.oid) ~* 'octet_length\(auth_tag\)\s*=\s*16'
           AND pg_get_constraintdef(c.oid) ~* 'key_hint.*length\(key_hint\)\s+BETWEEN\s+1\s+AND\s+4'
+          AND pg_get_constraintdef(c.oid) ~ 'key_hint\s*~\s*''\^\[ -~\]\{1,4\}\$'''
           AND pg_get_constraintdef(c.oid) ~* 'is_active\s*=\s*false'
           AND pg_get_constraintdef(c.oid) ~* 'revoked_at\s+IS\s+NOT\s+NULL'
           AND pg_get_constraintdef(c.oid) ~* 'key_id\s+IS\s+NULL'
@@ -371,7 +372,9 @@ BEGIN
     ) THEN
         RAISE EXCEPTION '[FAIL] Missing or invalid crypto material integrity CHECK constraint';
     END IF;
-    RAISE NOTICE '[PASS] Crypto material integrity CHECK constraint verified (active key_hint bounded 1-4)';
+    RAISE NOTICE '[PASS] Crypto material integrity CHECK constraint verified (active key_hint bounded 1-4 and printable ASCII)';
+    RAISE NOTICE '[PASS] STRUCTURAL_KEY_HINT_LENGTH_BOUND=PASS';
+    RAISE NOTICE '[PASS] STRUCTURAL_KEY_HINT_PRINTABLE_ASCII=PASS';
 
     -- -------------------------------------------------------------------------
     -- 10. RLS enabled on private.ai_credentials with zero browser policies

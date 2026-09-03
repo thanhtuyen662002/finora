@@ -9,6 +9,7 @@
 
 import 'server-only';
 
+import { PRINTABLE_ASCII_KEY_HINT, buildCredentialKeyHint } from './crypto';
 import type { AiCredentialSafeMetadata, AiCredentialSource, EncryptedEnvelopeWire } from './types';
 
 export interface ResolveMetadataOptions {
@@ -21,15 +22,14 @@ export interface ResolveMetadataOptions {
  * Ensures the hint strictly satisfies:
  * - string type
  * - length between 1 and 4
- * - zero ASCII control characters
+ * - printable ASCII only (^[\x20-\x7E]{1,4}$)
  * Returns sanitized string or null if invalid.
  */
 export function sanitizeSafeKeyHint(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (trimmed.length < 1 || trimmed.length > 4) return null;
-  if (/[\x00-\x1F\x7F]/.test(raw) || /[\x00-\x1F\x7F]/.test(trimmed)) return null;
-  return trimmed;
+  if (raw.trim().length === 0) return null;
+  if (!PRINTABLE_ASCII_KEY_HINT.test(raw)) return null;
+  return raw;
 }
 
 /**
@@ -53,12 +53,12 @@ export function buildSafeCredentialMetadata(options: ResolveMetadataOptions): Ai
     if (record.source === 'PERSONAL') {
       hasPersonalCredential = true;
       const safeHint = sanitizeSafeKeyHint(record.key_hint);
-      personalKeyHint = safeHint ?? '••••';
+      personalKeyHint = safeHint ?? '****';
       personalKeyUpdatedAt = record.updated_at;
     } else if (record.source === 'ADMIN_ASSIGNED') {
       hasAdminAssignedCredential = true;
       const safeHint = sanitizeSafeKeyHint(record.key_hint);
-      adminAssignedKeyHint = safeHint ?? '••••';
+      adminAssignedKeyHint = safeHint ?? '****';
       adminAssignedKeyUpdatedAt = record.updated_at;
     }
   }
@@ -84,26 +84,6 @@ export function buildSafeCredentialMetadata(options: ResolveMetadataOptions): Ai
   };
 }
 
-/**
- * Generates a safe masked key hint from credential plaintext.
- * Strictly guarantees:
- * - 1 <= keyHint.length <= 4 (exactly 4 characters)
- * - keyHint !== normalized plaintext for every accepted credential
- * - never leaks full secret for credentials > 4 characters
- */
-export function generateKeyHint(plaintext: string): string {
-  const normalized = plaintext.trim();
-  if (normalized.length > 4) {
-    const hint = normalized.slice(-4);
-    if (hint !== normalized) {
-      return hint;
-    }
-  }
-  if (normalized === '••••') {
-    return '****';
-  }
-  return '••••';
-}
-
-export const buildCredentialKeyHint = generateKeyHint;
+export const generateKeyHint = buildCredentialKeyHint;
+export { buildCredentialKeyHint };
 
