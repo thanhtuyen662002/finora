@@ -187,6 +187,58 @@ check(
   'AiStructuredRequest must require an outputValidator'
 );
 
+// Substantive Check: Zero Unvalidated Generic Casts
+const aiSourceFilesForCastAudit = walkDir(path.join(ROOT, 'src/lib/ai'), (f) => f.endsWith('.ts'))
+  .concat(walkDir(path.join(ROOT, 'src/features/ai'), (f) => f.endsWith('.ts')));
+
+const unvalidatedCasts = [];
+for (const file of aiSourceFilesForCastAudit) {
+  const content = fs.readFileSync(file, 'utf8');
+  const unsafePatterns = [
+    /response\.text\s+as\s+/i,
+    /as\s+(?:unknown\s+as\s+)?TOutput/i,
+    /JSON\.parse\([^)]+\)\s+as\s+/i,
+    /data:\s*[^,\n]+\s+as\s+(?:unknown\s+as\s+)?TOutput/i,
+    /<\s*any\s*>\s*response\.text/i,
+    /<\s*TOutput\s*>\s*response\.text/i,
+  ];
+  for (const pat of unsafePatterns) {
+    if (pat.test(content)) {
+      unvalidatedCasts.push(`${file} matches ${pat}`);
+    }
+  }
+}
+
+check(
+  'UNVALIDATED_GENERIC_CAST_COUNT',
+  unvalidatedCasts.length === 0,
+  `Found unvalidated generic casts in AI foundation: ${unvalidatedCasts.join(', ')}`
+);
+
+// Substantive Check: Text Response Returns Direct String
+const textReturnsDirectString =
+  /data:\s*response\.text\s*,/.test(routerContent) &&
+  !/data:\s*response\.text\s+as\s+/.test(routerContent) &&
+  routerContent.includes('Promise<AiStructuredResult<string>>');
+
+check(
+  'TEXT_RESPONSE_DIRECT_STRING_RETURN',
+  textReturnsDirectString,
+  'Router must return data: response.text as direct string with Promise<AiStructuredResult<string>> text overload'
+);
+
+// Substantive Check: Structured Generic Requires Validator
+const structuredRequiresValidator =
+  typesContent.includes('readonly outputValidator: AiOutputValidator<TOutput>') &&
+  routerContent.includes('parseAndValidateJson(response.text, outputValidator') &&
+  routerContent.includes('Structured response mode requires an outputValidator.');
+
+check(
+  'STRUCTURED_GENERIC_REQUIRES_VALIDATOR',
+  structuredRequiresValidator,
+  'Structured response mode must process output strictly through parseAndValidateJson with a runtime validator'
+);
+
 check(
   'EMPTY_TEXT_FAILS_CLOSED',
   routerContent.includes('AI_INVALID_RESPONSE') && routerContent.includes('whitespace-only response payload'),

@@ -67,7 +67,7 @@ export class AiRouter {
   async execute<TInput, TOutput = string>(
     request: AiRequest<TInput, TOutput>,
     context?: AiExecutionContext
-  ): Promise<AiStructuredResult<TOutput>> {
+  ): Promise<AiStructuredResult<string | TOutput>> {
     const callerSignal = request.signal ?? context?.signal;
     if (callerSignal?.aborted) {
       return {
@@ -244,7 +244,7 @@ export class AiRouter {
 
       return {
         ok: true,
-        data: response.text as unknown as TOutput,
+        data: response.text,
         provider: provider.id,
         model: response.model || model,
         usage: response.usage,

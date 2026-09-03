@@ -1051,6 +1051,76 @@ async function runAllTests() {
     assert.ok(featureServerContent.includes("import 'server-only'"), 'features/ai/server.ts must import server-only');
   });
 
+  await it('46. TYPE_SAFE_RESPONSE_MODES: Text requests return string and structured requests return validated output', async () => {
+    const fakeGemini = new FakeProvider('gemini');
+    fakeGemini.responseToReturn = '{"type":"EXPENSE","amount":"85000","description":"Phở bò"}';
+    const router = createAiRouter({ providers: [fakeGemini] });
+    const credProvider = new FakeCredentialProvider();
+
+    // 1. Text mode execution returns string directly without unvalidated generic cast
+    const textRes = await router.execute(
+      {
+        operation: 'transaction_parser',
+        prompt: 'Ăn trưa 85k',
+      },
+      { credentialProvider: credProvider }
+    );
+
+    assert.strictEqual(textRes.ok, true);
+    if (textRes.ok) {
+      assert.strictEqual(typeof textRes.data, 'string');
+      // Verify string operations can be safely invoked (compile-time + runtime proof)
+      assert.strictEqual(textRes.data.includes('EXPENSE'), true);
+      assert.strictEqual(textRes.data.length > 0, true);
+    }
+
+    // 2. Structured mode execution processes untrusted output via validator
+    const structuredRes = await router.execute(
+      {
+        operation: 'transaction_parser',
+        prompt: 'Ăn trưa 85k',
+        responseMode: 'structured',
+        outputValidator: transactionValidator,
+      },
+      { credentialProvider: credProvider }
+    );
+
+    assert.strictEqual(structuredRes.ok, true);
+    if (structuredRes.ok) {
+      assert.strictEqual(typeof structuredRes.data, 'object');
+      assert.strictEqual(structuredRes.data.type, 'EXPENSE');
+      assert.strictEqual(structuredRes.data.amount, '85000');
+      assert.strictEqual(structuredRes.data.description, 'Phở bò');
+    }
+  });
+
+  await it('47. SOURCE_ASSERTION_NO_UNVALIDATED_GENERIC_CASTS: Router source contains zero unvalidated generic casts', () => {
+    const routerFilePath = path.join(process.cwd(), 'src/lib/ai/router.ts');
+    const routerContent = fs.readFileSync(routerFilePath, 'utf8');
+
+    // Asserts zero unvalidated generic casts on response text
+    assert.strictEqual(
+      routerContent.includes('as unknown as TOutput'),
+      false,
+      'Router must not contain "as unknown as TOutput"'
+    );
+    assert.strictEqual(
+      routerContent.includes('as TOutput'),
+      false,
+      'Router must not contain "as TOutput"'
+    );
+    assert.strictEqual(
+      /data:\s*response\.text\s+as\s+/.test(routerContent),
+      false,
+      'Router must not cast response.text in data field'
+    );
+    assert.strictEqual(
+      /data:\s*response\.text\s*,/.test(routerContent),
+      true,
+      'Router must directly return data: response.text in text mode'
+    );
+  });
+
   console.log(`\n=== All Phase 10 AI Foundation Tests Passed (${testsPassed}/${testsPassed}) ===`);
 }
 
