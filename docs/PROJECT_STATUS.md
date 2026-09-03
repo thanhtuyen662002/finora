@@ -861,18 +861,27 @@ Status: **CLOSED (PASS)**
 - **Formal Phase 10 Closure Receipt:** `docs/receipts/PHASE_10_CLOSURE.md`
 
 ## Phase 11 — AI Credentials
-Status: **PARTIAL (PRE-DEPLOYMENT GATE CORRECTIVE COMPLETE, VERIFIERS IN PLACE, MIGRATION UNAPPLIED)**
+Status: **PARTIAL (PASS B UI & SERVER ACTIONS IMPLEMENTED, VERIFIERS PASS, MIGRATION UNAPPLIED)**
 - **Contract Discovery Document:** `docs/PHASE_11_CONTRACT_DISCOVERY.md`
 - **Selected Storage Architecture:** `PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROLE_RPC`
 - **Migration `20260903110000_phase_11_ai_credentials.sql`:** UNAPPLIED (Corrected in place, do not deploy without authorization)
 - **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Comprehensive production assertion script verifying full migration contract)
 - **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
 - **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 99 checks PASS)
+- **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (34 security and architecture checks PASS)
 - **Test Suite:** `tests/phase11-ai-credentials.test.ts` (79/79 tests PASS, async runner fail-closed)
+- **Actions Test Suite:** `tests/phase11-ai-credential-actions.test.ts` (6/6 unit tests PASS)
+- **Pass B Implementation:**
+  - Authenticated Personal Credential Management via `'use server'` action layer (`src/features/ai/credentials/actions.ts`)
+  - Admin-Assigned Credential Management with strict `verifyAdminActor` checks and exact email resolution
+  - Safe Metadata DTO (`AiCredentialSafeMetadata`) exposing zero cryptographic material or secrets
+  - Settings UI (`src/app/settings/page.tsx`) integrated with real server actions and password-masked inputs
+  - Admin UI (`src/app/admin/page.tsx`) with admin verification banner, target lookup, and credential assignment/revocation
+  - Phase 11 Structural Gate Receipt: `docs/receipts/PHASE_11_STRUCTURAL_GATE.md`
 - **Key Hint Handling:** Bounded length 1..4, ASCII printable only, never equals plaintext, fail-closed rejection at wire/database validation, defensive fallback in metadata DTO.
 
 ## Next Recommended Action
-Independent security audit of pre-deployment gate corrective source and structural/runtime verifiers before database deployment authorization.
+Independent security review of Pass B UI and server actions layer, followed by migration deployment authorization when ready.
 
 ```text
 PHASE_8_OVERALL=PASS

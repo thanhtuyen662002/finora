@@ -37,6 +37,12 @@ import {
   signOut,
 } from '@/lib/auth';
 import { applyTheme } from '@/lib/theme';
+import {
+  getMyAiCredentialMetadata,
+  saveMyPersonalAiCredential,
+  revokeMyPersonalAiCredential,
+} from '@/features/ai/credentials/actions';
+import type { AiCredentialSafeMetadata } from '@/features/ai/credentials/types';
 
 const SUPPORTED_CURRENCIES = [
   { value: 'VND', label: 'VND - Đồng Việt Nam (₫)' },
@@ -80,9 +86,16 @@ export default function SettingsPage() {
   const [notifyRecurringBill, setNotifyRecurringBill] = useState(true);
   const [notifyGoalMilestone, setNotifyGoalMilestone] = useState(true);
 
-  // AI Configuration
-  const [aiEnabled, setAiEnabled] = useState(true);
-  const [aiCredentialSource, setAiCredentialSource] = useState<'ADMIN' | 'PERSONAL'>('ADMIN');
+  // AI Credential Configuration (Phase 11)
+  const [aiMetadata, setAiMetadata] = useState<AiCredentialSafeMetadata | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(true);
+  const [personalApiKeyInput, setPersonalApiKeyInput] = useState('');
+  const [isSavingAiKey, setIsSavingAiKey] = useState(false);
+  const [isRevokingAiKey, setIsRevokingAiKey] = useState(false);
+  const [aiActionError, setAiActionError] = useState<string | null>(null);
+  const [aiActionSuccess, setAiActionSuccess] = useState<string | null>(null);
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [isConfirmingRevoke, setIsConfirmingRevoke] = useState(false);
 
   // Security
   const [newPassword, setNewPassword] = useState('');
@@ -137,6 +150,17 @@ export default function SettingsPage() {
             setAutoFx(false);
             setHasAutoFxSchema(false);
           }
+        }
+
+        try {
+          const aiRes = await getMyAiCredentialMetadata();
+          if (aiRes.ok && isMounted) {
+            setAiMetadata(aiRes.metadata);
+          }
+        } catch {
+          // Graceful non-blocking fallback if credentials unconfigured
+        } finally {
+          if (isMounted) setIsAiLoading(false);
         }
       } catch (err) {
         console.debug('Failed to load user settings', err);
@@ -237,6 +261,59 @@ export default function SettingsPage() {
     await signOut();
     router.push('/login');
     router.refresh();
+  };
+
+  const handleSavePersonalAiKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAiActionError(null);
+    setAiActionSuccess(null);
+
+    const trimmed = personalApiKeyInput.trim();
+    if (!trimmed) {
+      setAiActionError('Vui lòng nhập khóa API Google Gemini hợp lệ.');
+      return;
+    }
+
+    setIsSavingAiKey(true);
+    try {
+      const res = await saveMyPersonalAiCredential(trimmed);
+      if (res.ok) {
+        setPersonalApiKeyInput('');
+        setAiMetadata(res.metadata);
+        setShowKeyInput(false);
+        setAiActionSuccess('Đã lưu và mã hóa khóa Google Gemini cá nhân thành công.');
+        setTimeout(() => setAiActionSuccess(null), 4000);
+      } else {
+        setAiActionError(res.message);
+      }
+    } catch {
+      setAiActionError('Không thể lưu khóa API vào lúc này. Vui lòng thử lại sau.');
+    } finally {
+      setIsSavingAiKey(false);
+    }
+  };
+
+  const handleRevokePersonalAiKey = async () => {
+    setAiActionError(null);
+    setAiActionSuccess(null);
+    setIsRevokingAiKey(true);
+
+    try {
+      const res = await revokeMyPersonalAiCredential();
+      if (res.ok) {
+        setAiMetadata(res.metadata);
+        setIsConfirmingRevoke(false);
+        setShowKeyInput(false);
+        setAiActionSuccess('Đã xóa khóa cá nhân thành công.');
+        setTimeout(() => setAiActionSuccess(null), 4000);
+      } else {
+        setAiActionError(res.message);
+      }
+    } catch {
+      setAiActionError('Không thể xóa khóa cá nhân vào lúc này. Vui lòng thử lại sau.');
+    } finally {
+      setIsRevokingAiKey(false);
+    }
   };
 
   const initials = name
@@ -506,29 +583,241 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
 
-              {/* AI Assistant Preferences */}
+              {/* AI Credentials Configuration (Phase 11) */}
               <Card>
                 <CardHeader>
                   <div className="flex items-center space-x-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-base font-semibold">Trợ lý AI</CardTitle>
+                    <KeyRound className="h-5 w-5 text-primary" />
+                    <CardTitle className="text-base font-semibold">Khóa truy cập AI (AI Credentials)</CardTitle>
                   </div>
                   <CardDescription>
-                    Tùy chọn xử lý ngôn ngữ tự nhiên và gợi ý thông minh.
+                    Quản lý khóa API Google Gemini cá nhân. Toàn bộ khóa được mã hóa an toàn server-side với AES-256-GCM.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between opacity-60">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">Kích hoạt tính năng AI</p>
-                        <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium">Sắp hỗ trợ</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Hỗ trợ nhập giao dịch tự nhiên và phân tích.
-                      </p>
+                  {aiActionError && (
+                    <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{aiActionError}</span>
                     </div>
-                    <Switch checked={false} disabled />
+                  )}
+
+                  {aiActionSuccess && (
+                    <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{aiActionSuccess}</span>
+                    </div>
+                  )}
+
+                  {/* Priority and Active Resolution Status */}
+                  <div className="p-3.5 rounded-xl border bg-muted/20 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                          Nguồn khóa đang áp dụng
+                        </span>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Thứ tự ưu tiên tự động: Khóa cá nhân &gt; Khóa do Admin cấp &gt; Khóa mặc định hệ thống.
+                        </p>
+                      </div>
+                      <div className="shrink-0">
+                        {isAiLoading ? (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Đang kiểm tra...</span>
+                          </div>
+                        ) : aiMetadata?.activeResolvedSource === 'PERSONAL' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                            Khóa cá nhân (Active)
+                          </span>
+                        ) : aiMetadata?.activeResolvedSource === 'ADMIN_ASSIGNED' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-500/10 text-sky-600 border border-sky-500/20">
+                            Được Admin cấp (Active)
+                          </span>
+                        ) : aiMetadata?.activeResolvedSource === 'SYSTEM' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                            Khóa mặc định hệ thống (Active)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border">
+                            Chưa cấu hình
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personal Key Management */}
+                  <div className="pt-2 border-t space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Khóa Google Gemini cá nhân</p>
+                        <p className="text-xs text-muted-foreground">
+                          {aiMetadata?.hasPersonalCredential
+                            ? `Đã cấu hình an toàn (kết thúc bằng: •••• ${aiMetadata.personalKeyHint})`
+                            : 'Chưa cấu hình khóa cá nhân.'}
+                        </p>
+                      </div>
+
+                      {!showKeyInput && !isConfirmingRevoke && (
+                        <div className="flex items-center gap-2">
+                          {aiMetadata?.hasPersonalCredential ? (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setShowKeyInput(true);
+                                  setAiActionError(null);
+                                }}
+                              >
+                                Thay thế khóa
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => setIsConfirmingRevoke(true)}
+                              >
+                                Xóa khóa
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setShowKeyInput(true);
+                                setAiActionError(null);
+                              }}
+                            >
+                              Thêm khóa cá nhân
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Revoke confirmation block */}
+                    {isConfirmingRevoke && (
+                      <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span className="text-xs text-destructive font-medium">
+                          Xác nhận xóa khóa API cá nhân khỏi tài khoản?
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            disabled={isRevokingAiKey}
+                            onClick={handleRevokePersonalAiKey}
+                          >
+                            {isRevokingAiKey ? (
+                              <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Đang xóa...
+                              </>
+                            ) : (
+                              'Xác nhận xóa'
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={isRevokingAiKey}
+                            onClick={() => setIsConfirmingRevoke(false)}
+                          >
+                            Hủy
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Input form for adding/replacing key */}
+                    {showKeyInput && (
+                      <div className="p-3 border rounded-lg bg-card space-y-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="personalAiKey" className="text-xs">
+                            Nhập khóa Google Gemini API
+                          </Label>
+                          <Input
+                            id="personalAiKey"
+                            type="password"
+                            autoComplete="off"
+                            placeholder="AIzaSy..."
+                            value={personalApiKeyInput}
+                            onChange={(e) => setPersonalApiKeyInput(e.target.value)}
+                            disabled={isSavingAiKey}
+                            className="font-mono text-xs"
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            Khóa của bạn sẽ được mã hóa bằng AES-256-GCM trên server trước khi lưu trữ. Không bao giờ lưu trữ dạng văn bản thuần.
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={isSavingAiKey}
+                            onClick={() => {
+                              setShowKeyInput(false);
+                              setPersonalApiKeyInput('');
+                              setAiActionError(null);
+                            }}
+                          >
+                            Hủy
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!personalApiKeyInput.trim() || isSavingAiKey}
+                            onClick={handleSavePersonalAiKey}
+                          >
+                            {isSavingAiKey ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                Đang mã hóa và lưu...
+                              </>
+                            ) : (
+                              'Lưu khóa cá nhân'
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Read-only status for Admin-Assigned & System keys */}
+                  <div className="pt-2 border-t space-y-2 text-xs">
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-muted-foreground">Khóa do Admin cấp cho tài khoản:</span>
+                      <span className="font-medium text-foreground">
+                        {aiMetadata?.hasAdminAssignedCredential
+                          ? `Đã cấp (kết thúc: •••• ${aiMetadata.adminAssignedKeyHint})`
+                          : 'Không có'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-muted-foreground">Khóa mặc định toàn hệ thống:</span>
+                      <span className="font-medium text-foreground">
+                        {aiMetadata?.hasSystemKeyConfigured
+                          ? 'Sẵn sàng trên máy chủ'
+                          : 'Chưa cấu hình'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Truthful Phase 11 Readiness Statement */}
+                  <div className="pt-2 border-t">
+                    <p className="text-[11px] text-muted-foreground italic">
+                      Lưu ý: Khóa AI đã được lưu trữ và mã hóa an toàn với AES-256-GCM. Các tính năng tài chính AI (bóc tách giao dịch, phân loại, giải thích) sẽ được kích hoạt ở giai đoạn tiếp theo (Phase 12).
+                    </p>
                   </div>
                 </CardContent>
               </Card>
