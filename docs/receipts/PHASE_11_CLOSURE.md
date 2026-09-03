@@ -37,7 +37,7 @@ Phase 11 establishes the private, encrypted, server-only credential subsystem en
 
 ### 2.2 Cryptographic Envelope & Key Ring
 - **Algorithm:** Node.js native `crypto` AES-256-GCM authenticated encryption.
-- **Parameters:** 32-byte master key, 12-byte fresh random nonce per write (zero nonce reuse), 16-byte GCM authentication tag.
+- **Parameters:** 32-byte master key, a fresh 12-byte cryptographically random nonce generated for each write, and a 16-byte GCM authentication tag.
 - **AAD Canonical Bindings:** Cryptographically binds `credential_id`, `owner_user_id`, `provider`, `source`, and `envelope_version`. Cross-slot and cross-row transplants fail closed with `AI_CREDENTIAL_CORRUPTED`.
 - **Envelope Versioning:** Version 1 enforced at encryption, wire hydration, and decryption.
 - **Zero Plaintext Storage:** Database stores only `bytea` ciphertext, nonce, and auth tag. No plaintext credential column exists.
