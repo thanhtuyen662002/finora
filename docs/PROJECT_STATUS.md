@@ -5,14 +5,15 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 11 — AI Credentials
-- **Phase status:** CLOSED (PASS)
+- **Current phase:** Phase 12 — AI Features Contract Discovery
+- **Phase status:** DISCOVERY / CONTRACT PENDING INDEPENDENT AUDIT
+- **Phase 12 contract discovery:** `docs/PHASE_12_CONTRACT_DISCOVERY.md`
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
 - **Phase 11 structural gate:** PASS
 - **Target Supabase project:** `qibfitbnlfgiqctntufr` (`https://qibfitbnlfgiqctntufr.supabase.co`)
 - **Live Finora origin:** `https://finora-orpin-nu.vercel.app`
-- **Accepted Phase 11 completion SHA:** `50d9cd1ba40d48e34ffa1982d18c58e2a37c16a1`
+- **Accepted Phase 11 completion SHA:** `8e5e8c56e583516e9d5008e3c2f658349f94cb80`
 - **Phase 11 closure receipt:** `docs/receipts/PHASE_11_CLOSURE.md`
 - **Phase 11 structural receipt:** `docs/receipts/PHASE_11_STRUCTURAL_GATE.md`
 - **Accepted Phase 9 completion SHA:** `0043b543efdbfd02756d80c6a93d4e6c0c745d42`
@@ -901,8 +902,27 @@ Status: **CLOSED (PASS)**
   - `PHASE_11_CLOSURE_RECEIPT=docs/receipts/PHASE_11_CLOSURE.md`
 - **Historical Audit Record:** Pass B interim state prior to final UI smoke and closure was `PHASE_11_OVERALL=PARTIAL`.
 
+## Phase 12 — AI Features Contract Discovery & Pass Decomposition
+Status: **DISCOVERY / CONTRACT PENDING INDEPENDENT AUDIT**
+- **Contract Discovery Document:** `docs/PHASE_12_CONTRACT_DISCOVERY.md`
+- **Scope:** Natural-language transaction draft, smart category suggestion, ephemeral receipt vision, read-only financial assistant, report summarization.
+- **Recommended First Pass:** `Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion`
+- **Architectural Principles:**
+  - Finora is AI-assisted, never AI-dependent.
+  - Zero direct AI financial mutations (`createTransaction`, `updateTransaction`, `voidTransaction` never called by AI layer).
+  - Preview-and-confirm invariant strictly enforced (AI produces structured in-memory draft; explicit user save required).
+  - Server-only execution (`import 'server-only'`), authenticated session required (`auth.getUser()`).
+  - Financial domain data fetched via authenticated RLS client only (service role strictly isolated to Phase 11 credential subsystem).
+  - Ephemeral request-scoped opaque tokens (`ACC_1`, `CAT_1`, `SRC_1`) prevent raw UUID exposure and model hallucinations.
+  - Strict string-decimal monetary handling via `src/lib/money.ts` (never JavaScript numbers).
+  - Zero persistent raw prompt / raw response storage; zero database schema changes for Phase 12A (`PHASE_12_FIRST_PASS_DATABASE_CHANGE=NONE`).
+- **Pass Decomposition:**
+  - `Phase 12A`: Natural-Language Transaction Draft & Smart Category Suggestion (1 Gemini call, draft preview)
+  - `Phase 12B`: Ephemeral Receipt Vision -> Transaction Draft (Ephemeral multimodal processing, 0 Supabase Storage persistence)
+  - `Phase 12C`: Read-Only Financial Assistant & Report Summary (Deterministic report engine DTO context, 0 tool authority)
+
 ## Next Recommended Action
-Phase 12 (AI Features: Natural-Language Transaction Parsing, Categorization, Financial Assistant) Discovery and Architectural Planning.
+Independent audit and acceptance of Phase 12 Contract Discovery (`docs/PHASE_12_CONTRACT_DISCOVERY.md`) before authorizing Phase 12A implementation.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -981,5 +1001,9 @@ PHASE_11_FINAL_UI_SMOKE=PASS
 PHASE_11_OVERALL=PASS
 FINORA_PHASE_11=PASS
 
-PHASE_12_AUTHORIZED=true
+PHASE_12_DISCOVERY_AUTHORIZED=true
+PHASE_12_SCOPE=AI_FEATURES
+PHASE_12_DISCOVERY=PASS
+PHASE_12_CONTRACT=PENDING_INDEPENDENT_AUDIT
+PHASE_12_IMPLEMENTATION_AUTHORIZED=false
 ```
