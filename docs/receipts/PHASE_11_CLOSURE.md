@@ -22,10 +22,18 @@ Phase 11 establishes the private, encrypted, server-only credential subsystem en
 ### 2.1 Storage Architecture & Isolation
 - **Storage Strategy:** `PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROLE_RPC`
 - **Migration:** `20260903110000_phase_11_ai_credentials.sql` (Status: **APPLIED**)
-- **Private Schema Isolation:** Table `private.ai_credentials` resides in the `private` schema with all privileges revoked from `anon`, `authenticated`, and `public`. RLS enabled fail-closed with 0 browser policies.
-- **Service Role Least-Privilege Grants:** Service role granted `SELECT`, `INSERT`, `UPDATE` only (no `DELETE`, no `TRUNCATE`).
-- **Defensive Unique Constraints & Invariants:** Unique partial index on `(owner_user_id, source)` for active records. Strict check constraints on source, provider, envelope version, and cryptographic material integrity.
-- **RPC Access Gate:** Server-side operations mediated through SECURITY INVOKER functions (`private.read_active_ai_credentials`, `private.upsert_ai_credential`, `private.revoke_ai_credential`) with empty `search_path`, execution revoked from browser roles, granted only to `service_role`.
+- **Private Schema Isolation:** Table `private.ai_credentials` resides in the `private` schema with all privileges revoked from `anon`, `authenticated`, and `public`. `service_role` is granted `USAGE`. RLS enabled fail-closed with 0 browser policies.
+- **Service Role Least-Privilege Grants:** Service role granted `SELECT`, `INSERT`, `UPDATE` only on `private.ai_credentials` (no `DELETE`, no `TRUNCATE`).
+- **Foreign Key Relationships:** `owner_user_id` references `auth.users(id) ON DELETE CASCADE`; `assigned_by_user_id` references `auth.users(id) ON DELETE SET NULL`.
+- **Defensive Unique Constraints & Invariants:** Strict table-level uniqueness constraint `CONSTRAINT uq_ai_credentials_slot UNIQUE (owner_user_id, provider, source)` for `provider = 'GEMINI'` and `source IN ('PERSONAL', 'ADMIN_ASSIGNED')`. The database keeps the slot row upon revocation and zeroizes cryptographic material rather than deleting the row.
+- **Cryptographic Material Invariants:**
+  - *Active Record (`is_active = true`):* `revoked_at IS NULL`, non-empty `key_id`, 12-byte `nonce`, non-empty `ciphertext`, 16-byte `auth_tag`, 1..4 printable ASCII characters `key_hint`.
+  - *Revoked/Inactive Record (`is_active = false`):* `revoked_at IS NOT NULL`, with `key_id`, `nonce`, `ciphertext`, `auth_tag`, and `key_hint` zeroized to `NULL`.
+- **Public Service-Role RPC Facade:** Server-side database operations are mediated through explicit `public` schema SECURITY INVOKER functions:
+  - `public.ai_credentials_read_for_service(uuid, text)`
+  - `public.ai_credentials_write_for_service(uuid, uuid, text, text, uuid, smallint, text, bytea, bytea, bytea, text)`
+  - `public.ai_credentials_revoke_for_service(uuid, text, text)`
+  - All three functions specify `SECURITY INVOKER`, enforce empty `search_path = ''`, revoke execute privileges from `PUBLIC`, `anon`, and `authenticated`, and grant execute privileges strictly to `service_role`.
 
 ### 2.2 Cryptographic Envelope & Key Ring
 - **Algorithm:** Node.js native `crypto` AES-256-GCM authenticated encryption.
