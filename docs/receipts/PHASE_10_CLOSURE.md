@@ -29,8 +29,8 @@ Phase 10 establishes the foundational, provider-agnostic AI subsystem (`src/lib/
 - **SDK Isolation:** `@google/genai` is strictly isolated to `src/lib/ai/providers/gemini.ts`. Zero direct SDK imports anywhere else in the application.
 
 ### 2.3 Credential Port Isolation & Absence of Persistence
-- **Pure Dependency Injection Port:** `AiCredentialProvider` is defined as a parameter/interface port (`resolveCredential(operation: AiOperationType)`).
-- **No Direct Environment Secret Lookups in Provider:** Neither `gemini.ts` nor `gemini-core.ts` look up `process.env.GEMINI_API_KEY` or other secrets directly; credentials must be injected explicitly via the execution context.
+- **Pure Dependency Injection Port:** `AiCredentialProvider` is defined as a parameter/interface port (`resolveCredential(context: AiCredentialContext): Promise<AiCredential | null>`).
+- **Explicit Provider Execution Dependency:** Credential is passed directly as an explicit execute dependency/argument (`provider.execute(request, credential, context?)`), NOT as `request.credential`. Neither `gemini.ts` nor `gemini-core.ts` look up `process.env.GEMINI_API_KEY` or other secrets directly; credentials must be resolved and injected explicitly into provider execution.
 - **No Phase 10 Credential Persistence:** Phase 10 introduces zero credential tables, zero credential columns, zero client-side credential storage, and zero master-key mechanisms (deferred strictly to Phase 11).
 
 ### 2.4 Structured Result Validation & Exact Money Typing
