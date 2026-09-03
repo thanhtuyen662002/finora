@@ -196,6 +196,9 @@ if (fs.existsSync(adminPath)) {
   );
   check('ADMIN_FAKE_KEY_PREVIEW_ABSENT', !adminContent.includes('AIzaSy••••'), 'admin page must not render fake API-key-shaped System Key preview');
   check('ADMIN_OBSOLETE_PHASE1_WORDING_ABSENT', !adminContent.includes('chưa được triển khai ở Phase 1'), 'admin page must not claim Phase 1 credential storage is unbuilt');
+  check('ADMIN_HARDCODED_SYSTEM_STATE_ABSENT', !adminContent.includes('Chưa cấu hình (Server-side)'), 'admin page must not render hardcoded unverified system key state');
+  check('ADMIN_SYSTEM_KEY_INPUT_ABSENT', !adminContent.includes('id="systemKey"') && !adminContent.includes("id='systemKey'"), 'admin page must not render an input element for system key');
+  check('ADMIN_SYSTEM_KEY_NEUTRAL_SERVER_STATUS', adminContent.includes('Quản lý server-side') && adminContent.includes('Khóa hệ thống được quản lý server-side'), 'admin page must render neutral server-side management status for system key');
   check('ADMIN_ASSIGN_REVOKE_WIRED', adminContent.includes('handleAssignCredential') && adminContent.includes('handleRevokeAssignedCredential'), 'admin page must wire assign and revoke handlers');
   check('ADMIN_NO_PLAINTEXT_READBACK', !adminContent.includes('plaintextKey') && !adminContent.includes('decryptedKey'), 'admin page must not introduce plaintext readback');
   check('ADMIN_AI_PROVIDER_NO_MAX_W_2XL', !adminContent.includes('max-w-2xl'), 'admin page must not have max-w-2xl mismatch in AI tab layout');

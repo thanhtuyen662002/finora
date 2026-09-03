@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 11 — AI Credentials
-- **Phase status:** PARTIAL (Pass B source/server-action/UI gates accepted; production runtime/live persistence pending)
+- **Phase status:** PARTIAL (Pass B source, server actions, UI gates, and production runtime persistence verified; pending independent final UI smoke)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
 - **Phase 11 structural gate:** PASS
@@ -863,14 +863,14 @@ Status: **CLOSED (PASS)**
 - **Formal Phase 10 Closure Receipt:** `docs/receipts/PHASE_10_CLOSURE.md`
 
 ## Phase 11 — AI Credentials
-Status: **PARTIAL (PASS B AUTHORIZATION ORDER & GOVERNANCE CLOSURE COMPLETE, PASS B SOURCE VERIFIED, LIVE RUNTIME PENDING AUDIT)**
+Status: **PARTIAL (PASS B COMPLETE & PRODUCTION RUNTIME PERSISTENCE VERIFIED; PENDING INDEPENDENT FINAL UI SMOKE)**
 - **Contract Discovery Document:** `docs/PHASE_11_CONTRACT_DISCOVERY.md`
 - **Selected Storage Architecture:** `PRIVATE_SCHEMA_APPLICATION_AES_256_GCM_SERVICE_ROLE_RPC`
 - **Migration `20260903110000_phase_11_ai_credentials.sql`:** APPLIED in production database
 - **Structural Verifier:** `scripts/verify-phase11-structural.sql` (Comprehensive production assertion script verifying full migration contract)
 - **Runtime Verifier:** `scripts/verify-phase11-runtime.mjs` (Automated deterministic checks PASS)
 - **Source Gate Verifier:** `scripts/verify-phase11-source.mjs` (Hardened static gate with 99 checks PASS)
-- **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (53 security, UI layout, and architecture checks PASS)
+- **UI & Server Actions Verifier:** `scripts/verify-phase11-ui.mjs` (56 security, UI layout, and architecture checks PASS)
 - **Test Suite:** `tests/phase11-ai-credentials.test.ts` (79/79 tests PASS, async runner fail-closed)
 - **Actions Test Suite:** `tests/phase11-ai-credential-actions.test.ts` (21/21 unit tests PASS, verifying strict deferred repository factory ordering and chronological event execution)
 - **Pass B Implementation:**
@@ -878,12 +878,23 @@ Status: **PARTIAL (PASS B AUTHORIZATION ORDER & GOVERNANCE CLOSURE COMPLETE, PAS
   - Admin-Assigned Credential Management with strict `verifyAdminActor` checks and exact email resolution
   - Safe Metadata DTO (`AiCredentialSafeMetadata`) exposing zero cryptographic material or secrets
   - Settings UI (`src/app/settings/page.tsx`) integrated with real server actions and password-masked inputs
-  - Admin UI (`src/app/admin/page.tsx`) with admin verification banner, target lookup, and credential assignment/revocation
+  - Admin UI (`src/app/admin/page.tsx`) with admin verification banner, target lookup, neutral server-side system key presentation, and credential assignment/revocation
   - Phase 11 Structural Gate Receipt: `docs/receipts/PHASE_11_STRUCTURAL_GATE.md`
 - **Key Hint Handling:** Bounded length 1..4, ASCII printable only, never equals plaintext, fail-closed rejection at wire/database validation, defensive fallback in metadata DTO.
+- **Production Runtime & Live Persistence Evidence:**
+  - `PHASE_11_PERSONAL_LIVE_PERSISTENCE=PASS` (Authenticated personal credential encryption and database persistence verified)
+  - `PHASE_11_PERSONAL_REVOKE_ZEROIZATION=PASS` (Cryptographic material zeroization and revocation verified)
+  - `PHASE_11_NON_ADMIN_DENY_RUNTIME=PASS` (Non-admin access strictly denied at runtime)
+  - `PHASE_11_ADMIN_AUTHORITY_RUNTIME=PASS` (Admin authority verified via environment allowlist)
+  - `PHASE_11_ADMIN_LOOKUP_RUNTIME=PASS` (Admin exact user lookup verified)
+  - `PHASE_11_ADMIN_ASSIGNED_STORAGE=PASS` (Admin-assigned credential encrypted envelope storage verified)
+  - `PHASE_11_ADMIN_ASSIGNED_USER_RESOLUTION=PASS` (Target user credential resolution verified)
+  - `PHASE_11_ADMIN_ASSIGNED_REVOKE_ZEROIZATION=PASS` (Admin-assigned credential revocation and zeroization verified)
+  - `PHASE_11_TWO_USER_RUNTIME=PASS` (Two-user runtime isolation and resolution verified)
+  - `PHASE_11_ADMIN_ASSIGNED_RUNTIME=PASS` (Full admin-assigned workflow verified in production)
 
 ## Next Recommended Action
-Independent security review of Pass B UI and server actions layer, followed by two-user runtime and live persistence verification.
+Independent final UI smoke review before formal closure of Phase 11.
 
 ```text
 PHASE_8_OVERALL=PASS
@@ -942,6 +953,22 @@ PHASE_11_TEST_SUITE=PASS
 PHASE_11_TYPECHECK=PASS
 PHASE_11_LINT=PASS
 PHASE_11_BUILD=PASS
+
+PHASE_11_PERSONAL_LIVE_PERSISTENCE=PASS
+PHASE_11_PERSONAL_REVOKE_ZEROIZATION=PASS
+
+PHASE_11_NON_ADMIN_DENY_RUNTIME=PASS
+PHASE_11_ADMIN_AUTHORITY_RUNTIME=PASS
+PHASE_11_ADMIN_LOOKUP_RUNTIME=PASS
+
+PHASE_11_ADMIN_ASSIGNED_STORAGE=PASS
+PHASE_11_ADMIN_ASSIGNED_USER_RESOLUTION=PASS
+PHASE_11_ADMIN_ASSIGNED_REVOKE_ZEROIZATION=PASS
+
+PHASE_11_TWO_USER_RUNTIME=PASS
+PHASE_11_ADMIN_ASSIGNED_RUNTIME=PASS
+
+PHASE_11_UI_GOVERNANCE_CORRECTIVE=PENDING_INDEPENDENT_UI_SMOKE
 PHASE_11_OVERALL=PARTIAL
 FINORA_PHASE_11=PARTIAL
 

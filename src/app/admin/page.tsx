@@ -643,23 +643,19 @@ export default function AdminPage() {
                   <Input value="Google Gemini API (Vertex / AI Studio)" disabled />
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <Label htmlFor="systemKey">Khóa API mặc định hệ thống (System Key)</Label>
-                    <span className="text-xs text-muted-foreground font-mono flex items-center">
-                      <Lock className="h-3 w-3 mr-1" />
-                      Server-side config
-                    </span>
+                <div className="p-3.5 rounded-xl border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-start sm:items-center gap-2.5">
+                    <Lock className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5 sm:mt-0" />
+                    <div>
+                      <p className="font-semibold text-foreground">Khóa API mặc định hệ thống (System Key)</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Khóa hệ thống được quản lý server-side. Giá trị và trạng thái chi tiết không được hiển thị trong giao diện.
+                      </p>
+                    </div>
                   </div>
-                  <Input
-                    id="systemKey"
-                    value="Chưa cấu hình (Server-side)"
-                    disabled
-                    className="font-mono bg-muted text-muted-foreground text-xs"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Khóa hệ thống được quản lý bằng cấu hình server. Không hiển thị giá trị khóa trong giao diện.
-                  </p>
+                  <Badge variant="outline" className="font-mono text-[11px] px-2.5 py-1 w-fit shrink-0">
+                    Quản lý server-side
+                  </Badge>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
