@@ -16,7 +16,10 @@ export type AiErrorCode =
   | 'AI_INVALID_REQUEST'
   | 'AI_INVALID_RESPONSE'
   | 'AI_STRUCTURED_OUTPUT_INVALID'
-  | 'AI_PROVIDER_ERROR';
+  | 'AI_PROVIDER_ERROR'
+  | 'AI_CREDENTIAL_CORRUPTED'
+  | 'AI_CREDENTIAL_KEY_UNAVAILABLE'
+  | 'AI_CREDENTIAL_RESOLUTION_FAILED';
 
 export interface AiErrorOptions {
   readonly code: AiErrorCode;

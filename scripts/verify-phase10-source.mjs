@@ -274,7 +274,7 @@ check(
 // 13. Zero Database / Migrations in Phase 10
 const migrationFiles = walkDir(path.join(ROOT, 'supabase/migrations'));
 const phase10Migrations = migrationFiles.filter(
-  (f) => f.includes('phase10') || f.includes('ai_credentials') || f.includes('ai_usage')
+  (f) => f.includes('phase10') || f.includes('phase_10')
 );
 check(
   'NO_PHASE10_MIGRATION',
@@ -282,8 +282,8 @@ check(
   `Unexpected Phase 10 migrations found: ${phase10Migrations.join(', ')}`
 );
 
-// 14. Zero Direct process.env Lookups in AI Foundation
-const aiFiles = walkDir(path.join(ROOT, 'src/lib/ai'), (f) => f.endsWith('.ts'));
+// 14. Zero Direct process.env Lookups in AI Foundation Core
+const aiFiles = walkDir(path.join(ROOT, 'src/lib/ai'), (f) => f.endsWith('.ts') && !f.includes('/credentials/'));
 const aiEnvLookups = aiFiles.filter((f) => {
   const content = fs.readFileSync(f, 'utf8');
   return content.includes('process.env.GEMINI') || content.includes('process.env.API_KEY');
@@ -294,7 +294,7 @@ check(
   `process.env secrets found in AI foundation: ${aiEnvLookups.join(', ')}`
 );
 
-// 15. Zero Supabase or LocalStorage in AI Foundation
+// 15. Zero Supabase or LocalStorage in AI Foundation Core
 const aiSupabaseImports = aiFiles.filter((f) => {
   const content = fs.readFileSync(f, 'utf8');
   return content.includes('@supabase') || content.includes('supabase');
@@ -302,7 +302,7 @@ const aiSupabaseImports = aiFiles.filter((f) => {
 check(
   'AI_SUPABASE_IMPORT_COUNT',
   aiSupabaseImports.length === 0,
-  `Supabase found in AI foundation: ${aiSupabaseImports.join(', ')}`
+  `Supabase found in AI foundation core: ${aiSupabaseImports.join(', ')}`
 );
 
 const aiLocalStorageUsage = aiFiles.filter((f) => {

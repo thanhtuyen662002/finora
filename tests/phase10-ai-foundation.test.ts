@@ -115,8 +115,12 @@ class FakeProvider implements AiProvider {
 class FakeCredentialProvider implements AiCredentialProvider {
   credentialToReturn: AiCredential | null = { value: 'fake-api-key-12345' };
   shouldThrow = false;
+  errorToThrow: Error | null = null;
 
   async resolveCredential(): Promise<AiCredential | null> {
+    if (this.errorToThrow) {
+      throw this.errorToThrow;
+    }
     if (this.shouldThrow) {
       throw new Error('Credential storage unavailable');
     }
@@ -436,7 +440,7 @@ async function runAllTests() {
     }
   });
 
-  await it('17. AI Router returns AI_AUTH_FAILED when credential resolution throws an error', async () => {
+  await it('17a. AI Router returns AI_CREDENTIAL_RESOLUTION_FAILED when generic resolver error throws', async () => {
     const fakeGemini = new FakeProvider('gemini');
     const router = createAiRouter({ providers: [fakeGemini] });
     const credProvider = new FakeCredentialProvider();
@@ -454,7 +458,86 @@ async function runAllTests() {
 
     assert.strictEqual(res.ok, false);
     if (!res.ok) {
-      assert.strictEqual(res.error.code, 'AI_AUTH_FAILED');
+      assert.strictEqual(res.error.code, 'AI_CREDENTIAL_RESOLUTION_FAILED');
+    }
+  });
+
+  await it('17b. AI Router preserves AI_CREDENTIAL_CORRUPTED from credential resolver', async () => {
+    const fakeGemini = new FakeProvider('gemini');
+    const router = createAiRouter({ providers: [fakeGemini] });
+    const credProvider = new FakeCredentialProvider();
+    credProvider.errorToThrow = new AiError({
+      code: 'AI_CREDENTIAL_CORRUPTED',
+      message: 'Cryptographic integrity failure in envelope',
+      providerId: 'gemini',
+    });
+
+    const res = await router.execute(
+      {
+        operation: 'transaction_parser',
+        prompt: 'test',
+      },
+      {
+        credentialProvider: credProvider,
+      }
+    );
+
+    assert.strictEqual(res.ok, false);
+    if (!res.ok) {
+      assert.strictEqual(res.error.code, 'AI_CREDENTIAL_CORRUPTED');
+      assert.ok(res.error.message.includes('Cryptographic integrity failure'));
+    }
+  });
+
+  await it('17c. AI Router preserves AI_CREDENTIAL_KEY_UNAVAILABLE from credential resolver', async () => {
+    const fakeGemini = new FakeProvider('gemini');
+    const router = createAiRouter({ providers: [fakeGemini] });
+    const credProvider = new FakeCredentialProvider();
+    credProvider.errorToThrow = new AiError({
+      code: 'AI_CREDENTIAL_KEY_UNAVAILABLE',
+      message: 'Requested key ID missing from key ring',
+      providerId: 'gemini',
+    });
+
+    const res = await router.execute(
+      {
+        operation: 'transaction_parser',
+        prompt: 'test',
+      },
+      {
+        credentialProvider: credProvider,
+      }
+    );
+
+    assert.strictEqual(res.ok, false);
+    if (!res.ok) {
+      assert.strictEqual(res.error.code, 'AI_CREDENTIAL_KEY_UNAVAILABLE');
+    }
+  });
+
+  await it('17d. AI Router preserves AI_CREDENTIAL_RESOLUTION_FAILED from credential resolver', async () => {
+    const fakeGemini = new FakeProvider('gemini');
+    const router = createAiRouter({ providers: [fakeGemini] });
+    const credProvider = new FakeCredentialProvider();
+    credProvider.errorToThrow = new AiError({
+      code: 'AI_CREDENTIAL_RESOLUTION_FAILED',
+      message: 'RPC database failure',
+      providerId: 'gemini',
+    });
+
+    const res = await router.execute(
+      {
+        operation: 'transaction_parser',
+        prompt: 'test',
+      },
+      {
+        credentialProvider: credProvider,
+      }
+    );
+
+    assert.strictEqual(res.ok, false);
+    if (!res.ok) {
+      assert.strictEqual(res.error.code, 'AI_CREDENTIAL_RESOLUTION_FAILED');
     }
   });
 

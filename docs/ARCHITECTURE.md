@@ -93,6 +93,18 @@ AI is optional. Core finance operations must remain usable when AI is unavailabl
 
 All private provider credentials must remain server-side.
 
+### AI Credential Architecture (Phase 11)
+
+Credentials for AI providers (e.g. Gemini) are protected via application-level authenticated encryption:
+- **Envelope Encryption:** AES-256-GCM authenticated encryption at the application tier before database persistence.
+- **Key Ring:** Versioned 256-bit master keys resolved from `FINORA_AI_CREDENTIAL_KEY_RING_JSON`. Supports live key rotation without database migration.
+- **Canonical AAD Binding:** Binds version, credential ID, owner user ID, provider, and source. Cryptographically blocks cross-slot and cross-row transplant attacks.
+- **Private Schema Isolation:** Stored in `private.ai_credentials`. Schema `private` is completely unexposed to PostgREST and revoked from browser roles (`PUBLIC`, `anon`, `authenticated`).
+- **Service-Role RPC Facade:** Database operations are mediated via three dedicated `SECURITY INVOKER` RPCs (`ai_credentials_read_for_service`, `ai_credentials_write_for_service`, `ai_credentials_revoke_for_service`). Browser execution is strictly revoked.
+- **Fail-Closed Resolution:** Evaluates `PERSONAL` > `ADMIN_ASSIGNED` > `SYSTEM`. Any corruption or key unavailability fails closed without insecure downgrade.
+- **Admin Authority:** Strict UUID allowlist via `FINORA_ADMIN_USER_IDS`. Email addresses, metadata, and client tokens are untrusted.
+- **Client Safety:** Zero plaintext or ciphertext is ever returned to browser code; only safe metadata DTOs with masked key hints (`AIza••••••••••92K`) are exposed.
+
 ## FX Engine
 
 Currency conversion is abstracted behind an FX service.

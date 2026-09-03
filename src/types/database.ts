@@ -671,7 +671,53 @@ export interface Database {
       };
     };
     Functions: {
-      [_ in never]: never;
+      ai_credentials_read_for_service: {
+        Args: {
+          p_owner_user_id: string;
+          p_provider?: string;
+        };
+        Returns: {
+          id: string;
+          owner_user_id: string;
+          source: string;
+          provider: string;
+          assigned_by_user_id: string | null;
+          envelope_version: number;
+          key_id: string | null;
+          nonce: string | null;
+          ciphertext: string | null;
+          auth_tag: string | null;
+          key_hint: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          revoked_at: string | null;
+        }[];
+      };
+      ai_credentials_write_for_service: {
+        Args: {
+          p_id: string;
+          p_owner_user_id: string;
+          p_source: string;
+          p_provider: string;
+          p_assigned_by_user_id: string | null;
+          p_envelope_version: number;
+          p_key_id: string;
+          p_nonce: string;
+          p_ciphertext: string;
+          p_auth_tag: string;
+          p_key_hint: string;
+        };
+        Returns: void;
+      };
+      ai_credentials_revoke_for_service: {
+        Args: {
+          p_owner_user_id: string;
+          p_source: string;
+          p_provider?: string;
+        };
+        Returns: void;
+      };
     };
     Enums: {
       [_ in never]: never;

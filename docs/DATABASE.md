@@ -287,6 +287,37 @@ By default, Supabase grants excessive privileges (`SELECT`, `INSERT`, `UPDATE`, 
 7. `supabase/migrations/20260829000002_phase_8_cross_currency_transfers.sql` — Phase 8 Pass B: Cross-currency transfer columns, composite FKs, and exact math check constraints.
 8. `supabase/migrations/20260831142135_phase_8_cross_currency_transfer_integrity_corrective.sql` — Phase 8 Pass B Integrity Corrective: Currency compatibility constraint, same-currency rate/amount invariant, cross-currency exact rounding conversion constraint, and active-account trigger.
 9. `supabase/migrations/20260831144154_phase_8_transfer_trigger_security_hardening.sql` — Phase 8 Pass B Trigger Security Hardening: Replaces `check_transfer_accounts_active` function with `SECURITY INVOKER`.
+10. `supabase/migrations/20260903110000_phase_11_ai_credentials.sql` — Phase 11: Application-level AES-256-GCM AI credentials in private schema, least-privilege service-role table grants, service-role-only public RPC facade (`ai_credentials_read_for_service`, `ai_credentials_write_for_service`, `ai_credentials_revoke_for_service`), and baseline security advisor revokes.
+
+## Phase 11: AI Credentials Storage (`private` Schema)
+
+### `private.ai_credentials`
+Encrypted AI API credentials (application-level AES-256-GCM envelope encryption). Schema is entirely hidden from the PostgREST API layer.
+- `id` (uuid, primary key, default `gen_random_uuid()`)
+- `owner_user_id` (uuid, not null, references `auth.users(id)` ON DELETE CASCADE)
+- `source` (text, not null, check in ('PERSONAL', 'ADMIN_ASSIGNED'))
+- `provider` (text, not null, check in ('GEMINI'))
+- `assigned_by_user_id` (uuid, nullable, references `auth.users(id)` ON DELETE SET NULL)
+- `envelope_version` (smallint, not null, check in (1))
+- `key_id` (text, nullable)
+- `nonce` (bytea, nullable)
+- `ciphertext` (bytea, nullable)
+- `auth_tag` (bytea, nullable)
+- `key_hint` (text, nullable)
+- `is_active` (boolean, not null, default true)
+- `created_at` (timestamptz, not null, default now())
+- `updated_at` (timestamptz, not null, default now())
+- `revoked_at` (timestamptz, nullable)
+
+**DB Constraints:**
+- `uq_ai_credentials_slot`: `UNIQUE (owner_user_id, provider, source)` (one slot per owner/provider/source).
+- `chk_ai_credentials_provenance`: Enforces `PERSONAL` has null `assigned_by_user_id`, and active `ADMIN_ASSIGNED` requires non-null `assigned_by_user_id`.
+- `chk_ai_credentials_crypto_material`: Enforces active credentials have 12-byte nonce and 16-byte auth tag; revoked credentials have null crypto material and non-null `revoked_at`.
+
+**Privilege Model:**
+- Schema `private`: `REVOKE ALL FROM PUBLIC, anon, authenticated`; `GRANT USAGE TO service_role`.
+- Table `private.ai_credentials`: `REVOKE ALL FROM PUBLIC, anon, authenticated`; `GRANT SELECT, INSERT, UPDATE TO service_role`. (No `DELETE`, no `TRUNCATE`).
+- Public RPCs: `ai_credentials_read_for_service`, `ai_credentials_write_for_service`, `ai_credentials_revoke_for_service` (`SECURITY INVOKER`, `SET search_path = ''`). Browser execution revoked; granted exclusively to `service_role`.
 
 ## Phase 8: Multi-Currency FX
 - **transaction_fx_snapshots**: Stores immutable point-in-time exact-decimal FX records for transactions.

@@ -138,10 +138,16 @@ export class AiRouter {
         operation: request.operation,
       });
     } catch (err) {
+      if (err instanceof AiError) {
+        return {
+          ok: false,
+          error: err,
+        };
+      }
       return {
         ok: false,
         error: new AiError({
-          code: 'AI_AUTH_FAILED',
+          code: 'AI_CREDENTIAL_RESOLUTION_FAILED',
           message: 'Failed to resolve AI credential from credential provider.',
           providerId,
           cause: err,
