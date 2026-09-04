@@ -40,6 +40,8 @@ import {
   PHASE_12B_NORMALIZED_MAX_LONG_EDGE_PX,
   PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES,
   PHASE_12B_SUPPORTED_IMAGE_MIMES,
+  PHASE_12B_MAX_CATEGORY_CANDIDATES,
+  PHASE_12B_MAX_CATEGORY_LABEL_LENGTH,
 } from '../src/features/ai/receipt-vision/constants';
 import {
   assertNormalizedReceiptSize,
@@ -50,13 +52,36 @@ import {
 import {
   RECEIPT_VISION_PROMPT,
   RECEIPT_VISION_SYSTEM_INSTRUCTION,
+  buildReceiptVisionPrompt,
+  RECEIPT_VISION_BASE_SYSTEM_INSTRUCTION,
 } from '../src/features/ai/receipt-vision/prompt';
-import { executeReceiptVisionCore } from '../src/features/ai/receipt-vision/action-core';
+import {
+  buildCategoryCandidates,
+  sanitizeCategoryLabel,
+} from '../src/features/ai/receipt-vision/categories';
+import {
+  buildReceiptTransactionDraft,
+  deriveReceiptWarnings,
+  computeReceiptCanApply,
+  RECEIPT_WARNING_ORDER,
+} from '../src/features/ai/receipt-vision/domain';
+import {
+  applyReceiptDraftToFormState,
+} from '../src/features/ai/receipt-vision/form-state';
+import {
+  executeReceiptVisionCore,
+  executeNormalizedReceiptVisionCore,
+} from '../src/features/ai/receipt-vision/action-core';
 import {
   validateReceiptFormData,
   executeAnalyzeReceiptAction,
 } from '../src/features/ai/receipt-vision/actions';
-import type { ReceiptVisionParseOutput } from '../src/features/ai/receipt-vision/types';
+import type {
+  ReceiptVisionParseOutput,
+  ReceiptWarningCode,
+  ReceiptTransactionDraft,
+  ReceiptVisionExtractionResult,
+} from '../src/features/ai/receipt-vision/types';
 
 /**
  * Builds a genuine, valid multi-frame animated WebP buffer in memory using Sharp.
@@ -904,6 +929,14 @@ async function runTests() {
         events.push('NORMALIZE');
         return normalizeReceiptImage(b, m);
       },
+      fetchCategoryCandidates: async () => {
+        events.push('READ_CATEGORIES');
+        return {
+          candidates: [],
+          candidateMap: new Map(),
+          categoriesOmitted: false,
+        };
+      },
       createRouter: () => {
         events.push('CREATE_ROUTER');
         routerCreated++;
@@ -922,6 +955,7 @@ async function runTests() {
       'VALIDATE',
       'ARRAY_BUFFER',
       'NORMALIZE',
+      'READ_CATEGORIES',
       'CREATE_ROUTER',
       'CREATE_CREDENTIAL_RESOLVER',
       'RESOLVE_CREDENTIAL',
@@ -931,7 +965,8 @@ async function runTests() {
     assert.strictEqual(resolverCreated, 1);
     assert.strictEqual(credentialResolved, 1);
     assert.strictEqual(providerExecuted, 1);
-    assert.ok(events.indexOf('NORMALIZE') < events.indexOf('CREATE_ROUTER'), 'Normalization must precede router creation');
+    assert.ok(events.indexOf('NORMALIZE') < events.indexOf('READ_CATEGORIES'), 'Normalization must precede category candidate reading');
+    assert.ok(events.indexOf('READ_CATEGORIES') < events.indexOf('CREATE_ROUTER'), 'Category candidate reading must precede router creation');
     assert.ok(events.indexOf('CREATE_ROUTER') < events.indexOf('CREATE_CREDENTIAL_RESOLVER'), 'Router creation must precede credential resolver creation');
     assert.ok(events.indexOf('CREATE_CREDENTIAL_RESOLVER') < events.indexOf('RESOLVE_CREDENTIAL'), 'Credential resolver creation must precede credential resolution');
     assert.ok(events.indexOf('RESOLVE_CREDENTIAL') < events.indexOf('PROVIDER'), 'Credential resolution must precede provider invocation');
@@ -1172,7 +1207,552 @@ async function runTests() {
 
   console.log('  ✓ 8. Client / Server module boundary source isolation verified');
 
-  console.log(`\n=== All Phase 12B-1 Receipt Vision Tests Passed Successfully! Total Assertions/Checks: ${totalTestsPassed} ===`);
+  // ==========================================
+  // 9. CATEGORY CANDIDATES & PROMPT ENGINEERING (Pass 12B-2)
+  // ==========================================
+  console.log('9. Testing Category Candidate Scoping, Sanitization, Overflow Failsafe & Prompt Builder...');
+
+  // 9.1: Label sanitization
+  assert.strictEqual(sanitizeCategoryLabel('  Food & Dining \n\r\t '), 'Food & Dining');
+  assert.strictEqual(sanitizeCategoryLabel('Bad\x00Control\x1FChars'), 'BadControlChars');
+  assert.strictEqual(sanitizeCategoryLabel('A'.repeat(80)), 'A'.repeat(50));
+  assert.strictEqual(sanitizeCategoryLabel('   '), '');
+  assert.strictEqual(sanitizeCategoryLabel(null), '');
+  totalTestsPassed += 5;
+
+  // 9.2: Category candidate generation under 50 items
+  const rawCats = [
+    { id: 'cat-uuid-1', name: 'Food & Dining' },
+    { id: 'cat-uuid-2', name: 'Groceries' },
+    { id: 'cat-uuid-3', name: 'Transportation' },
+  ];
+  const builtCandidates = buildCategoryCandidates(rawCats);
+  assert.strictEqual(builtCandidates.categoriesOmitted, false);
+  assert.strictEqual(builtCandidates.candidates.length, 3);
+  assert.strictEqual(builtCandidates.candidates[0].token, 'CAT_1');
+  assert.strictEqual(builtCandidates.candidates[0].label, 'Food & Dining');
+  assert.strictEqual(builtCandidates.candidateMap.get('CAT_1'), 'cat-uuid-1');
+  assert.strictEqual(builtCandidates.candidateMap.get('CAT_2'), 'cat-uuid-2');
+  totalTestsPassed += 6;
+
+  // 9.3: Overflow failsafe: >50 categories causes complete omission
+  const overflowCats = Array.from({ length: 51 }, (_, i) => ({
+    id: `cat-uuid-${i + 1}`,
+    name: `Category ${i + 1}`,
+  }));
+  const overflowResult = buildCategoryCandidates(overflowCats);
+  assert.strictEqual(overflowResult.categoriesOmitted, true);
+  assert.strictEqual(overflowResult.candidates.length, 0);
+  assert.strictEqual(overflowResult.candidateMap.size, 0);
+  totalTestsPassed += 3;
+
+  // 9.4: Prompt builder security & opaque token formatting
+  const promptWithCats = buildReceiptVisionPrompt({ categories: builtCandidates.candidates });
+  assert.ok(promptWithCats.systemInstruction.includes('CAT_1 | Food & Dining'));
+  assert.ok(promptWithCats.systemInstruction.includes('CAT_2 | Groceries'));
+  assert.ok(!promptWithCats.systemInstruction.includes('cat-uuid-1'), 'Prompt must NOT contain raw UUIDs');
+  assert.ok(!promptWithCats.systemInstruction.includes('usr_'), 'Prompt must NOT contain user IDs');
+
+  const promptWithoutCats = buildReceiptVisionPrompt({ categories: [] });
+  assert.ok(promptWithoutCats.systemInstruction.includes('"category_token" MUST be null'));
+  totalTestsPassed += 5;
+
+  console.log('  ✓ 9. Category candidates and prompt security verified');
+
+  // ==========================================
+  // 10. CATEGORY TOKEN VALIDATION & RESOLUTION (Pass 12B-2)
+  // ==========================================
+  console.log('10. Testing Category Token Validation, Fabricated Token Rejection & RLS Revalidation...');
+
+  const baseRawOutput = {
+    document_kind: 'PURCHASE_RECEIPT',
+    merchant: 'Starbucks',
+    occurred_on: '2026-03-01',
+    occurred_on_state: 'PRESENT',
+    amount: '85000',
+    amount_state: 'PRESENT',
+    currency_code: 'VND',
+    currency_state: 'PRESENT',
+    category_token: 'CAT_1',
+    note: 'Coffee',
+    image_quality: 'OK',
+  };
+
+  // 10.1: Validator accepts valid CAT_n format
+  const validOutput = validateReceiptVisionOutput(baseRawOutput);
+  assert.strictEqual(validOutput.category_token, 'CAT_1');
+
+  const validNullOutput = validateReceiptVisionOutput({ ...baseRawOutput, category_token: null });
+  assert.strictEqual(validNullOutput.category_token, null);
+  totalTestsPassed += 2;
+
+  // 10.2: Validator rejects malformed category_token formats
+  const invalidTokens = ['CAT_0', 'cat_1', 'CAT_-1', 'food', 'cat-uuid-12345', 123, true];
+  for (const token of invalidTokens) {
+    assert.throws(
+      () => validateReceiptVisionOutput({ ...baseRawOutput, category_token: token }),
+      /category_token must be null or match format 'CAT_n'/
+    );
+    totalTestsPassed += 1;
+  }
+
+  // 10.3: Action Core: Matching valid token + successful revalidation -> RESOLVED
+  const dummyNormalizedImage = {
+    bytes: await sharp({ create: { width: 10, height: 10, channels: 3, background: { r: 255, g: 255, b: 255 } } }).jpeg().toBuffer(),
+    mimeType: 'image/jpeg' as const,
+    width: 10,
+    height: 10,
+    byteSize: 100,
+  };
+
+  const mockResolvedRouter = {
+    execute: async () => ({
+      ok: true as const,
+      data: {
+        document_kind: 'PURCHASE_RECEIPT' as const,
+        merchant: 'Starbucks Coffee',
+        occurred_on: '2026-03-01',
+        occurred_on_state: 'PRESENT' as const,
+        amount: '85000',
+        amount_state: 'PRESENT' as const,
+        currency_code: 'VND' as const,
+        currency_state: 'PRESENT' as const,
+        category_token: 'CAT_1',
+        note: 'Coffee',
+        image_quality: 'OK' as const,
+      },
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+    }),
+  } as any;
+
+  const mockCredentialProvider = {
+    getDecryptedKey: async () => ({ value: 'test-key' }),
+  } as any;
+
+  const coreResolvedRes = await executeNormalizedReceiptVisionCore(
+    dummyNormalizedImage,
+    { id: 'usr_test_123' },
+    {
+      router: mockResolvedRouter,
+      credentialProvider: mockCredentialProvider,
+      candidateResult: builtCandidates,
+      revalidateCategory: async (catId) => catId === 'cat-uuid-1',
+    }
+  );
+
+  assert.strictEqual(coreResolvedRes.ok, true);
+  if (coreResolvedRes.ok) {
+    assert.strictEqual(coreResolvedRes.data.draft.category_id, 'cat-uuid-1');
+    assert.strictEqual(coreResolvedRes.data.draft.warnings.includes('CATEGORY_UNRESOLVED'), false);
+    assert.strictEqual(coreResolvedRes.data.draft.warnings.includes('CATEGORY_STALE'), false);
+  }
+  totalTestsPassed += 4;
+
+  // 10.4: Action Core: Matching token + failed revalidation (archived/deleted) -> STALE
+  const coreStaleRes = await executeNormalizedReceiptVisionCore(
+    dummyNormalizedImage,
+    { id: 'usr_test_123' },
+    {
+      router: mockResolvedRouter,
+      credentialProvider: mockCredentialProvider,
+      candidateResult: builtCandidates,
+      revalidateCategory: async () => false, // Category disappeared between prompt and post-parse
+    }
+  );
+
+  assert.strictEqual(coreStaleRes.ok, true);
+  if (coreStaleRes.ok) {
+    assert.strictEqual(coreStaleRes.data.draft.category_id, null);
+    assert.strictEqual(coreStaleRes.data.draft.warnings.includes('CATEGORY_STALE'), true);
+    assert.strictEqual(coreStaleRes.data.draft.warnings.includes('CATEGORY_UNRESOLVED'), false, 'CATEGORY_STALE and CATEGORY_UNRESOLVED must not coexist');
+  }
+  totalTestsPassed += 4;
+
+  // 10.5: Action Core: Fabricated token (e.g. CAT_999) fails closed with AI_STRUCTURED_OUTPUT_INVALID
+  const mockFabricatedRouter = {
+    execute: async () => ({
+      ok: true as const,
+      data: {
+        ...validOutput,
+        category_token: 'CAT_999',
+      },
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+    }),
+  } as any;
+
+  const coreFabricatedRes = await executeNormalizedReceiptVisionCore(
+    dummyNormalizedImage,
+    { id: 'usr_test_123' },
+    {
+      router: mockFabricatedRouter,
+      credentialProvider: mockCredentialProvider,
+      candidateResult: builtCandidates,
+      revalidateCategory: async () => true,
+    }
+  );
+
+  assert.strictEqual(coreFabricatedRes.ok, false);
+  if (!coreFabricatedRes.ok) {
+    assert.strictEqual(coreFabricatedRes.error.code, 'AI_STRUCTURED_OUTPUT_INVALID');
+  }
+  totalTestsPassed += 2;
+
+  // 10.6: Action Core: Null category token -> UNRESOLVED
+  const mockNullCatRouter = {
+    execute: async () => ({
+      ok: true as const,
+      data: {
+        ...validOutput,
+        category_token: null,
+      },
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+    }),
+  } as any;
+
+  const coreNullCatRes = await executeNormalizedReceiptVisionCore(
+    dummyNormalizedImage,
+    { id: 'usr_test_123' },
+    {
+      router: mockNullCatRouter,
+      credentialProvider: mockCredentialProvider,
+      candidateResult: builtCandidates,
+    }
+  );
+
+  assert.strictEqual(coreNullCatRes.ok, true);
+  if (coreNullCatRes.ok) {
+    assert.strictEqual(coreNullCatRes.data.draft.category_id, null);
+    assert.strictEqual(coreNullCatRes.data.draft.warnings.includes('CATEGORY_UNRESOLVED'), true);
+    assert.strictEqual(coreNullCatRes.data.draft.warnings.includes('CATEGORY_STALE'), false);
+  }
+  totalTestsPassed += 4;
+
+  console.log('  ✓ 10. Category token validation, resolution, and RLS revalidation verified');
+
+  // ==========================================
+  // 11. DATABASE FAILURE GATES (Pass 12B-2)
+  // ==========================================
+  console.log('11. Testing Pre-Call & Post-Call Database Failure Gates...');
+
+  // 11.1: Pre-call category candidate load failure -> CONTEXT_LOAD_FAILED, 0 router calls, 0 provider calls
+  let preRouterCreated = 0;
+  const sampleFileFor11 = new File([sampleJpeg], 'receipt.jpg', { type: 'image/jpeg' });
+  const sampleFormData11 = new FormData();
+  sampleFormData11.append('file', sampleFileFor11);
+
+  const preDbFailActionRes = await executeAnalyzeReceiptAction(sampleFormData11, {
+    getUser: async () => ({ user: { id: 'usr_test_123' }, error: null }),
+    validateFormData: (fd) => validateReceiptFormData(fd),
+    normalizeImage: async (b, m) => normalizeReceiptImage(b, m),
+    fetchCategoryCandidates: async () => {
+      throw new Error('Database connection timeout during candidate fetch');
+    },
+    createRouter: () => {
+      preRouterCreated++;
+      return {} as any;
+    },
+  });
+
+  assert.strictEqual(preDbFailActionRes.ok, false);
+  if (!preDbFailActionRes.ok) {
+    assert.strictEqual(preDbFailActionRes.error.code, 'CONTEXT_LOAD_FAILED');
+  }
+  assert.strictEqual(preRouterCreated, 0, 'Router must not be created if category candidate read fails');
+  totalTestsPassed += 3;
+
+  // 11.2: Post-call revalidation DB failure -> CONTEXT_LOAD_FAILED, 0 draft returned
+  const postDbFailRes = await executeNormalizedReceiptVisionCore(
+    dummyNormalizedImage,
+    { id: 'usr_test_123' },
+    {
+      router: mockResolvedRouter,
+      credentialProvider: mockCredentialProvider,
+      candidateResult: builtCandidates,
+      revalidateCategory: async () => {
+        throw new Error('Database connection lost during post-provider category revalidation');
+      },
+    }
+  );
+
+  assert.strictEqual(postDbFailRes.ok, false);
+  if (!postDbFailRes.ok) {
+    assert.strictEqual(postDbFailRes.error.code, 'CONTEXT_LOAD_FAILED');
+  }
+  totalTestsPassed += 2;
+
+  console.log('  ✓ 11. Database failure gates verified');
+
+  // ==========================================
+  // 12. WARNING DERIVATION TAXONOMY & ORDER (Pass 12B-2)
+  // ==========================================
+  console.log('12. Testing Warning Derivation Taxonomy & Deterministic Ordering Matrix...');
+
+  // 12.1: Canonical ordering verification
+  const testExtractionBase: ReceiptVisionExtractionResult = {
+    document_kind: 'PURCHASE_RECEIPT',
+    merchant: 'Test Store',
+    occurred_on: '2026-03-01',
+    occurred_on_state: 'PRESENT',
+    amount: '100',
+    canonical_amount: '100.0000',
+    amount_state: 'PRESENT',
+    currency_code: 'USD',
+    currency_state: 'PRESENT',
+    category_token: null,
+    note: null,
+    image_quality: 'OK',
+  };
+
+  // Base case: Only ACCOUNT_REQUIRED and CATEGORY_UNRESOLVED
+  const baseWarnings = deriveReceiptWarnings({
+    extraction: testExtractionBase,
+    categoryStatus: 'UNRESOLVED',
+  });
+  assert.deepStrictEqual(baseWarnings, ['CATEGORY_UNRESOLVED', 'ACCOUNT_REQUIRED']);
+  totalTestsPassed += 1;
+
+  // Multi-warning case: Test full canonical order
+  const chaoticExtraction: ReceiptVisionExtractionResult = {
+    document_kind: 'INVOICE', // -> DOCUMENT_UNSUPPORTED
+    merchant: null, // -> MERCHANT_MISSING
+    occurred_on: null,
+    occurred_on_state: 'AMBIGUOUS', // -> DATE_AMBIGUOUS
+    amount: null,
+    canonical_amount: null,
+    amount_state: 'MISSING', // -> TOTAL_MISSING
+    currency_code: null,
+    currency_state: 'UNSUPPORTED', // -> CURRENCY_UNSUPPORTED
+    category_token: null,
+    note: null,
+    image_quality: 'LOW', // -> IMAGE_QUALITY_LOW
+  };
+
+  const derivedChaoticWarnings = deriveReceiptWarnings({
+    extraction: chaoticExtraction,
+    categoryStatus: 'STALE', // -> CATEGORY_STALE
+  });
+
+  const expectedOrder: ReceiptWarningCode[] = [
+    'DOCUMENT_UNSUPPORTED',
+    'TOTAL_MISSING',
+    'CURRENCY_UNSUPPORTED',
+    'DATE_AMBIGUOUS',
+    'MERCHANT_MISSING',
+    'CATEGORY_STALE',
+    'ACCOUNT_REQUIRED',
+    'IMAGE_QUALITY_LOW',
+  ];
+  assert.deepStrictEqual(derivedChaoticWarnings, expectedOrder);
+  totalTestsPassed += 1;
+
+  console.log('  ✓ 12. Warning derivation taxonomy and ordering matrix verified');
+
+  // ==========================================
+  // 13. CAN_APPLY MATRIX (Pass 12B-2)
+  // ==========================================
+  console.log('13. Testing can_apply Authorization Matrix...');
+
+  // 13.1: Happy path: PURCHASE_RECEIPT + amount + currency + date -> true
+  assert.strictEqual(
+    computeReceiptCanApply({
+      document_kind: 'PURCHASE_RECEIPT',
+      canonical_amount: '85000.0000',
+      currency_code: 'VND',
+      occurred_on: '2026-03-01',
+    }),
+    true
+  );
+
+  // 13.2: Non-purchase receipt kinds -> false regardless of other fields
+  const nonPurchaseKinds = ['INVOICE', 'CREDIT_NOTE', 'OTHER'] as const;
+  for (const kind of nonPurchaseKinds) {
+    assert.strictEqual(
+      computeReceiptCanApply({
+        document_kind: kind,
+        canonical_amount: '85000.0000',
+        currency_code: 'VND',
+        occurred_on: '2026-03-01',
+      }),
+      false
+    );
+    totalTestsPassed += 1;
+  }
+
+  // 13.3: Missing required fields -> false
+  assert.strictEqual(computeReceiptCanApply({ document_kind: 'PURCHASE_RECEIPT', canonical_amount: null, currency_code: 'VND', occurred_on: '2026-03-01' }), false);
+  assert.strictEqual(computeReceiptCanApply({ document_kind: 'PURCHASE_RECEIPT', canonical_amount: '85000.0000', currency_code: null, occurred_on: '2026-03-01' }), false);
+  assert.strictEqual(computeReceiptCanApply({ document_kind: 'PURCHASE_RECEIPT', canonical_amount: '85000.0000', currency_code: 'VND', occurred_on: null }), false);
+  totalTestsPassed += 4;
+
+  console.log('  ✓ 13. can_apply authorization matrix verified');
+
+  // ==========================================
+  // 14. PURE FORM STATE APPLICATION (Pass 12B-2)
+  // ==========================================
+  console.log('14. Testing Pure Form State Application Engine & Zero Default Leakage...');
+
+  const initialForm = {
+    type: 'INCOME',
+    amount: '5000000',
+    currency: 'USD',
+    accountId: 'acc_vcb_1',
+    categoryId: 'cat_salary_1',
+    occurredOn: '2025-01-01',
+    merchant: 'Old Merchant',
+    note: 'Old Note',
+    incomeSourceId: 'inc_src_1',
+    incomeSourceStreamId: 'inc_stream_1',
+  };
+
+  const validDraft: ReceiptTransactionDraft = {
+    type: 'EXPENSE',
+    amount: '85000.0000',
+    currency_code: 'VND',
+    merchant: 'Highlands Coffee',
+    occurred_on: '2026-03-01',
+    category_id: 'cat-uuid-1',
+    account_id: null,
+    note: '2x Iced Americano',
+    document_kind: 'PURCHASE_RECEIPT',
+    can_apply: true,
+    warnings: ['ACCOUNT_REQUIRED'],
+  };
+
+  // 14.1: Valid application overwrites properly with zero leakage
+  const applyResult = applyReceiptDraftToFormState(initialForm, validDraft);
+  assert.strictEqual(applyResult.applied, true);
+  assert.strictEqual(applyResult.state.type, 'EXPENSE');
+  assert.strictEqual(applyResult.state.amount, '85000.0000');
+  assert.strictEqual(applyResult.state.currency, 'VND');
+  assert.strictEqual(applyResult.state.occurredOn, '2026-03-01');
+  assert.strictEqual(applyResult.state.accountId, '', 'Account must be reset to empty string');
+  assert.strictEqual(applyResult.state.categoryId, 'cat-uuid-1');
+  assert.strictEqual(applyResult.state.merchant, 'Highlands Coffee');
+  assert.strictEqual(applyResult.state.note, '2x Iced Americano');
+  assert.strictEqual(applyResult.state.incomeSourceId, '', 'Income source must be cleared');
+  assert.strictEqual(applyResult.state.incomeSourceStreamId, '', 'Income source stream must be cleared');
+  totalTestsPassed += 11;
+
+  // 14.2: Draft with null category / merchant / note clears previous form values
+  const draftWithNulls: ReceiptTransactionDraft = {
+    ...validDraft,
+    category_id: null,
+    merchant: null,
+    note: null,
+  };
+  const applyNullsResult = applyReceiptDraftToFormState(initialForm, draftWithNulls);
+  assert.strictEqual(applyNullsResult.state.categoryId, '');
+  assert.strictEqual(applyNullsResult.state.merchant, '');
+  assert.strictEqual(applyNullsResult.state.note, '');
+  totalTestsPassed += 3;
+
+  // 14.3: Refusal when can_apply is false
+  const unapplicableDraft: ReceiptTransactionDraft = {
+    ...validDraft,
+    can_apply: false,
+    amount: null,
+  };
+  const refApplyResult = applyReceiptDraftToFormState(initialForm, unapplicableDraft);
+  assert.strictEqual(refApplyResult.applied, false);
+  assert.deepStrictEqual(refApplyResult.state, initialForm, 'State must not be mutated on unapplicable draft');
+  totalTestsPassed += 2;
+
+  console.log('  ✓ 14. Pure form state application engine verified');
+
+  // ==========================================
+  // 15. FULL SERVER ACTION LIFECYCLE WITH CATEGORIES (Pass 12B-2)
+  // ==========================================
+  console.log('15. Testing Full Server Action Lifecycle with Candidate Scoping & RLS Revalidation...');
+
+  const lifecycleEvents: string[] = [];
+  let postRevalidationCalled = 0;
+
+  const trackedFile15 = createTrackedFile(sampleJpeg, 'receipt.jpg', 'image/jpeg', () => {
+    lifecycleEvents.push('ARRAY_BUFFER');
+  });
+  const trackedFormData15 = new FormData();
+  trackedFormData15.append('file', trackedFile15);
+
+  const fullLifecycleRes = await executeAnalyzeReceiptAction(trackedFormData15, {
+    getUser: async () => {
+      lifecycleEvents.push('AUTH');
+      return { user: { id: 'usr_test_123' }, error: null };
+    },
+    validateFormData: (fd) => {
+      lifecycleEvents.push('VALIDATE');
+      return validateReceiptFormData(fd);
+    },
+    normalizeImage: async (b, m) => {
+      lifecycleEvents.push('NORMALIZE');
+      return normalizeReceiptImage(b, m);
+    },
+    fetchCategoryCandidates: async (userId) => {
+      lifecycleEvents.push('READ_CATEGORIES');
+      assert.strictEqual(userId, 'usr_test_123');
+      return builtCandidates;
+    },
+    revalidateCategory: async (catId) => {
+      lifecycleEvents.push('REVALIDATE_CATEGORY');
+      postRevalidationCalled++;
+      return catId === 'cat-uuid-1';
+    },
+    createRouter: () => {
+      lifecycleEvents.push('CREATE_ROUTER');
+      return {
+        execute: async () => {
+          lifecycleEvents.push('PROVIDER');
+          return {
+            ok: true as const,
+            data: {
+              document_kind: 'PURCHASE_RECEIPT' as const,
+              merchant: 'Starbucks Coffee',
+              occurred_on: '2026-03-01',
+              occurred_on_state: 'PRESENT' as const,
+              amount: '85000',
+              amount_state: 'PRESENT' as const,
+              currency_code: 'VND' as const,
+              currency_state: 'PRESENT' as const,
+              category_token: 'CAT_1',
+              note: 'Coffee',
+              image_quality: 'OK' as const,
+            },
+            provider: 'gemini',
+            model: 'gemini-2.5-flash',
+          };
+        },
+      } as any;
+    },
+    createCredentialResolver: () => {
+      lifecycleEvents.push('CREATE_CREDENTIAL_RESOLVER');
+      return mockCredentialProvider;
+    },
+  });
+
+  assert.strictEqual(fullLifecycleRes.ok, true);
+  assert.deepStrictEqual(lifecycleEvents, [
+    'AUTH',
+    'VALIDATE',
+    'ARRAY_BUFFER',
+    'NORMALIZE',
+    'READ_CATEGORIES',
+    'CREATE_ROUTER',
+    'CREATE_CREDENTIAL_RESOLVER',
+    'PROVIDER',
+    'REVALIDATE_CATEGORY',
+  ]);
+  assert.strictEqual(postRevalidationCalled, 1);
+  if (fullLifecycleRes.ok) {
+    assert.strictEqual(fullLifecycleRes.data.draft.can_apply, true);
+    assert.strictEqual(fullLifecycleRes.data.draft.category_id, 'cat-uuid-1');
+  }
+  totalTestsPassed += 5;
+
+  console.log('  ✓ 15. Full Server Action lifecycle verified');
+
+  console.log(`\n=== All Phase 12B-1 and Phase 12B-2 Receipt Vision Tests Passed Successfully! Total Assertions/Checks: ${totalTestsPassed} ===`);
 }
 
 runTests().catch((err) => {

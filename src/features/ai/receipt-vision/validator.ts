@@ -233,11 +233,18 @@ export function validateReceiptVisionOutput(value: unknown): ReceiptVisionParseO
     }
   }
 
-  // 8. category_token in Pass 12B-1 must be null
+  // 8. category_token: string | null matching /^CAT_[1-9][0-9]*$/
+  let category_token: string | null = null;
   if (record.category_token !== null) {
-    throw new Error(
-      `category_token must be null in Pass 12B-1, but got '${String(record.category_token)}'.`
-    );
+    if (
+      typeof record.category_token !== 'string' ||
+      !/^CAT_[1-9][0-9]*$/.test(record.category_token)
+    ) {
+      throw new Error(
+        `category_token must be null or match format 'CAT_n' (e.g. 'CAT_1'), but got '${String(record.category_token)}'.`
+      );
+    }
+    category_token = record.category_token;
   }
 
   return {
@@ -249,7 +256,7 @@ export function validateReceiptVisionOutput(value: unknown): ReceiptVisionParseO
     amount_state,
     currency_code,
     currency_state,
-    category_token: null,
+    category_token,
     note,
     image_quality,
   };

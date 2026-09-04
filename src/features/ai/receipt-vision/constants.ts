@@ -20,6 +20,12 @@ export const PHASE_12B_NORMALIZED_MAX_LONG_EDGE_PX = 2048;
 /** Maximum byte size for normalized output image buffer (4 MiB) */
 export const PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES = 4_194_304;
 
+/** Maximum category candidates sent to AI model context */
+export const PHASE_12B_MAX_CATEGORY_CANDIDATES = 50;
+
+/** Maximum length for category candidate label in prompt */
+export const PHASE_12B_MAX_CATEGORY_LABEL_LENGTH = 50;
+
 /** Supported runtime image MIME types */
 export const PHASE_12B_SUPPORTED_IMAGE_MIMES = [
   'image/jpeg',

@@ -19,6 +19,11 @@ import {
   type NormalizedReceiptImage,
 } from './image';
 import {
+  fetchReceiptCategoryCandidates,
+  revalidateReceiptCategory,
+  type BuildCategoryCandidatesResult,
+} from './categories';
+import {
   executeNormalizedReceiptVisionCore,
   executeReceiptVisionCore,
 } from './action-core';
@@ -130,6 +135,8 @@ export interface AnalyzeReceiptActionDeps {
   getUser?: () => Promise<{ user: { id: string; email?: string } | null; error: unknown }>;
   validateFormData?: typeof validateReceiptFormData;
   normalizeImage?: typeof normalizeReceiptImage;
+  fetchCategoryCandidates?: (userId: string) => Promise<BuildCategoryCandidatesResult>;
+  revalidateCategory?: (categoryId: string) => Promise<boolean>;
   createRouter?: () => unknown;
   createCredentialResolver?: () => unknown;
   executeNormalizedCore?: typeof executeNormalizedReceiptVisionCore;
@@ -143,8 +150,9 @@ export interface AnalyzeReceiptActionDeps {
  * 2. VALIDATE FORMDATA
  * 3. ARRAY_BUFFER
  * 4. NORMALIZE IMAGE
- * 5. CREATE ROUTER & CREDENTIAL RESOLVER
- * 6. EXECUTE NORMALIZED CORE
+ * 5. READ CATEGORY CANDIDATES UNDER RLS
+ * 6. CREATE ROUTER & CREDENTIAL RESOLVER
+ * 7. EXECUTE NORMALIZED CORE WITH REVALIDATION
  */
 export async function executeAnalyzeReceiptAction(
   formData: FormData,
@@ -212,7 +220,41 @@ export async function executeAnalyzeReceiptAction(
     };
   }
 
-  // 5. Instantiate router and credential provider ONLY after normalization succeeds
+  // 5. Read category candidates under RLS BEFORE constructing router / credentials
+  let candidateResult: BuildCategoryCandidatesResult = {
+    candidates: [],
+    candidateMap: new Map<string, string>(),
+    categoriesOmitted: false,
+  };
+
+  if (deps?.fetchCategoryCandidates) {
+    try {
+      candidateResult = await deps.fetchCategoryCandidates(user.id);
+    } catch {
+      return {
+        ok: false,
+        error: {
+          code: 'CONTEXT_LOAD_FAILED',
+          message: 'Không thể tải thông tin danh mục từ hệ thống. Vui lòng thử lại.',
+        },
+      };
+    }
+  } else {
+    try {
+      const supabase = await createClient();
+      candidateResult = await fetchReceiptCategoryCandidates(supabase, user.id);
+    } catch {
+      return {
+        ok: false,
+        error: {
+          code: 'CONTEXT_LOAD_FAILED',
+          message: 'Không thể tải thông tin danh mục từ hệ thống. Vui lòng thử lại.',
+        },
+      };
+    }
+  }
+
+  // 6. Instantiate router and credential provider ONLY after normalization and category load succeed
   const router = deps?.createRouter
     ? (deps.createRouter() as ReturnType<typeof createDefaultServerRouter>)
     : createDefaultServerRouter();
@@ -223,12 +265,20 @@ export async function executeAnalyzeReceiptAction(
 
   const executeNormalizedCoreFn = deps?.executeNormalizedCore ?? executeNormalizedReceiptVisionCore;
 
+  // 7. Post-provider revalidator function under RLS
+  const revalidateCategoryFn = deps?.revalidateCategory ?? (async (catId: string) => {
+    const supabase = await createClient();
+    return revalidateReceiptCategory(supabase, user.id, catId);
+  });
+
   return executeNormalizedCoreFn(
     normalizedImage,
     user,
     {
       router,
       credentialProvider,
+      candidateResult,
+      revalidateCategory: revalidateCategoryFn,
     }
   );
 }
@@ -239,3 +289,4 @@ export async function executeAnalyzeReceiptAction(
 export async function analyzeReceiptAction(formData: FormData): Promise<ReceiptVisionActionResult> {
   return executeAnalyzeReceiptAction(formData);
 }
+

@@ -8,7 +8,9 @@ import 'server-only';
  * All extraction must adhere to conservative classification and explicit state provenance.
  */
 
-export const RECEIPT_VISION_SYSTEM_INSTRUCTION = `You are Finora's Receipt Vision Assistant.
+import type { ReceiptCategoryCandidate } from './types';
+
+export const RECEIPT_VISION_BASE_SYSTEM_INSTRUCTION = `You are Finora's Receipt Vision Assistant.
 Your sole job is to extract factual financial transaction details from a single receipt image.
 
 CRITICAL SECURITY & INJECTION DEFENSE RULES:
@@ -44,8 +46,33 @@ You must output a single, valid JSON object with EXACTLY the following 11 keys a
   - "MISSING": No currency symbol/code is found. "currency_code" MUST be null.
   - "AMBIGUOUS": Conflicting currency indications are present. "currency_code" MUST be null.
   - "UNSUPPORTED": A foreign currency not in [VND, USD, EUR, JPY, CNY, KRW] is present (e.g. GBP, SGD, THB). "currency_code" MUST be null.
-- "category_token": MUST ALWAYS BE null (no category candidates are provided).
+- "category_token": Selected category token from provided candidates (e.g. "CAT_1") or null.
 - "note": Brief summary of items or purpose of receipt (string, max 200 chars) or null.
 - "image_quality": "OK" if text and numbers are clearly legible, "LOW" if blurry, poorly lit, cut off, or damaged.`;
 
-export const RECEIPT_VISION_PROMPT = `Analyze the attached receipt image and extract the structured financial transaction data according to the exact 11-key schema.`;
+/**
+ * Builds the dynamic receipt vision system instruction and user prompt.
+ * Formats opaque category candidates (CAT_1, CAT_2...) without exposing any database UUIDs or user IDs.
+ */
+export function buildReceiptVisionPrompt(options?: {
+  categories?: readonly ReceiptCategoryCandidate[];
+}): { prompt: string; systemInstruction: string } {
+  const categories = options?.categories ?? [];
+
+  let categoryInstruction = '';
+  if (categories.length > 0) {
+    const candidateLines = categories.map((c) => `${c.token} | ${c.label}`).join('\n');
+    categoryInstruction = `\n\nCATEGORY CANDIDATES (Choose EXACT token if confident match, otherwise null):\n${candidateLines}\n- If one of the candidates clearly matches the purchase, set "category_token" to its token (e.g. "CAT_1").\n- If none match, or if uncertain, set "category_token" to null.\n- NEVER fabricate tokens not in this list. NEVER output category names or UUIDs into "category_token".`;
+  } else {
+    categoryInstruction = `\n\nCATEGORY CANDIDATES:\nNo category candidates are provided. "category_token" MUST be null.`;
+  }
+
+  const systemInstruction = `${RECEIPT_VISION_BASE_SYSTEM_INSTRUCTION}${categoryInstruction}`;
+  const prompt = `Analyze the attached receipt image and extract the structured financial transaction data according to the exact 11-key schema.`;
+
+  return { prompt, systemInstruction };
+}
+
+export const RECEIPT_VISION_SYSTEM_INSTRUCTION = buildReceiptVisionPrompt().systemInstruction;
+export const RECEIPT_VISION_PROMPT = buildReceiptVisionPrompt().prompt;
+

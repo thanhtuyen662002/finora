@@ -2,7 +2,7 @@
  * Finora AI Receipt Vision — Types
  * Phase 12B — Multimodal Receipt Image Pipeline
  *
- * Client-safe type definitions. Must NOT import 'server-only'.
+ * Client-safe type definitions.
  */
 
 export type ReceiptDocumentKind =
@@ -40,6 +40,42 @@ export type ReceiptImageQuality =
   | 'OK'
   | 'LOW';
 
+export type ReceiptWarningCode =
+  | 'DOCUMENT_UNSUPPORTED'
+  | 'TOTAL_MISSING'
+  | 'TOTAL_AMBIGUOUS'
+  | 'CURRENCY_MISSING'
+  | 'CURRENCY_AMBIGUOUS'
+  | 'CURRENCY_UNSUPPORTED'
+  | 'DATE_MISSING'
+  | 'DATE_AMBIGUOUS'
+  | 'DATE_INVALID'
+  | 'MERCHANT_MISSING'
+  | 'CATEGORY_UNRESOLVED'
+  | 'CATEGORY_STALE'
+  | 'ACCOUNT_REQUIRED'
+  | 'IMAGE_QUALITY_LOW';
+
+export interface ReceiptCategoryCandidate {
+  readonly id: string;
+  readonly token: `CAT_${number}`;
+  readonly label: string;
+}
+
+export interface ReceiptTransactionDraft {
+  readonly type: 'EXPENSE';
+  readonly amount: string | null;
+  readonly currency_code: ReceiptCurrencyCode | null;
+  readonly merchant: string | null;
+  readonly occurred_on: string | null;
+  readonly category_id: string | null;
+  readonly account_id: null;
+  readonly note: string | null;
+  readonly document_kind: ReceiptDocumentKind;
+  readonly can_apply: boolean;
+  readonly warnings: readonly ReceiptWarningCode[];
+}
+
 /**
  * Exact 11-key structured output returned by provider schema.
  */
@@ -67,6 +103,7 @@ export type ReceiptVisionErrorCode =
   | 'RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED'
   | 'RECEIPT_IMAGE_NORMALIZED_TOO_LARGE'
   | 'RECEIPT_IMAGE_DECODE_FAILED'
+  | 'CONTEXT_LOAD_FAILED'
   | 'AI_NOT_CONFIGURED'
   | 'AI_PROVIDER_UNAVAILABLE'
   | 'AI_AUTH_FAILED'
@@ -96,10 +133,14 @@ export interface ReceiptVisionExtractionResult {
   readonly image_quality: ReceiptImageQuality;
 }
 
+export interface ReceiptVisionActionResultData extends ReceiptVisionExtractionResult {
+  readonly draft: ReceiptTransactionDraft;
+}
+
 export type ReceiptVisionActionResult =
   | {
       readonly ok: true;
-      readonly data: ReceiptVisionExtractionResult;
+      readonly data: ReceiptVisionActionResultData;
       readonly provider: string;
       readonly model: string;
     }

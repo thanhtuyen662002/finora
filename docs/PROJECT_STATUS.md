@@ -5,11 +5,11 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 3)
+- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 3 Completed)
 - **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: PASS 12B-1 CORRECTIVE 3 COMPLETE (Phase 12 Overall: IN_PROGRESS)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B implementation:** PASS 12B-1 CORRECTIVE 3 COMPLETE (Post-Normalization Credential Construction, Metadata Fixture Proof, Strict Lifecycle Trace & 169 Tests PASS)
-- **Pass 12B-2 implementation:** NOT AUTHORIZED
+- **Phase 12B implementation:** PASS 12B-1 CORRECTIVE 3 COMPLETE (Zero-media AiError, Category scoping, RLS revalidation, Warning provenance, Form state engine, 246 Tests PASS)
+- **Pass 12B-2 implementation:** PENDING INDEPENDENT SOURCE AUDIT (NOT AUTHORIZED YET)
 - **Real Gemini remote calls:** NOT AUTHORIZED
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`

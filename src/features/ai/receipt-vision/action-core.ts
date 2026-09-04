@@ -5,15 +5,21 @@ import 'server-only';
  * Phase 12B — Multimodal Vision Execution Core & Orchestration
  *
  * Dependency-injected core logic for 100% deterministic, zero-network unit testing.
- * Strictly separates authentication, image normalization, provider dispatch, and validation.
+ * Strictly separates authentication, image normalization, category candidate reads,
+ * provider dispatch, token resolution, RLS revalidation, and draft construction.
  */
 
 import type { AiCredentialProvider } from '@/lib/ai/types';
 import type { AiRouter } from '@/lib/ai/router';
 import type { AiErrorCode } from '@/lib/ai/errors';
 import { canonicalizeReceiptAmount } from './money';
-import { RECEIPT_VISION_PROMPT, RECEIPT_VISION_SYSTEM_INSTRUCTION } from './prompt';
+import { buildReceiptVisionPrompt } from './prompt';
 import { ReceiptVisionOutputValidator } from './validator';
+import {
+  buildReceiptTransactionDraft,
+  type CategoryResolutionStatus,
+} from './domain';
+import type { BuildCategoryCandidatesResult } from './categories';
 import {
   ReceiptImageError,
   type NormalizedReceiptImage,
@@ -28,6 +34,8 @@ import type {
 export interface NormalizedReceiptVisionCoreDeps {
   readonly router: AiRouter;
   readonly credentialProvider: AiCredentialProvider;
+  readonly candidateResult?: BuildCategoryCandidatesResult;
+  readonly revalidateCategory?: (categoryId: string) => Promise<boolean>;
 }
 
 export interface ReceiptVisionCoreDeps extends NormalizedReceiptVisionCoreDeps {
@@ -109,12 +117,23 @@ export async function executeNormalizedReceiptVisionCore(
     };
   }
 
-  // 2. Dispatch structured multimodal request via AiRouter
+  // 2. Build prompt with opaque candidate categories (or empty if omitted)
+  const candidateResult = deps.candidateResult ?? {
+    candidates: [],
+    candidateMap: new Map<string, string>(),
+    categoriesOmitted: false,
+  };
+
+  const { prompt, systemInstruction } = buildReceiptVisionPrompt({
+    categories: candidateResult.candidates,
+  });
+
+  // 3. Dispatch structured multimodal request via AiRouter
   const aiResult = await deps.router.execute(
     {
       operation: 'receipt_vision',
-      prompt: RECEIPT_VISION_PROMPT,
-      systemInstruction: RECEIPT_VISION_SYSTEM_INSTRUCTION,
+      prompt,
+      systemInstruction,
       media: [
         {
           kind: 'inline_image',
@@ -149,7 +168,7 @@ export async function executeNormalizedReceiptVisionCore(
 
   const output = aiResult.data;
 
-  // 3. Exact-money canonicalization if amount is present
+  // 4. Exact-money canonicalization if amount is present
   let canonicalAmount: string | null = null;
   if (output.amount !== null && output.amount_state === 'PRESENT') {
     try {
@@ -165,6 +184,55 @@ export async function executeNormalizedReceiptVisionCore(
     }
   }
 
+  // 5. Category token resolution & post-provider RLS revalidation
+  let resolvedCategoryId: string | null = null;
+  let categoryStatus: CategoryResolutionStatus = 'UNRESOLVED';
+
+  if (output.category_token !== null) {
+    // Model returned a non-null token -> verify it existed in pre-call snapshot
+    if (!candidateResult.candidateMap.has(output.category_token)) {
+      // Fabricated or unknown token violates model contract
+      return {
+        ok: false,
+        error: {
+          code: 'AI_STRUCTURED_OUTPUT_INVALID',
+          message: 'Mã danh mục do AI trả về không nằm trong danh sách danh mục hợp lệ.',
+        },
+      };
+    }
+
+    const provisionalCategoryId = candidateResult.candidateMap.get(output.category_token)!;
+
+    // Perform post-provider RLS revalidation
+    let isValidCategory = true;
+    if (deps.revalidateCategory) {
+      try {
+        isValidCategory = await deps.revalidateCategory(provisionalCategoryId);
+      } catch {
+        return {
+          ok: false,
+          error: {
+            code: 'CONTEXT_LOAD_FAILED',
+            message: 'Không thể xác thực lại danh mục từ hệ thống. Vui lòng thử lại.',
+          },
+        };
+      }
+    }
+
+    if (isValidCategory) {
+      resolvedCategoryId = provisionalCategoryId;
+      categoryStatus = 'RESOLVED';
+    } else {
+      resolvedCategoryId = null;
+      categoryStatus = 'STALE';
+    }
+  } else {
+    // Model returned null or no candidates supplied
+    resolvedCategoryId = null;
+    categoryStatus = 'UNRESOLVED';
+  }
+
+  // 6. Build extraction result and domain draft DTO
   const extractionResult: ReceiptVisionExtractionResult = {
     document_kind: output.document_kind,
     merchant: output.merchant,
@@ -180,9 +248,18 @@ export async function executeNormalizedReceiptVisionCore(
     image_quality: output.image_quality,
   };
 
+  const draft = buildReceiptTransactionDraft({
+    extraction: extractionResult,
+    resolvedCategoryId,
+    categoryStatus,
+  });
+
   return {
     ok: true,
-    data: extractionResult,
+    data: {
+      ...extractionResult,
+      draft,
+    },
     provider: aiResult.provider,
     model: aiResult.model,
   };
@@ -236,5 +313,8 @@ export async function executeReceiptVisionCore(
   return executeNormalizedReceiptVisionCore(normalizedImage, user, {
     router: deps.router,
     credentialProvider: deps.credentialProvider,
+    candidateResult: deps.candidateResult,
+    revalidateCategory: deps.revalidateCategory,
   });
 }
+
