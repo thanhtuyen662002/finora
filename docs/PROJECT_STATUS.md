@@ -5,10 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 1)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: PASS 12B-1 CORRECTIVE 1 COMPLETE (Phase 12 Overall: IN_PROGRESS)
+- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 2)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: PASS 12B-1 CORRECTIVE 2 COMPLETE (Phase 12 Overall: IN_PROGRESS)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B implementation:** PASS 12B-1 CORRECTIVE 1 COMPLETE (Client/Server Boundary, Media Cardinality, Upload Authority, Error Contract, Lockfile Sync & 138 Tests PASS)
+- **Phase 12B implementation:** PASS 12B-1 CORRECTIVE 2 COMPLETE (Zero-Media AiError, Genuine Animated WebP, FormData Contract, Security Bounds & 149 Tests PASS)
 - **Pass 12B-2 implementation:** NOT AUTHORIZED
 - **Real Gemini remote calls:** NOT AUTHORIZED
 - **Phase 12C implementation:** NOT AUTHORIZED
@@ -1119,30 +1119,31 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ### Next Recommended Step
 - Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
 
-## Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 1)
+## Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 2)
 
-### Status: PASS_12B_1_CORRECTIVE_1_COMPLETE / PENDING_AUDIT (Phase 12 Overall: PARTIAL)
+### Status: PASS_12B_1_CORRECTIVE_2_COMPLETE / PENDING_AUDIT (Phase 12 Overall: PARTIAL)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B Implementation Phase:** `PASS 12B-1 CORRECTIVE 1 COMPLETE`
+- **Phase 12B Implementation Phase:** `PASS 12B-1 CORRECTIVE 2 COMPLETE`
 - **Pass 12B-2 Implementation:** NOT AUTHORIZED
 - **Real Gemini Remote Calls:** NOT AUTHORIZED
 - **Phase 12C Implementation:** NOT AUTHORIZED
 - **Live UI Integration:** Unmounted (Receipt Vision picker and actions remain decoupled from live transaction creation modal)
 
-- **Corrective Pass 1 Scope & Findings Addressed:**
-  1. **Client/Server Module Boundary:** Extracted shared constants (`PHASE_12B_MAX_RECEIPT_FILE_BYTES`, etc.) to `src/features/ai/receipt-vision/constants.ts`. Created `server.ts` with `import 'server-only';` for all server exports (`money`, `validator`, `image`, `prompt`, `action-core`, `actions`). Kept `index.ts` strictly client-safe.
-  2. **Media Cardinality & Provider Fail-Closed:** Multimodal Gemini adapter (`gemini-core.ts`) strictly enforces `media.length === 1` and `kind === 'inline_image'` for `receipt_vision` operations; rejects empty or missing media before provider dispatch.
-  3. **Runtime MIME & Byte Array Validation:** Multimodal adapter strictly validates media MIME against `['image/jpeg', 'image/png', 'image/webp']` and rejects 0-byte media buffers with `AI_INVALID_REQUEST`.
-  4. **Exact-One File Authority in Server Action:** `validateReceiptFormData` in `actions.ts` enforces exactly one file across the entire FormData payload. Rejects multiple files, misplaced files, and non-file entries.
-  5. **Pre-ArrayBuffer File Cap:** `validateReceiptFormData` enforces the 4 MiB file size cap *before* reading bytes into memory (`arrayBuffer()`), before Sharp initialization, and before credential provider resolution.
-  6. **Error Taxonomy Alignment:** Aligned all image and action error codes with the authoritative contract (`RECEIPT_FILE_REQUIRED`, `RECEIPT_FILE_TOO_LARGE`, `RECEIPT_FILE_TYPE_UNSUPPORTED`, `RECEIPT_IMAGE_TOO_LARGE`, `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED`, `RECEIPT_IMAGE_DECODE_FAILED`, `RECEIPT_FILE_INVALID`, `AUTH_REQUIRED`).
-  7. **Sanitized UI Error Presentation:** `ReceiptPicker` error handlers catch errors safely with fixed, privacy-safe localized user messages without echoing raw exception messages.
-  8. **Deterministic Multi-Frame Rejection & Binary Safety:** Added VP8X animated WebP header detection and verification test fixtures.
-  9. **Lockfile Reproducibility:** Synchronized `package-lock.json` with pinned `sharp: 0.35.4`; `npm ci` verified.
+- **Corrective Pass 2 Scope & Findings Addressed:**
+  1. **Zero-Media AiError Construction:** Refactored `src/lib/ai/providers/gemini-core.ts`. Extracted pure `classifyGeminiErrorCode` returning string code; `receipt_vision` catch path constructs `new AiError(code, RECEIPT_SAFE_ERROR_MESSAGES[code])` directly without creating intermediate `AiError` objects that contain raw error messages, protecting sensitive base64/inlineData image payloads from leaking into logs or errors.
+  2. **Genuine Animated WebP Proof:** Generated genuine 2-frame lossless WebP animated buffers via RIFF/WEBP/VP8X/ANIM/ANMF chunk synthesis and proved rejection with `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED` in `tests/phase12b-receipt-vision.test.ts`.
+  3. **Server Action FormData Contract:** Standardized `validateReceiptFormData` in `src/features/ai/receipt-vision/actions.ts` to strictly return `RECEIPT_FILE_REQUIRED` for empty FormData or 0-byte files, and `RECEIPT_FILE_INVALID` for non-file values, misplaced files, and multi-file payloads.
+  4. **Security Verification Closure:**
+     - Width > 8192px rejected with `RECEIPT_IMAGE_TOO_LARGE`.
+     - Height > 8192px rejected with `RECEIPT_IMAGE_TOO_LARGE`.
+     - Decoded pixels > 20,000,000 rejected with `RECEIPT_IMAGE_TOO_LARGE`.
+     - Output buffer cap enforced via `assertNormalizedReceiptSize` (`RECEIPT_IMAGE_NORMALIZED_TOO_LARGE`).
+     - EXIF orientation auto-rotated and full metadata stripping verified (orientation, EXIF, XMP, ICC stripped).
+  5. **Server Action Orchestration Precedence:** Refactored `executeAnalyzeReceiptAction` with full dependency injection to prove that authentication precedes FormData validation, FormData validation precedes byte reading/arrayBuffer, and normalization precedes provider dispatch.
 
-### Verification Results (Pass 12B-1 Corrective Pass 1)
-- **Phase 12B Test Suite (`tests/phase12b-receipt-vision.test.ts`)**: 138/138 checks PASS
+### Verification Results (Pass 12B-1 Corrective Pass 2)
+- **Phase 12B Test Suite (`tests/phase12b-receipt-vision.test.ts`)**: 149/149 checks PASS
 - **All Previous Test Suites**: PASS (Phase 8 Math, Base Mode, Cross-Currency; Phase 9 Income Sources & UI; Phase 10 AI Foundation; Phase 11 AI Credentials; Phase 12A Transaction Draft)
 - **TypeScript Check (`npm run typecheck`)**: PASS (0 errors)
 - **Lint Check (`npm run lint`)**: PASS (0 warnings/errors)
@@ -1151,6 +1152,6 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - **Remote Network Calls**: 0 Gemini API calls, 0 Supabase remote calls
 
 ### Next Recommended Step
-- Independent source audit of Pass 12B-1 Corrective Pass 1 prior to authorization of Pass 12B-2.
+- Independent source audit of Pass 12B-1 Corrective Pass 2 prior to authorization of Pass 12B-2.
 
 

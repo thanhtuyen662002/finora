@@ -39,6 +39,22 @@ export class ReceiptImageError extends Error {
 }
 
 /**
+ * Authoritative boundary check for normalized output image buffer size.
+ * Ensures the normalized image does not exceed PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES (4 MiB).
+ *
+ * @throws ReceiptImageError('RECEIPT_IMAGE_NORMALIZED_TOO_LARGE') if buffer exceeds 4 MiB.
+ */
+export function assertNormalizedReceiptSize(buffer: Uint8Array | Buffer): void {
+  const byteLength = buffer instanceof Buffer ? buffer.length : buffer.byteLength;
+  if (byteLength > PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES) {
+    throw new ReceiptImageError(
+      'RECEIPT_IMAGE_NORMALIZED_TOO_LARGE',
+      'Ảnh sau khi chuẩn hóa vượt quá giới hạn kích thước tối đa.'
+    );
+  }
+}
+
+/**
  * Detects binary image format using strict magic bytes.
  */
 export function detectImageSignature(bytes: Uint8Array): AiInlineMediaMimeType | null {
@@ -279,12 +295,7 @@ export async function normalizeReceiptImage(
     const normalizedBuffer = await transform.toBuffer({ resolveWithObject: true });
 
     // 8. Output buffer cap check (<= 4 MiB)
-    if (normalizedBuffer.data.length > PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES) {
-      throw new ReceiptImageError(
-        'RECEIPT_IMAGE_NORMALIZED_TOO_LARGE',
-        'Ảnh sau khi chuẩn hóa vượt quá giới hạn kích thước tối đa.'
-      );
-    }
+    assertNormalizedReceiptSize(normalizedBuffer.data);
 
     return {
       bytes: new Uint8Array(normalizedBuffer.data.buffer, normalizedBuffer.data.byteOffset, normalizedBuffer.data.byteLength),

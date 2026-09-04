@@ -52,15 +52,33 @@ export interface GeminiCoreOptions {
   clientFactory: GeminiClientFactory;
 }
 
-export function normalizeGeminiError(err: unknown): AiError {
+export const RECEIPT_SAFE_ERROR_MESSAGES: Record<AiErrorCode, string> = {
+  AI_AUTH_FAILED: 'Gemini authentication failed during receipt vision analysis.',
+  AI_RATE_LIMITED: 'Gemini rate limit exceeded during receipt vision analysis.',
+  AI_TIMEOUT: 'Receipt vision analysis timed out.',
+  AI_ABORTED: 'Receipt vision analysis was aborted.',
+  AI_PROVIDER_UNAVAILABLE: 'Gemini service is currently unavailable for receipt vision.',
+  AI_INVALID_REQUEST: 'Invalid request payload sent to receipt vision provider.',
+  AI_INVALID_RESPONSE: 'Invalid response received from receipt vision provider.',
+  AI_STRUCTURED_OUTPUT_INVALID: 'Failed to validate structured receipt vision output.',
+  AI_NOT_CONFIGURED: 'AI credentials not configured for receipt vision.',
+  AI_PROVIDER_ERROR: 'An error occurred with the AI provider during receipt vision analysis.',
+  AI_CREDENTIAL_CORRUPTED: 'AI credential is corrupted.',
+  AI_CREDENTIAL_KEY_UNAVAILABLE: 'AI credential encryption key is unavailable.',
+  AI_CREDENTIAL_RESOLUTION_FAILED: 'Failed to resolve AI credential for receipt vision.',
+};
+
+/**
+ * Pure classifier that inspects an unknown error to determine the corresponding AiErrorCode.
+ * DOES NOT create an AiError, log, or return the raw external message.
+ */
+export function classifyGeminiErrorCode(err: unknown): AiErrorCode {
   if (err instanceof AiError) {
-    return err;
+    return err.code;
   }
 
   const rawMessage = err instanceof Error ? err.message : String(err);
   const lowerMsg = rawMessage.toLowerCase();
-
-  let code: AiErrorCode = 'AI_PROVIDER_ERROR';
 
   if (
     lowerMsg.includes('api_key_invalid') ||
@@ -70,36 +88,57 @@ export function normalizeGeminiError(err: unknown): AiError {
     lowerMsg.includes('403') ||
     lowerMsg.includes('permission_denied')
   ) {
-    code = 'AI_AUTH_FAILED';
-  } else if (
+    return 'AI_AUTH_FAILED';
+  }
+
+  if (
     lowerMsg.includes('resource_exhausted') ||
     lowerMsg.includes('429') ||
     lowerMsg.includes('quota') ||
     lowerMsg.includes('rate limit')
   ) {
-    code = 'AI_RATE_LIMITED';
-  } else if (
+    return 'AI_RATE_LIMITED';
+  }
+
+  if (
     lowerMsg.includes('deadline_exceeded') ||
     lowerMsg.includes('timeout') ||
     lowerMsg.includes('timed out')
   ) {
-    code = 'AI_TIMEOUT';
-  } else if (
+    return 'AI_TIMEOUT';
+  }
+
+  if (
     lowerMsg.includes('abort') ||
     lowerMsg.includes('cancelled') ||
     lowerMsg.includes('canceled')
   ) {
-    code = 'AI_ABORTED';
-  } else if (
+    return 'AI_ABORTED';
+  }
+
+  if (
     lowerMsg.includes('503') ||
     lowerMsg.includes('unavailable') ||
     lowerMsg.includes('overloaded') ||
     lowerMsg.includes('service unavailable')
   ) {
-    code = 'AI_PROVIDER_UNAVAILABLE';
-  } else if (lowerMsg.includes('invalid_argument') || lowerMsg.includes('400')) {
-    code = 'AI_INVALID_REQUEST';
+    return 'AI_PROVIDER_UNAVAILABLE';
   }
+
+  if (lowerMsg.includes('invalid_argument') || lowerMsg.includes('400')) {
+    return 'AI_INVALID_REQUEST';
+  }
+
+  return 'AI_PROVIDER_ERROR';
+}
+
+export function normalizeGeminiError(err: unknown): AiError {
+  if (err instanceof AiError) {
+    return err;
+  }
+
+  const code = classifyGeminiErrorCode(err);
+  const rawMessage = err instanceof Error ? err.message : String(err);
 
   return new AiError({
     code,
@@ -282,25 +321,10 @@ export class GeminiProviderCore implements AiProvider {
         });
       }
       if (request.operation === 'receipt_vision') {
-        const normalized = normalizeGeminiError(err);
-        const safeMessages: Record<AiErrorCode, string> = {
-          AI_AUTH_FAILED: 'Gemini authentication failed during receipt vision analysis.',
-          AI_RATE_LIMITED: 'Gemini rate limit exceeded during receipt vision analysis.',
-          AI_TIMEOUT: 'Receipt vision analysis timed out.',
-          AI_ABORTED: 'Receipt vision analysis was aborted.',
-          AI_PROVIDER_UNAVAILABLE: 'Gemini service is currently unavailable for receipt vision.',
-          AI_INVALID_REQUEST: 'Invalid request payload sent to receipt vision provider.',
-          AI_INVALID_RESPONSE: 'Invalid response received from receipt vision provider.',
-          AI_STRUCTURED_OUTPUT_INVALID: 'Failed to validate structured receipt vision output.',
-          AI_NOT_CONFIGURED: 'AI credentials not configured for receipt vision.',
-          AI_PROVIDER_ERROR: 'An error occurred with the AI provider during receipt vision analysis.',
-          AI_CREDENTIAL_CORRUPTED: 'AI credential is corrupted.',
-          AI_CREDENTIAL_KEY_UNAVAILABLE: 'AI credential encryption key is unavailable.',
-          AI_CREDENTIAL_RESOLUTION_FAILED: 'Failed to resolve AI credential for receipt vision.',
-        };
+        const code = classifyGeminiErrorCode(err);
         throw new AiError({
-          code: normalized.code,
-          message: safeMessages[normalized.code] ?? 'An error occurred during receipt vision analysis.',
+          code,
+          message: RECEIPT_SAFE_ERROR_MESSAGES[code] ?? 'An error occurred during receipt vision analysis.',
           providerId: this.id,
         });
       }
