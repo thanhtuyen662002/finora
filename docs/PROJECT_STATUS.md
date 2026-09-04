@@ -5,10 +5,15 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion
-- **Phase status:** DETERMINISTIC_FAST_PATH_PASS_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+- **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion (CLOSED / PASS) | Phase 12B — Receipt Vision (CONTRACT_DISCOVERY_AUTHORIZED)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12 Overall: PARTIAL
+- **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
+- **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
+- **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
+- **Phase 12A closure receipt:** `docs/receipts/PHASE_12A_CLOSURE.md`
 - **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (36/36 PASS)
 - **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (110/110 PASS)
+- **Phase 12A functional / runtime gate:** PASS
 - **Phase 12A parser model:** `gemini-3.5-flash-lite` (exact stable ID fallback)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
@@ -1075,51 +1080,37 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ### Next Recommended Step
 - Independent audit of the Performance & Money Presentation Corrective prior to live explicit-save smoke test.
 
-## Phase 12A — Deterministic Transaction Fast Path & Gemini Fallback
+## Phase 12A — Natural-Language Transaction Draft & Deterministic Fast Path
 
-### Status: DETERMINISTIC_FAST_PATH_PASS_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+### Status: CLOSED / PASS (Phase 12 Overall: PARTIAL)
 
-- **Implementation Overview (Pass 2 Corrective — Attached Currency Semantics & Date Ambiguity Fail-Safe):**
-  1. **Atomic Monetary Token Parsing (`src/features/ai/transaction-draft/fast-path.ts`)**:
-     - Introduced `parseAtomicMonetaryToken` parsing raw amounts, multipliers, and attached currency tokens (`4.50USD`, `4.50EUR`, `120.000d`, `$4.50`, `€100`) as single atomic units.
-     - Detects attached ISO codes (`USD`, `EUR`, `JPY`, `CNY`, `KRW`, `VND`), names (`dollars`, `euros`, `yen`, `yuan`, `won`, `đồng`, `dong`), and symbols (`$`, `€`, `¥`, `đ`, `d`).
-  2. **Attached Foreign Currency & Vietnamese Multiplier Conflict Detection (`src/features/ai/transaction-draft/fast-path.ts`)**:
-     - Fails closed to Gemini whenever Vietnamese multiplier semantics (`k`, `tr`, `triệu`, `nghìn`, `tỷ`) are combined with foreign currencies (e.g. `85kUSD`, `85k$`, `1trEUR`).
-  3. **Multiple Date Claims & Conflicting Date Claims Fail-Safe (`src/features/ai/transaction-draft/fast-path.ts`)**:
-     - Scans and aggregates all date claims (ISO, slash `DD/MM/YYYY`, dash `DD-MM-YYYY`, Vietnamese long dates `ngày D tháng M năm Y`, relative offsets `hôm qua`/`hôm nay`/`ngày mai`).
-     - If distinct claims resolve to differing dates, triggers safe fallback to Gemini router (`hasDateConflict = true`).
-  4. **Incomplete / Partial Date Claims Fail-Safe (`src/features/ai/transaction-draft/fast-path.ts`)**:
-     - Explicitly checks for partial day/month expressions (e.g. `ngày 4`, `ngày 4 tháng 9`, `tháng 9`) without full calendar context.
-     - Never silently defaults partial dates to today; fails closed directly to Gemini router (`hasPartialDate = true`).
-  5. **Deterministic Fast Path Pass 1 Baseline Preserved**:
-     - Canonical exact money `numeric(20,4)` string arithmetic.
-     - 0 uses of floating-point arithmetic.
-     - Authoritative output validation via `aiTransactionParseOutputValidator.validate()`.
-     - Zero financial mutations, 0 schema migrations, server-only boundaries respected.
+- **Phase 12A Closure Receipt:** `docs/receipts/PHASE_12A_CLOSURE.md`
+- **Accepted Phase 12A Implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
+- **Accepted Phase 12A Implementation Tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
+- **Production Deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt` (Status: `READY`)
+- **Live Origin:** `https://finora-orpin-nu.vercel.app`
 
-### Verification Results (Deterministic Fast Path Pass 2)
+- **Implementation Summary:**
+  1. **AI-Assisted, Never AI-Dependent:** Full drafting workflow creates interactive drafts only. Zero financial mutation authority during parse/preview/apply. Explicit user save required to persist.
+  2. **Deterministic Fast Path:** Bypasses LLM network calls entirely for high-confidence Vietnamese & multi-currency inputs with 0 credential resolution, 0 router calls, and canonical string-based `numeric(20,4)` exact money formatting.
+  3. **Atomic Monetary Token Parsing:** Correctly parses and binds attached ISO codes, names, and symbols (`4.50USD`, `4.50EUR`, `120.000d`, `$4.50`, `€100`).
+  4. **Adversarial & Ambiguity Fail-Safes:** Fails closed to the single-call `gemini-3.5-flash-lite` fallback on conflicting currencies, multiple amounts, ranges, corrections, multi-transactions, partial dates, or conflicting date claims.
+  5. **Post-Parse Authenticated Revalidation:** Validates all candidate accounts, categories, and income streams against active RLS-scoped user data.
+
+### Verification Results (Phase 12A Closure Baseline)
 - **Phase 12A Test Suite (`tests/phase12a-transaction-draft.test.ts`)**: 36/36 PASS
-  - Test 24: Deterministic Fast Path: simple expense parsed with 0 router, 0 resolver, 0 repo, 0 Gemini calls.
-  - Test 25: Deterministic string-only currency parsing verified across VND, USD, k, tr, trieu, d with exact 4-decimal amounts.
-  - Test 26: Anonymous access returns AUTH_REQUIRED with 0 privileged factory calls.
-  - Test 27: Complex/ambiguous prompt falls back to Gemini router exactly once with execution_path=gemini.
-  - Test 28: Date span masking & calendar date verification (ISO, slash, dash, relative offsets, invalid date fallback).
-  - Test 29: Precision preservation (non-zero excess precision triggers fallback, zero silent truncation).
-  - Test 30: Full token consumption (unrecognized alphanumeric suffix triggers Gemini fallback).
-  - Test 31: Currency conflict detection (Vietnamese multiplier + foreign currency or multiple currencies fall back to Gemini).
-  - Test 32: Deterministic fail-safes (multiple amounts, ranges, corrections, and multi-transactions fall back to Gemini).
-  - Test 33: Attached ISO and symbol currency parsing: 4.50USD, 4.50EUR, 120.000d parse deterministically.
-  - Test 34: Attached currency conflict fail-safe: Vietnamese multiplier attached to foreign currency (85kUSD, 85k$, 1trEUR) falls back to Gemini.
-  - Test 35: Date claim conflict fail-safe: Conflicting dates fall back to Gemini, identical multi-claims succeed.
-  - Test 36: Partial date fail-safe: Incomplete date claims (ngày 4, ngày 4 tháng 9) fall back to Gemini instead of defaulting to today.
 - **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 110/110 PASS
-  - Added 6 Pass 2 architectural gates: `ATTACHED_ISO_CURRENCY_BOUND_TO_AMOUNT_TOKEN`, `ATTACHED_SYMBOL_CURRENCY_BOUND_TO_AMOUNT_TOKEN`, `VND_MULTIPLIER_ATTACHED_FOREIGN_CURRENCY_CONFLICT`, `MULTIPLE_DATE_CLAIMS_FAILSAFE`, `CONFLICTING_DATE_CLAIMS_FAILSAFE`, `PARTIAL_DATE_DOES_NOT_DEFAULT_TODAY`.
 - **Phase 10 Test Suite (`tests/phase10-ai-foundation.test.ts`)**: 50/50 PASS
 - **Phase 11 Test Suite (`tests/phase11-ai-credentials.test.ts`)**: 79/79 PASS
 - **TypeScript Check (`npm run typecheck`)**: PASS
 - **Lint Check (`npm run lint`)**: PASS
 - **Production Build (`compile_applet`)**: PASS
+- **Live Gemini Production Smoke:** `PHASE_12A_LIVE_GEMINI_PARSE=PASS`, `PHASE_12A_PARSE_APPLY_ZERO_MUTATION=PASS`
+- **Deterministic Production Smoke:** `PHASE_12A_FAST_PATH_REAL_SMOKE=PASS` (~81.8% server latency reduction, 0 AI calls, 0 mutations)
+- **Explicit Save Production Smoke:** `PHASE_12A_EXPLICIT_SAVE_SMOKE=PASS` (1 created row, 0 duplicates)
+- **Phase 12A Functional / Runtime Gate:** PASS
+- **Phase 12A Overall:** PASS (CLOSED)
 
 ### Next Recommended Step
-- Proceed to independent audit of the Phase 12A Deterministic Fast Path Pass 2.
+- Proceed to Phase 12B — Receipt Vision (CONTRACT_DISCOVERY_AUTHORIZED=true, IMPLEMENTATION_AUTHORIZED=false).
 
