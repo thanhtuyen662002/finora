@@ -16,7 +16,11 @@ import 'server-only';
 
 import { AiError } from '@/lib/ai/errors';
 import type { AiOutputValidator } from '@/lib/ai/types';
-import type { AiTransactionParseOutput } from './types';
+import {
+  type AiTransactionParseOutput,
+  isSupportedCurrencyCode,
+  SUPPORTED_CURRENCY_CODES,
+} from './types';
 
 export const REQUIRED_PARSE_OUTPUT_KEYS = [
   'type',
@@ -40,7 +44,40 @@ export const TOKEN_PATTERNS = {
 } as const;
 
 export const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-export const ISO_CURRENCY_REGEX = /^[A-Z]{3}$/;
+
+/**
+ * Deterministic strict calendar date validator for YYYY-MM-DD strings.
+ * Enforces true calendar correctness including leap years and exact month boundaries.
+ * Examples:
+ * - 2026-02-28 -> valid
+ * - 2024-02-29 -> valid (leap year)
+ * - 2026-02-29 -> invalid (2026 is not a leap year)
+ * - 2026-02-30 -> invalid
+ * - 2026-04-31 -> invalid (April has 30 days)
+ * - 2026-13-01 -> invalid (month 13 does not exist)
+ */
+export function isValidCalendarDate(dateStr: string): boolean {
+  if (typeof dateStr !== 'string' || !ISO_DATE_REGEX.test(dateStr)) {
+    return false;
+  }
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+
+  if (month < 1 || month > 12) return false;
+  if (day < 1) return false;
+
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day > daysInMonth) return false;
+
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return (
+    d.getUTCFullYear() === year &&
+    d.getUTCMonth() === month - 1 &&
+    d.getUTCDate() === day
+  );
+}
 
 export class AiTransactionParseOutputValidator
   implements AiOutputValidator<AiTransactionParseOutput>
@@ -61,7 +98,8 @@ export class AiTransactionParseOutputValidator
       },
       currency_code: {
         type: ['string', 'null'],
-        description: '3-letter uppercase ISO currency code e.g. "VND", "USD", or null',
+        enum: [...SUPPORTED_CURRENCY_CODES, null],
+        description: `Supported currency code (${SUPPORTED_CURRENCY_CODES.join(', ')}) or null`,
       },
       account_token: {
         type: ['string', 'null'],
@@ -164,13 +202,13 @@ export class AiTransactionParseOutputValidator
       }
     }
 
-    // currency_code: string | null (3 uppercase letters)
+    // currency_code: string | null (Supported Currency Gate: VND, USD, EUR, JPY, CNY, KRW)
     const rawCurrency = record.currency_code;
     if (rawCurrency !== null) {
-      if (typeof rawCurrency !== 'string' || !ISO_CURRENCY_REGEX.test(rawCurrency)) {
+      if (typeof rawCurrency !== 'string' || !isSupportedCurrencyCode(rawCurrency)) {
         throw new AiError({
           code: 'AI_STRUCTURED_OUTPUT_INVALID',
-          message: `Invalid currency_code '${String(rawCurrency)}'. Expected 3 uppercase letters or null.`,
+          message: `Invalid currency_code '${String(rawCurrency)}'. Expected one of: ${SUPPORTED_CURRENCY_CODES.join(', ')} or null.`,
         });
       }
     }
@@ -253,20 +291,13 @@ export class AiTransactionParseOutputValidator
       }
     }
 
-    // occurred_on: string | null (ISO YYYY-MM-DD)
+    // occurred_on: string | null (Strict Calendar Date YYYY-MM-DD)
     const rawOccurredOn = record.occurred_on;
     if (rawOccurredOn !== null) {
-      if (typeof rawOccurredOn !== 'string' || !ISO_DATE_REGEX.test(rawOccurredOn)) {
+      if (typeof rawOccurredOn !== 'string' || !isValidCalendarDate(rawOccurredOn)) {
         throw new AiError({
           code: 'AI_STRUCTURED_OUTPUT_INVALID',
-          message: `Invalid occurred_on '${String(rawOccurredOn)}'. Expected format YYYY-MM-DD or null.`,
-        });
-      }
-      const parsedTime = Date.parse(rawOccurredOn);
-      if (Number.isNaN(parsedTime)) {
-        throw new AiError({
-          code: 'AI_STRUCTURED_OUTPUT_INVALID',
-          message: `Date '${rawOccurredOn}' is not a valid calendar date.`,
+          message: `Invalid occurred_on '${String(rawOccurredOn)}'. Expected a valid calendar date in format YYYY-MM-DD or null.`,
         });
       }
     }

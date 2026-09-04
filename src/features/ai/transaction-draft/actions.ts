@@ -20,10 +20,19 @@ import { createDefaultServerRouter } from '@/lib/ai/server';
 import { parseTransactionTextCore } from './action-core';
 import type { ParseTransactionDraftResult } from './types';
 
+export interface ParseTransactionDraftActionDeps {
+  readonly getSupabaseClient?: () => Promise<any>;
+  readonly createAiCredentialRepository?: typeof createAiCredentialRepository;
+  readonly createAiCredentialResolver?: (options: { repository: any }) => any;
+  readonly createDefaultServerRouter?: typeof createDefaultServerRouter;
+}
+
 export async function parseTransactionDraftAction(
-  prompt: string
+  prompt: string,
+  deps?: ParseTransactionDraftActionDeps
 ): Promise<ParseTransactionDraftResult> {
-  const supabase = await createClient();
+  const getClient = deps?.getSupabaseClient ?? createClient;
+  const supabase = await getClient();
   const {
     data: { user },
     error: authError,
@@ -39,9 +48,15 @@ export async function parseTransactionDraftAction(
     };
   }
 
-  const repository = createAiCredentialRepository();
-  const credentialProvider = new AiCredentialResolver({ repository });
-  const router = createDefaultServerRouter();
+  const repoFactory = deps?.createAiCredentialRepository ?? createAiCredentialRepository;
+  const resolverFactory =
+    deps?.createAiCredentialResolver ??
+    ((opts: { repository: any }) => new AiCredentialResolver(opts));
+  const routerFactory = deps?.createDefaultServerRouter ?? createDefaultServerRouter;
+
+  const repository = repoFactory();
+  const credentialProvider = resolverFactory({ repository });
+  const router = routerFactory();
 
   return parseTransactionTextCore({
     prompt,

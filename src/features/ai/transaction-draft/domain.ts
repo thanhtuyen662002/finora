@@ -16,13 +16,16 @@ import 'server-only';
  */
 
 import { isPositiveExactDecimal, toExactDecimal } from '@/lib/money';
-import type {
-  AiTransactionParseOutput,
-  OpaqueCandidateContext,
-  ParsedTransactionDraft,
-  TransactionDraftWarningCode,
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database';
+import {
+  type AiTransactionParseOutput,
+  isSupportedCurrencyCode,
+  type OpaqueCandidateContext,
+  type ParsedTransactionDraft,
+  type TransactionDraftWarningCode,
 } from './types';
-import { ISO_CURRENCY_REGEX, ISO_DATE_REGEX } from './validator';
+import { isValidCalendarDate } from './validator';
 
 export interface CrossValidateParams {
   readonly rawOutput: AiTransactionParseOutput;
@@ -92,9 +95,11 @@ export function crossValidateTransactionDraft(
 
   // 4. Currency Precedence & Account Conflict
   let resolvedCurrency: string | null = null;
+  const safeBaseCurrency = isSupportedCurrencyCode(baseCurrency) ? baseCurrency : 'VND';
+
   if (rawOutput.currency_code !== null) {
     const upperCurrency = rawOutput.currency_code.toUpperCase();
-    if (ISO_CURRENCY_REGEX.test(upperCurrency)) {
+    if (isSupportedCurrencyCode(upperCurrency)) {
       resolvedCurrency = upperCurrency;
       // Cross-validate with matched account currency
       if (resolvedAccountId !== null) {
@@ -106,16 +111,16 @@ export function crossValidateTransactionDraft(
         }
       }
     } else {
-      resolvedCurrency = baseCurrency;
+      resolvedCurrency = safeBaseCurrency;
       addWarning('CURRENCY_INVALID');
     }
   } else {
     // Unspecified in prompt -> Tier 2: Account currency, Tier 3: Base currency
     if (resolvedAccountId !== null) {
       const account = candidates.accounts.find((a) => a.id === resolvedAccountId);
-      resolvedCurrency = account ? account.currency_code : baseCurrency;
+      resolvedCurrency = account ? account.currency_code : safeBaseCurrency;
     } else {
-      resolvedCurrency = baseCurrency;
+      resolvedCurrency = safeBaseCurrency;
       addWarning('CURRENCY_INFERRED');
     }
   }
@@ -180,7 +185,7 @@ export function crossValidateTransactionDraft(
         addWarning('INCOME_STREAM_NOT_MATCHED');
       } else if (
         resolvedSourceId === null ||
-        matchedStream.source_id !== resolvedSourceId
+        matchedStream.income_source_id !== resolvedSourceId
       ) {
         addWarning('INCOME_STREAM_PARENT_CONFLICT');
       } else {
@@ -195,7 +200,7 @@ export function crossValidateTransactionDraft(
     addWarning('DATE_MISSING');
   } else {
     const trimmedDate = rawOutput.occurred_on.trim();
-    if (ISO_DATE_REGEX.test(trimmedDate) && !Number.isNaN(Date.parse(trimmedDate))) {
+    if (isValidCalendarDate(trimmedDate)) {
       resolvedOccurredOn = trimmedDate;
     } else {
       addWarning('DATE_AMBIGUOUS');
@@ -231,5 +236,112 @@ export function crossValidateTransactionDraft(
     occurred_on: resolvedOccurredOn,
     warning_codes: warningCodes,
     unmatched_text,
+  };
+}
+
+/**
+ * Re-reads matched candidate entities via authenticated RLS client AFTER AI execution
+ * to guarantee that any candidate selected by AI is still valid, unarchived, and visible to the user.
+ * Zero service-role or privileged escalation.
+ */
+export async function revalidateResolvedCandidates(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  draft: ParsedTransactionDraft
+): Promise<ParsedTransactionDraft> {
+  const updatedWarnings = [...draft.warning_codes];
+  const addWarning = (code: TransactionDraftWarningCode) => {
+    if (!updatedWarnings.includes(code)) {
+      updatedWarnings.push(code);
+    }
+  };
+
+  let resolvedAccountId = draft.account_id;
+  let resolvedCategoryId = draft.category_id;
+  let resolvedSourceId = draft.income_source_id;
+  let resolvedStreamId = draft.income_source_stream_id;
+
+  // 1. Account revalidation
+  if (resolvedAccountId !== null) {
+    const { data: acc, error: accErr } = await supabase
+      .from('accounts')
+      .select('id, user_id, currency_code, is_archived')
+      .eq('id', resolvedAccountId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (accErr || !acc || acc.is_archived) {
+      resolvedAccountId = null;
+      addWarning('ACCOUNT_NOT_MATCHED');
+    }
+  }
+
+  // 2. Category revalidation
+  if (resolvedCategoryId !== null) {
+    const { data: cat, error: catErr } = await supabase
+      .from('categories')
+      .select('id, user_id, type, is_archived')
+      .eq('id', resolvedCategoryId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (catErr || !cat || cat.is_archived) {
+      resolvedCategoryId = null;
+      addWarning('CATEGORY_NOT_MATCHED');
+    } else if (draft.type !== null && cat.type !== draft.type) {
+      resolvedCategoryId = null;
+      addWarning('CATEGORY_TYPE_CONFLICT');
+    }
+  }
+
+  // 3. Income Source revalidation (only if type is INCOME)
+  if (resolvedSourceId !== null && draft.type === 'INCOME') {
+    const { data: src, error: srcErr } = await supabase
+      .from('income_sources')
+      .select('id, user_id, is_archived')
+      .eq('id', resolvedSourceId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (srcErr || !src || src.is_archived) {
+      resolvedSourceId = null;
+      addWarning('INCOME_SOURCE_NOT_MATCHED');
+    }
+  } else if (draft.type !== 'INCOME') {
+    resolvedSourceId = null;
+  }
+
+  // 4. Income Stream revalidation (only if type is INCOME and source is valid)
+  if (resolvedStreamId !== null && draft.type === 'INCOME') {
+    if (resolvedSourceId === null) {
+      resolvedStreamId = null;
+      addWarning('INCOME_STREAM_PARENT_CONFLICT');
+    } else {
+      const { data: str, error: strErr } = await supabase
+        .from('income_source_streams')
+        .select('id, user_id, income_source_id, is_archived')
+        .eq('id', resolvedStreamId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (strErr || !str || str.is_archived) {
+        resolvedStreamId = null;
+        addWarning('INCOME_STREAM_NOT_MATCHED');
+      } else if (str.income_source_id !== resolvedSourceId) {
+        resolvedStreamId = null;
+        addWarning('INCOME_STREAM_PARENT_CONFLICT');
+      }
+    }
+  } else if (draft.type !== 'INCOME') {
+    resolvedStreamId = null;
+  }
+
+  return {
+    ...draft,
+    account_id: resolvedAccountId,
+    category_id: resolvedCategoryId,
+    income_source_id: resolvedSourceId,
+    income_source_stream_id: resolvedStreamId,
+    warning_codes: updatedWarnings,
   };
 }

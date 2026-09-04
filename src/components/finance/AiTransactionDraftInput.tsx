@@ -254,14 +254,14 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                 <div>
                   <span className="text-muted-foreground">Tài khoản:</span>{' '}
-                  <span className="font-medium text-foreground">
-                    {matchedAccount ? matchedAccount.name : 'Chưa chọn'}
+                  <span className={`font-medium ${matchedAccount ? 'text-foreground' : 'text-amber-700 dark:text-amber-400'}`}>
+                    {matchedAccount ? matchedAccount.name : 'Chưa nhận diện'}
                   </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Danh mục:</span>{' '}
-                  <span className="font-medium text-foreground">
-                    {matchedCategory ? matchedCategory.name : 'Chưa chọn'}
+                  <span className={`font-medium ${matchedCategory ? 'text-foreground' : 'text-amber-700 dark:text-amber-400'}`}>
+                    {matchedCategory ? matchedCategory.name : 'Chưa nhận diện'}
                   </span>
                 </div>
 

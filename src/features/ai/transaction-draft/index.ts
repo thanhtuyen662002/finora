@@ -4,4 +4,5 @@
  */
 
 export * from './types';
+export * from './form-state';
 export { parseTransactionDraftAction } from './actions';

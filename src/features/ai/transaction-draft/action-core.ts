@@ -12,56 +12,85 @@ import 'server-only';
  *    Empty prompt or prompt > 300 characters fails closed with AI_INVALID_REQUEST.
  * 3. Strict Auth Enforcement:
  *    Missing or invalid user ID fails closed with AUTH_REQUIRED.
- * 4. Error Sanitization:
- *    Maps internal AI error codes to clear, safe Vietnamese user messages.
- * 5. Full Testability:
- *    Accepts injected SupabaseClient, AiRouter, and AiCredentialProvider for 100%
- *    deterministic testing without live network calls.
+ * 4. Error Sanitization & Exact Taxonomy:
+ *    Maps internal Phase 10 AiErrorCodes to clear, safe Vietnamese user messages.
+ * 5. Bounded & Fail-Closed Context:
+ *    Database read errors fail closed immediately (CONTEXT_LOAD_FAILED).
+ * 6. Central Config Authority:
+ *    Reuses central AI_OPERATION_CONFIG for model/timeout/tokens/temperature.
+ * 7. Post-AI Stale Revalidation:
+ *    Re-reads matched entities to ensure state validity before returning draft.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database';
+import type { AiErrorCode } from '@/lib/ai/errors';
 import type { AiCredentialProvider } from '@/lib/ai/types';
 import type { AiRouter } from '@/lib/ai/router';
 import { readCandidateContext } from './candidates';
-import { crossValidateTransactionDraft } from './domain';
+import {
+  crossValidateTransactionDraft,
+  revalidateResolvedCandidates,
+} from './domain';
 import { buildTransactionParserPrompt } from './prompt';
-import type { ParseTransactionDraftResult } from './types';
+import {
+  isSupportedCurrencyCode,
+  type ParseTransactionDraftResult,
+} from './types';
 import { aiTransactionParseOutputValidator } from './validator';
 
-export const AI_ERROR_MESSAGES: Record<string, string> = {
+export const AI_ERROR_MESSAGES: Record<AiErrorCode, string> = {
   AI_NOT_CONFIGURED:
     'Hệ thống AI chưa được cấu hình. Vui lòng liên hệ quản trị viên hoặc thiết lập API key cá nhân.',
+  AI_PROVIDER_UNAVAILABLE:
+    'Nhà cung cấp AI tạm thời không phản hồi. Vui lòng thử lại sau.',
   AI_AUTH_FAILED:
     'Xác thực API AI không thành công. Khóa API có thể đã hết hạn hoặc không hợp lệ.',
   AI_RATE_LIMITED:
     'Đã vượt quá giới hạn lượt gọi AI. Vui lòng thử lại sau vài giây.',
-  AI_QUOTA_EXHAUSTED:
-    'Hạn ngạch AI đã sử dụng hết. Vui lòng kiểm tra gói dịch vụ hoặc cập nhật API key.',
   AI_TIMEOUT:
-    'Yêu cầu AI đã hết thời gian phản hồi (15s). Vui lòng thử lại.',
+    'Yêu cầu AI đã hết thời gian phản hồi. Vui lòng thử lại.',
+  AI_ABORTED:
+    'Yêu cầu AI đã bị hủy.',
   AI_INVALID_REQUEST:
     'Yêu cầu không hợp lệ. Vui lòng kiểm tra lại nội dung.',
+  AI_INVALID_RESPONSE:
+    'Nhận được phản hồi không hợp lệ từ dịch vụ AI. Vui lòng thử lại.',
   AI_STRUCTURED_OUTPUT_INVALID:
     'Mô hình AI không thể xuất dữ liệu đúng cấu trúc yêu cầu. Vui lòng thử lại.',
-  AI_PROVIDER_UNAVAILABLE:
-    'Nhà cung cấp AI tạm thời không phản hồi. Vui lòng thử lại sau.',
-  AI_OPERATION_DISABLED:
-    'Tính năng phân tích giao dịch bằng AI hiện đang tạm tắt.',
-  AI_SAFETY_BLOCKED:
-    'Nội dung bị chặn bởi bộ lọc an toàn của mô hình.',
+  AI_PROVIDER_ERROR:
+    'Đã xảy ra lỗi từ nhà cung cấp dịch vụ AI. Vui lòng thử lại sau.',
+  AI_CREDENTIAL_CORRUPTED:
+    'Khóa API AI lưu trữ bị lỗi dữ liệu mã hóa. Vui lòng cấu hình lại khóa.',
+  AI_CREDENTIAL_KEY_UNAVAILABLE:
+    'Khóa giải mã hệ thống hiện không khả dụng. Vui lòng thử lại sau.',
+  AI_CREDENTIAL_RESOLUTION_FAILED:
+    'Không thể giải quyết thông tin xác thực AI. Vui lòng thử lại sau.',
+};
+
+export const FEATURE_ERROR_MESSAGES = {
+  AUTH_REQUIRED: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+  CONTEXT_LOAD_FAILED:
+    'Không thể tải dữ liệu tài khoản và danh mục. Vui lòng thử lại sau hoặc nhập thủ công.',
 };
 
 export const DEFAULT_AI_ERROR_MESSAGE =
   'Không thể xử lý yêu cầu AI. Vui lòng nhập giao dịch thủ công.';
 
 export function getLocalizedAiErrorMessage(code: string): string {
-  return AI_ERROR_MESSAGES[code] || DEFAULT_AI_ERROR_MESSAGE;
+  if (code in AI_ERROR_MESSAGES) {
+    return AI_ERROR_MESSAGES[code as AiErrorCode];
+  }
+  if (code in FEATURE_ERROR_MESSAGES) {
+    return FEATURE_ERROR_MESSAGES[code as keyof typeof FEATURE_ERROR_MESSAGES];
+  }
+  return DEFAULT_AI_ERROR_MESSAGE;
 }
 
 export interface ParseTransactionTextCoreParams {
   readonly prompt: string;
   readonly userId: string;
-  readonly supabase: SupabaseClient;
+  readonly supabase: SupabaseClient<Database>;
   readonly router: AiRouter;
   readonly credentialProvider: AiCredentialProvider;
   readonly now?: Date;
@@ -106,7 +135,7 @@ export async function parseTransactionTextCore(
       ok: false,
       error: {
         code: 'AUTH_REQUIRED',
-        message: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+        message: FEATURE_ERROR_MESSAGES.AUTH_REQUIRED,
       },
     };
   }
@@ -117,31 +146,54 @@ export async function parseTransactionTextCore(
   let locale = params.userSettings?.locale;
 
   if (!baseCurrency || !timezone || !locale) {
-    try {
-      const { data: settingsData } = await params.supabase
-        .from('user_settings')
-        .select('base_currency, timezone, locale')
-        .eq('user_id', params.userId)
-        .maybeSingle();
+    const { data: settingsData, error: settingsError } = await params.supabase
+      .from('user_settings')
+      .select('base_currency, timezone, locale')
+      .eq('user_id', params.userId)
+      .maybeSingle();
 
-      if (settingsData) {
-        baseCurrency = baseCurrency || settingsData.base_currency;
-        timezone = timezone || settingsData.timezone;
-        locale = locale || settingsData.locale;
-      }
-    } catch {
-      // Fall back to standard defaults if settings lookup fails
+    if (settingsError) {
+      // Query error fails closed immediately
+      return {
+        ok: false,
+        error: {
+          code: 'CONTEXT_LOAD_FAILED',
+          message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
+        },
+      };
+    }
+
+    if (settingsData) {
+      baseCurrency = baseCurrency || settingsData.base_currency;
+      timezone = timezone || settingsData.timezone;
+      locale = locale || settingsData.locale;
     }
   }
 
+  const safeBaseCurrency =
+    baseCurrency && isSupportedCurrencyCode(baseCurrency)
+      ? baseCurrency
+      : 'VND';
+
   const resolvedSettings = {
-    baseCurrency: baseCurrency || 'VND',
+    baseCurrency: safeBaseCurrency,
     timezone: timezone || 'Asia/Ho_Chi_Minh',
     locale: locale || 'vi-VN',
   };
 
-  // 4. Read candidates via authenticated RLS
-  const candidates = await readCandidateContext(params.supabase, params.userId);
+  // 4. Read candidates via authenticated RLS (fails closed on error)
+  let candidates;
+  try {
+    candidates = await readCandidateContext(params.supabase, params.userId);
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: 'CONTEXT_LOAD_FAILED',
+        message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
+      },
+    };
+  }
 
   // 5. Build prompt & system instruction
   const { prompt, systemInstruction } = buildTransactionParserPrompt({
@@ -151,7 +203,7 @@ export async function parseTransactionTextCore(
     now: params.now,
   });
 
-  // 6. Execute router
+  // 6. Execute router — Central AI operation config is authority; no duplicate parameters passed
   const result = await params.router.execute<unknown, any>(
     {
       operation: 'transaction_parser',
@@ -159,13 +211,10 @@ export async function parseTransactionTextCore(
       systemInstruction,
       responseMode: 'structured',
       outputValidator: aiTransactionParseOutputValidator,
-      temperature: 0.1,
-      maxTokens: 1024,
     },
     {
       userId: params.userId,
       credentialProvider: params.credentialProvider,
-      timeoutMs: 15000,
     }
   );
 
@@ -188,9 +237,16 @@ export async function parseTransactionTextCore(
     baseCurrency: resolvedSettings.baseCurrency,
   });
 
+  // 9. Post-AI Stale Revalidation (re-read resolved entities via authenticated RLS client)
+  const revalidatedDraft = await revalidateResolvedCandidates(
+    params.supabase,
+    params.userId,
+    draft
+  );
+
   return {
     ok: true,
-    draft,
+    draft: revalidatedDraft,
     rawText: promptText,
   };
 }

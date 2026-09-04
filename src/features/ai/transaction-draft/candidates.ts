@@ -9,12 +9,15 @@ import 'server-only';
  * 2. Assigns ephemeral request-scoped tokens (ACC_1, CAT_1, SRC_1, STR_1).
  *    Zero real UUIDs exposed to prompts or external models.
  * 3. Candidate Overflow Failsafe (PHASE_12A_CANDIDATE_OVERFLOW_FAILSAFE=true):
+ *    Queries are bounded to CAP + 1 with server-side is_archived=false filters.
  *    If active items in a dimension exceed the cap, the dimension is completely
  *    omitted from the prompt (accountsOmitted = true, etc.) and marked for explicit
  *    warning emission, preventing false-confidence subset matching.
+ * 4. Context read errors fail closed immediately (CONTEXT_LOAD_FAILED).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database';
 import type {
   CandidateAccount,
   CandidateCategory,
@@ -31,109 +34,145 @@ export const CANDIDATE_LIMITS = {
   MAX_LABEL_LENGTH: 50,
 } as const;
 
-export function truncateLabel(label: string): string {
-  const trimmed = label.trim();
-  if (trimmed.length <= CANDIDATE_LIMITS.MAX_LABEL_LENGTH) {
-    return trimmed;
+/**
+ * Sanitizes candidate labels before injection into prompts:
+ * 1. Replaces newlines and tabs with single spaces
+ * 2. Strips non-printable and control characters
+ * 3. Trims whitespace
+ * 4. Bounds length to MAX_LABEL_LENGTH (50 chars)
+ */
+export function sanitizeCandidateLabel(label: string): string {
+  if (typeof label !== 'string') return '';
+  let sanitized = label.replace(/[\r\n\t]+/g, ' ');
+  sanitized = sanitized.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+  sanitized = sanitized.trim();
+  if (sanitized.length > CANDIDATE_LIMITS.MAX_LABEL_LENGTH) {
+    sanitized = sanitized.slice(0, CANDIDATE_LIMITS.MAX_LABEL_LENGTH).trim();
   }
-  return trimmed.slice(0, CANDIDATE_LIMITS.MAX_LABEL_LENGTH);
+  return sanitized;
+}
+
+export class ContextLoadError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = 'ContextLoadError';
+  }
 }
 
 /**
  * Reads user domain entities via authenticated RLS and maps them to ephemeral opaque candidate tokens.
+ * Fails closed if any query encounters an error.
  */
 export async function readCandidateContext(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   userId: string
 ): Promise<OpaqueCandidateContext> {
-  // 1. Query Accounts (active only)
-  const { data: accountsData } = await supabase
+  // 1. Query Accounts (bounded: CAP + 1, active only)
+  const accountsRes = await supabase
     .from('accounts')
     .select('id, name, currency_code, is_archived')
     .eq('user_id', userId)
-    .order('created_at', { ascending: true });
+    .eq('is_archived', false)
+    .order('created_at', { ascending: true })
+    .limit(CANDIDATE_LIMITS.MAX_ACCOUNTS + 1);
 
-  const activeAccounts = (accountsData || []).filter((a) => !a.is_archived);
-  const accountsOmitted = activeAccounts.length > CANDIDATE_LIMITS.MAX_ACCOUNTS;
+  if (accountsRes.error) {
+    throw new ContextLoadError(`Failed to load accounts: ${accountsRes.error.message}`, accountsRes.error);
+  }
 
+  const rawAccounts = accountsRes.data ?? [];
+  const accountsOmitted = rawAccounts.length > CANDIDATE_LIMITS.MAX_ACCOUNTS;
   const accounts: CandidateAccount[] = accountsOmitted
     ? []
-    : activeAccounts.map((acc, index) => ({
+    : rawAccounts.map((acc, index) => ({
         id: acc.id,
         token: `ACC_${index + 1}`,
-        label: truncateLabel(acc.name),
+        label: sanitizeCandidateLabel(acc.name),
         currency_code: acc.currency_code,
         is_archived: Boolean(acc.is_archived),
       }));
 
-  // 2. Query Categories (active only)
-  const { data: categoriesData } = await supabase
+  // 2. Query Categories (bounded: CAP + 1, active only)
+  const categoriesRes = await supabase
     .from('categories')
     .select('id, name, type, is_archived')
     .eq('user_id', userId)
-    .order('created_at', { ascending: true });
+    .eq('is_archived', false)
+    .order('created_at', { ascending: true })
+    .limit(CANDIDATE_LIMITS.MAX_CATEGORIES + 1);
 
-  const activeCategories = (categoriesData || []).filter((c) => !c.is_archived);
-  const categoriesOmitted = activeCategories.length > CANDIDATE_LIMITS.MAX_CATEGORIES;
+  if (categoriesRes.error) {
+    throw new ContextLoadError(`Failed to load categories: ${categoriesRes.error.message}`, categoriesRes.error);
+  }
 
+  const rawCategories = categoriesRes.data ?? [];
+  const categoriesOmitted = rawCategories.length > CANDIDATE_LIMITS.MAX_CATEGORIES;
   const categories: CandidateCategory[] = categoriesOmitted
     ? []
-    : activeCategories.map((cat, index) => ({
+    : rawCategories.map((cat, index) => ({
         id: cat.id,
         token: `CAT_${index + 1}`,
-        label: truncateLabel(cat.name),
+        label: sanitizeCandidateLabel(cat.name),
         type: cat.type as 'INCOME' | 'EXPENSE',
         is_archived: Boolean(cat.is_archived),
       }));
 
-  // 3. Query Income Sources (active only)
-  const { data: sourcesData } = await supabase
+  // 3. Query Income Sources (bounded: CAP + 1, active only)
+  const sourcesRes = await supabase
     .from('income_sources')
     .select('id, name, is_archived')
     .eq('user_id', userId)
-    .order('created_at', { ascending: true });
+    .eq('is_archived', false)
+    .order('created_at', { ascending: true })
+    .limit(CANDIDATE_LIMITS.MAX_INCOME_SOURCES + 1);
 
-  const activeSources = (sourcesData || []).filter((s) => !s.is_archived);
-  const incomeSourcesOmitted = activeSources.length > CANDIDATE_LIMITS.MAX_INCOME_SOURCES;
+  if (sourcesRes.error) {
+    throw new ContextLoadError(`Failed to load income sources: ${sourcesRes.error.message}`, sourcesRes.error);
+  }
 
+  const rawSources = sourcesRes.data ?? [];
+  const incomeSourcesOmitted = rawSources.length > CANDIDATE_LIMITS.MAX_INCOME_SOURCES;
   const incomeSources: CandidateIncomeSource[] = incomeSourcesOmitted
     ? []
-    : activeSources.map((src, index) => ({
+    : rawSources.map((src, index) => ({
         id: src.id,
         token: `SRC_${index + 1}`,
-        label: truncateLabel(src.name),
+        label: sanitizeCandidateLabel(src.name),
         is_archived: Boolean(src.is_archived),
       }));
 
-  // 4. Query Income Streams (active only, belonging to active sources)
+  // 4. Query Income Streams (bounded: CAP + 1, active only, belonging to active sources)
   let incomeStreams: CandidateIncomeStream[] = [];
   let incomeStreamsOmitted = false;
 
-  if (!incomeSourcesOmitted && activeSources.length > 0) {
-    const activeSourceIds = new Set(activeSources.map((s) => s.id));
-    const { data: streamsData } = await supabase
+  if (!incomeSourcesOmitted && rawSources.length > 0) {
+    const activeSourceIds = rawSources.map((s) => s.id);
+    const streamsRes = await supabase
       .from('income_source_streams')
-      .select('id, source_id, name, is_archived')
-      .in('source_id', Array.from(activeSourceIds))
-      .order('created_at', { ascending: true });
+      .select('id, income_source_id, name, is_archived')
+      .in('income_source_id', activeSourceIds)
+      .eq('is_archived', false)
+      .order('created_at', { ascending: true })
+      .limit(CANDIDATE_LIMITS.MAX_INCOME_STREAMS + 1);
 
-    const activeStreams = (streamsData || []).filter(
-      (st) => !st.is_archived && activeSourceIds.has(st.source_id)
-    );
+    if (streamsRes.error) {
+      throw new ContextLoadError(`Failed to load income streams: ${streamsRes.error.message}`, streamsRes.error);
+    }
 
-    incomeStreamsOmitted = activeStreams.length > CANDIDATE_LIMITS.MAX_INCOME_STREAMS;
+    const rawStreams = streamsRes.data ?? [];
+    incomeStreamsOmitted = rawStreams.length > CANDIDATE_LIMITS.MAX_INCOME_STREAMS;
 
     incomeStreams = incomeStreamsOmitted
       ? []
-      : activeStreams.map((str, index) => ({
+      : rawStreams.map((str, index) => ({
           id: str.id,
-          source_id: str.source_id,
+          income_source_id: str.income_source_id,
           token: `STR_${index + 1}`,
-          label: truncateLabel(str.name),
+          label: sanitizeCandidateLabel(str.name),
           is_archived: Boolean(str.is_archived),
         }));
   } else {
-    // If sources were omitted or empty, streams are omitted
+    // If sources were omitted or empty, streams must also be omitted
     incomeStreamsOmitted = incomeSourcesOmitted;
   }
 

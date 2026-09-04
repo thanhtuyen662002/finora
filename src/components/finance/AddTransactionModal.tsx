@@ -32,6 +32,10 @@ import {
 import { isPositiveExactDecimal, toExactDecimal } from '@/lib/money';
 import { AiTransactionDraftInput } from './AiTransactionDraftInput';
 import type { ParsedTransactionDraft } from '@/features/ai/transaction-draft';
+import {
+  applyDraftToFormState,
+  TransactionFormState,
+} from '@/features/ai/transaction-draft/form-state';
 
 interface AddTransactionModalProps {
   open: boolean;
@@ -119,6 +123,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().substring(0, 10));
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
@@ -126,6 +131,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     setSubmitted(false);
     setErrorMsg('');
+    setDraftNotice(null);
 
     if (initialData) {
       setType(initialData.type);
@@ -253,42 +259,38 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   ];
 
   const handleApplyDraft = (draft: ParsedTransactionDraft) => {
-    if (draft.type) {
-      handleTypeChange(draft.type);
-    }
-    if (draft.amount) {
-      setAmount(draft.amount);
-    }
-    if (draft.currency_code) {
-      setCurrency(draft.currency_code);
-    }
-    if (draft.account_id) {
-      setAccountId(draft.account_id);
-      const acc = accounts.find((a) => a.id === draft.account_id);
-      if (acc && !draft.currency_code) {
-        setCurrency(acc.currency_code);
-      }
-    }
-    if (draft.category_id) {
-      setCategoryId(draft.category_id);
-    }
-    if (draft.type === 'INCOME') {
-      if (draft.income_source_id) {
-        setIncomeSourceId(draft.income_source_id);
-      }
-      if (draft.income_source_stream_id) {
-        setIncomeSourceStreamId(draft.income_source_stream_id);
-      }
-    }
-    if (draft.merchant) {
-      setMerchant(draft.merchant);
-    }
-    if (draft.note) {
-      setNote(draft.note);
-    }
-    if (draft.occurred_on) {
-      setOccurredOn(draft.occurred_on);
-    }
+    const currentState: TransactionFormState = {
+      type,
+      amount,
+      currency,
+      accountId,
+      categoryId,
+      incomeSourceId,
+      incomeSourceStreamId,
+      merchant,
+      note,
+      occurredOn,
+    };
+
+    const { nextState, provenance } = applyDraftToFormState({
+      currentState,
+      draft,
+      accounts,
+      categories,
+    });
+
+    setType(nextState.type);
+    setAmount(nextState.amount);
+    setCurrency(nextState.currency);
+    setAccountId(nextState.accountId);
+    setCategoryId(nextState.categoryId);
+    setIncomeSourceId(nextState.incomeSourceId);
+    setIncomeSourceStreamId(nextState.incomeSourceStreamId);
+    setMerchant(nextState.merchant);
+    setNote(nextState.note);
+    setOccurredOn(nextState.occurredOn);
+
+    setDraftNotice(provenance.reviewNotice);
   };
 
   const handleVoid = async () => {
@@ -441,6 +443,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             incomeSources={incomeSources}
             onApplyDraft={handleApplyDraft}
           />
+        )}
+
+        {draftNotice && (
+          <div
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2"
+            role="status"
+          >
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+            <span>{draftNotice}</span>
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">

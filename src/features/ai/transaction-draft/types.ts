@@ -8,6 +8,24 @@
  * 2. Application Boundary: ParsedTransactionDraft (Resolved real UUIDs after cross-validation)
  */
 
+import type { CurrencyCode } from '@/types/finance';
+
+export const SUPPORTED_CURRENCY_CODES: readonly CurrencyCode[] = [
+  'VND',
+  'USD',
+  'EUR',
+  'JPY',
+  'CNY',
+  'KRW',
+] as const;
+
+export function isSupportedCurrencyCode(code: unknown): code is CurrencyCode {
+  return (
+    typeof code === 'string' &&
+    (SUPPORTED_CURRENCY_CODES as readonly string[]).includes(code)
+  );
+}
+
 /**
  * Raw structured model output validated by Phase 10 AiOutputValidator.
  * MANDATORY: Exactly 11 keys, zero UUIDs, string amounts, tokens only.
@@ -162,7 +180,7 @@ export interface CandidateIncomeSource {
 
 export interface CandidateIncomeStream {
   readonly id: string;
-  readonly source_id: string;
+  readonly income_source_id: string;
   readonly token: string;
   readonly label: string;
   readonly is_archived: boolean;
