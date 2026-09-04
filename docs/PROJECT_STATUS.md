@@ -5,9 +5,9 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12 — AI Features Contract Discovery
-- **Phase status:** DISCOVERY / CONTRACT PENDING INDEPENDENT AUDIT
-- **Phase 12 contract discovery:** `docs/PHASE_12_CONTRACT_DISCOVERY.md`
+- **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion
+- **Phase status:** IMPLEMENTATION_COMPLETE / OFFLINE_VERIFIED
+- **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (25/25 PASS)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
 - **Phase 11 structural gate:** PASS
@@ -902,36 +902,23 @@ Status: **CLOSED (PASS)**
   - `PHASE_11_CLOSURE_RECEIPT=docs/receipts/PHASE_11_CLOSURE.md`
 - **Historical Audit Record:** Pass B interim state prior to final UI smoke and closure was `PHASE_11_OVERALL=PARTIAL`.
 
-## Phase 12 — AI Features Contract Discovery & Pass Decomposition
-Status: **DISCOVERY / CONTRACT PENDING INDEPENDENT AUDIT**
-- **Contract Discovery Document:** `docs/PHASE_12_CONTRACT_DISCOVERY.md`
-- **Scope:** Natural-language transaction draft, smart category suggestion, ephemeral receipt vision, read-only financial assistant, report summarization.
-- **Recommended First Pass:** `Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion`
-- **Architectural Principles:**
-  - Finora is AI-assisted, never AI-dependent.
-  - Zero direct AI financial mutations (`createTransaction`, `updateTransaction`, `voidTransaction`, or direct table writes never called by AI layer; `PHASE_12A_AI_FINANCIAL_WRITE_CAPABILITY=false`).
-  - Preview-and-confirm invariant strictly enforced (AI produces structured in-memory draft; UI populates fields with 0 mutations; explicit user save required; `PHASE_12A_UI_APPLY_MUTATION=false`).
-  - Server-only execution (`import 'server-only'`), authenticated session required (`auth.getUser()`).
-  - Financial domain data fetched via authenticated RLS client only (service role strictly isolated to Phase 11 credential subsystem).
-  - Router owns credential resolution (`AiRouter.execute` internally invokes `credentialProvider.resolveCredential({ providerId: 'gemini', userId, operation: 'transaction_parser' })`; `PHASE_12A_ROUTER_OWNS_CREDENTIAL_RESOLUTION=true`, `PHASE_12A_DIRECT_CREDENTIAL_RESOLUTION=false`). Feature orchestration never resolves or decrypts credentials directly.
-  - Runtime validation via `AiOutputValidator<AiTransactionParseOutput>` exact contract (`validate(value)` runtime authority; exact 11-property keyset; zero coercion; `PHASE_12A_OUTPUT_VALIDATOR_EXACT_KEYSET=true`, `PHASE_12A_OUTPUT_VALIDATOR_COERCION=false`).
-  - Ephemeral request-scoped opaque tokens (`ACC_1`, `CAT_1`, `SRC_1`, `STR_1`) prevent raw UUID exposure and model hallucinations. Token mapping cleanly distinguishes valid tokens, unknown tokens (`UNKNOWN_MODEL_TOKEN`), and stale tokens (`ACCOUNT_NOT_MATCHED`/`CATEGORY_NOT_MATCHED`).
-  - Candidate bounding caps with failsafe omission and warning truthfulness (omits overflowing dimension, sets resolved ID = null, adds `*_CANDIDATES_OMITTED` warning; `PHASE_12A_CANDIDATE_OVERFLOW_FAILSAFE=true`).
-  - Strict string-decimal monetary handling via `src/lib/money/index.ts` with comprehensive test matrix (`85k`, `85 nghìn`, `1tr`, `1 triệu`, `1.5tr`, `50.000 VND`, `VND integer`, `4.50 USD`, `USD decimal`, `too many fractional digits`, `zero`, `negative`, `NaN`, `Infinity`, `numeric JS value`).
-  - Dual boundary schema: `AiTransactionParseOutput` (model/provider boundary, 0 UUIDs) vs `ParsedTransactionDraft` (server/application boundary, post-validation UUIDs + warning codes).
-  - Deterministic server-generated warning codes (`TransactionDraftWarningCode`), 0 trusted model warning strings.
-  - Numeric confidence rejected (`PHASE_12A_NUMERIC_CONFIDENCE=false`) in favor of deterministic null fields + warning codes.
-  - Full domain cross-validation (Account/Currency, Category/Type, Income Stream/Parent).
-  - Complete Phase 11 regression test matrix via fakes (`PHASE_12A_PHASE11_REGRESSION_MATRIX_COMPLETE=true`; tests PERSONAL, ADMIN_ASSIGNED, SYSTEM, none, corrupted, key unavailable, resolution failure, and provider unavailable).
-  - Zero persistent raw prompt / raw response storage; zero database schema changes for Phase 12A (`PHASE_12_FIRST_PASS_DATABASE_CHANGE=NONE`).
-  - All automated tests run offline with `REAL_GEMINI_NETWORK_CALL=false`.
-- **Pass Decomposition:**
-  - `Phase 12A`: Natural-Language Transaction Draft & Smart Category Suggestion (1 Gemini call, draft preview)
-  - `Phase 12B`: Ephemeral Receipt Vision -> Transaction Draft (Ephemeral multimodal processing, 0 Supabase Storage persistence)
-  - `Phase 12C`: Read-Only Financial Assistant & Report Summary (Deterministic report engine DTO context, 0 tool authority)
+## Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion
+Status: **IMPLEMENTATION_COMPLETE / OFFLINE_VERIFIED**
+- **Test Suite:** `tests/phase12a-transaction-draft.test.ts` (25/25 PASS)
+- **Scope Implemented:**
+  - Authenticated server action `parseTransactionDraftAction(promptText)` (`import 'server-only'`).
+  - Read candidate context via authenticated RLS client with overflow failsafe caps (`accounts: 30`, `categories: 50`, `incomeSources: 20`, `incomeStreams: 30`, max label length: 50 chars).
+  - Model boundary opaque tokenization (`ACC_n`, `CAT_n`, `SRC_n`, `STR_n`); database UUIDs are never sent to model.
+  - Strict 11-property exact keyset schema validation (`AiTransactionParseOutputValidator`) with zero coercion (`PHASE_12A_OUTPUT_VALIDATOR_EXACT_KEYSET=true`, `PHASE_12A_OUTPUT_VALIDATOR_COERCION=false`).
+  - Server domain cross-validation (`crossValidateTransactionDraft`) for exact string decimal amount, type safety, token-to-UUID resolution, currency precedence, category type alignment, stream parent alignment, and deterministic warning code generation.
+  - Client component `AiTransactionDraftInput` integrated into `AddTransactionModal`, providing text input, draft preview, and "Áp dụng vào biểu mẫu" action.
+  - Zero financial write capability in AI layer (`PHASE_12A_AI_FINANCIAL_WRITE_CAPABILITY=false`).
+  - Applying draft sets form state only, zero automatic database mutations (`PHASE_12A_UI_APPLY_MUTATION=false`).
+  - Human-readable Vietnamese localized error messages for all AI failure codes.
+  - Offline test suite with 25 unit/integration assertions (`REAL_GEMINI_NETWORK_CALL=false`).
 
 ## Next Recommended Action
-Independent audit and acceptance of Phase 12 Contract Discovery (`docs/PHASE_12_CONTRACT_DISCOVERY.md`) before authorizing Phase 12A implementation.
+Independent audit and live smoke testing of Phase 12A Natural-Language Transaction Draft before proceeding to Phase 12B.
 
 ```text
 PHASE_8_OVERALL=PASS

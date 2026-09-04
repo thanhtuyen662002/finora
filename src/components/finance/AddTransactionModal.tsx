@@ -30,6 +30,8 @@ import {
   IncomeSourceWithStreams,
 } from '@/features/income-sources';
 import { isPositiveExactDecimal, toExactDecimal } from '@/lib/money';
+import { AiTransactionDraftInput } from './AiTransactionDraftInput';
+import type { ParsedTransactionDraft } from '@/features/ai/transaction-draft';
 
 interface AddTransactionModalProps {
   open: boolean;
@@ -250,6 +252,45 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       })),
   ];
 
+  const handleApplyDraft = (draft: ParsedTransactionDraft) => {
+    if (draft.type) {
+      handleTypeChange(draft.type);
+    }
+    if (draft.amount) {
+      setAmount(draft.amount);
+    }
+    if (draft.currency_code) {
+      setCurrency(draft.currency_code);
+    }
+    if (draft.account_id) {
+      setAccountId(draft.account_id);
+      const acc = accounts.find((a) => a.id === draft.account_id);
+      if (acc && !draft.currency_code) {
+        setCurrency(acc.currency_code);
+      }
+    }
+    if (draft.category_id) {
+      setCategoryId(draft.category_id);
+    }
+    if (draft.type === 'INCOME') {
+      if (draft.income_source_id) {
+        setIncomeSourceId(draft.income_source_id);
+      }
+      if (draft.income_source_stream_id) {
+        setIncomeSourceStreamId(draft.income_source_stream_id);
+      }
+    }
+    if (draft.merchant) {
+      setMerchant(draft.merchant);
+    }
+    if (draft.note) {
+      setNote(draft.note);
+    }
+    if (draft.occurred_on) {
+      setOccurredOn(draft.occurred_on);
+    }
+  };
+
   const handleVoid = async () => {
     if (!initialData) return;
     try {
@@ -391,6 +432,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
             Chưa có danh mục đang hoạt động phù hợp với loại giao dịch này.
           </div>
+        )}
+
+        {!initialData && (
+          <AiTransactionDraftInput
+            accounts={accounts}
+            categories={categories}
+            incomeSources={incomeSources}
+            onApplyDraft={handleApplyDraft}
+          />
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
