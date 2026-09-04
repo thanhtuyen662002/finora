@@ -25,9 +25,12 @@ import type {
   ReceiptVisionExtractionResult,
 } from './types';
 
-export interface ReceiptVisionCoreDeps {
+export interface NormalizedReceiptVisionCoreDeps {
   readonly router: AiRouter;
   readonly credentialProvider: AiCredentialProvider;
+}
+
+export interface ReceiptVisionCoreDeps extends NormalizedReceiptVisionCoreDeps {
   readonly normalizeImage: typeof normalizeReceiptImage;
 }
 
@@ -87,7 +90,107 @@ const AI_TO_RECEIPT_ERROR_MAP: Record<AiErrorCode, { code: ReceiptVisionErrorCod
 };
 
 /**
- * Executes Receipt Vision analysis core with injected dependencies.
+ * Executes Receipt Vision analysis on an already boundedly normalized image.
+ * Requires valid authenticated user, normalized image, router, and credentialProvider.
+ */
+export async function executeNormalizedReceiptVisionCore(
+  normalizedImage: NormalizedReceiptImage,
+  user: { id: string } | null | undefined,
+  deps: NormalizedReceiptVisionCoreDeps
+): Promise<ReceiptVisionActionResult> {
+  // 1. Authentication check precedes all operations
+  if (!user || !user.id || user.id.trim() === '') {
+    return {
+      ok: false,
+      error: {
+        code: 'AUTH_REQUIRED',
+        message: 'Bạn cần đăng nhập để sử dụng tính năng phân tích hóa đơn.',
+      },
+    };
+  }
+
+  // 2. Dispatch structured multimodal request via AiRouter
+  const aiResult = await deps.router.execute(
+    {
+      operation: 'receipt_vision',
+      prompt: RECEIPT_VISION_PROMPT,
+      systemInstruction: RECEIPT_VISION_SYSTEM_INSTRUCTION,
+      media: [
+        {
+          kind: 'inline_image',
+          mimeType: normalizedImage.mimeType,
+          bytes: normalizedImage.bytes,
+        },
+      ],
+      responseMode: 'structured',
+      outputValidator: ReceiptVisionOutputValidator,
+    },
+    {
+      userId: user.id,
+      credentialProvider: deps.credentialProvider,
+    }
+  );
+
+  if (!aiResult.ok) {
+    const errorCode = aiResult.error.code as AiErrorCode;
+    const errorMapping = (errorCode in AI_TO_RECEIPT_ERROR_MAP ? AI_TO_RECEIPT_ERROR_MAP[errorCode] : undefined) || {
+      code: 'AI_PROVIDER_ERROR',
+      message: 'Không thể phân tích ảnh hóa đơn. Vui lòng thử lại.',
+    };
+
+    return {
+      ok: false,
+      error: {
+        code: errorMapping.code,
+        message: errorMapping.message,
+      },
+    };
+  }
+
+  const output = aiResult.data;
+
+  // 3. Exact-money canonicalization if amount is present
+  let canonicalAmount: string | null = null;
+  if (output.amount !== null && output.amount_state === 'PRESENT') {
+    try {
+      canonicalAmount = canonicalizeReceiptAmount(output.amount);
+    } catch {
+      return {
+        ok: false,
+        error: {
+          code: 'AI_STRUCTURED_OUTPUT_INVALID',
+          message: 'Số tiền trên hóa đơn không thể chuẩn hóa thành định dạng số tiền hợp lệ.',
+        },
+      };
+    }
+  }
+
+  const extractionResult: ReceiptVisionExtractionResult = {
+    document_kind: output.document_kind,
+    merchant: output.merchant,
+    occurred_on: output.occurred_on,
+    occurred_on_state: output.occurred_on_state,
+    amount: output.amount,
+    canonical_amount: canonicalAmount,
+    amount_state: output.amount_state,
+    currency_code: output.currency_code,
+    currency_state: output.currency_state,
+    category_token: output.category_token,
+    note: output.note,
+    image_quality: output.image_quality,
+  };
+
+  return {
+    ok: true,
+    data: extractionResult,
+    provider: aiResult.provider,
+    model: aiResult.model,
+  };
+}
+
+/**
+ * Executes Receipt Vision analysis core with normalization and injected dependencies.
+ * Compatibility wrapper for executeNormalizedReceiptVisionCore.
  */
 export async function executeReceiptVisionCore(
   fileBytes: Uint8Array | Buffer,
@@ -129,81 +232,9 @@ export async function executeReceiptVisionCore(
     };
   }
 
-  // 3. Dispatch structured multimodal request via AiRouter
-  const aiResult = await deps.router.execute(
-    {
-      operation: 'receipt_vision',
-      prompt: RECEIPT_VISION_PROMPT,
-      systemInstruction: RECEIPT_VISION_SYSTEM_INSTRUCTION,
-      media: [
-        {
-          kind: 'inline_image',
-          mimeType: normalizedImage.mimeType,
-          bytes: normalizedImage.bytes,
-        },
-      ],
-      responseMode: 'structured',
-      outputValidator: ReceiptVisionOutputValidator,
-    },
-    {
-      userId: user.id,
-      credentialProvider: deps.credentialProvider,
-    }
-  );
-
-  if (!aiResult.ok) {
-    const errorCode = aiResult.error.code as AiErrorCode;
-    const errorMapping = (errorCode in AI_TO_RECEIPT_ERROR_MAP ? AI_TO_RECEIPT_ERROR_MAP[errorCode] : undefined) || {
-      code: 'AI_PROVIDER_ERROR',
-      message: 'Không thể phân tích ảnh hóa đơn. Vui lòng thử lại.',
-    };
-
-    return {
-      ok: false,
-      error: {
-        code: errorMapping.code,
-        message: errorMapping.message,
-      },
-    };
-  }
-
-  const output = aiResult.data;
-
-  // 4. Exact-money canonicalization if amount is present
-  let canonicalAmount: string | null = null;
-  if (output.amount !== null && output.amount_state === 'PRESENT') {
-    try {
-      canonicalAmount = canonicalizeReceiptAmount(output.amount);
-    } catch {
-      return {
-        ok: false,
-        error: {
-          code: 'AI_STRUCTURED_OUTPUT_INVALID',
-          message: 'Số tiền trên hóa đơn không thể chuẩn hóa thành định dạng số tiền hợp lệ.',
-        },
-      };
-    }
-  }
-
-  const extractionResult: ReceiptVisionExtractionResult = {
-    document_kind: output.document_kind,
-    merchant: output.merchant,
-    occurred_on: output.occurred_on,
-    occurred_on_state: output.occurred_on_state,
-    amount: output.amount,
-    canonical_amount: canonicalAmount,
-    amount_state: output.amount_state,
-    currency_code: output.currency_code,
-    currency_state: output.currency_state,
-    category_token: output.category_token,
-    note: output.note,
-    image_quality: output.image_quality,
-  };
-
-  return {
-    ok: true,
-    data: extractionResult,
-    provider: aiResult.provider,
-    model: aiResult.model,
-  };
+  // 3. Delegate to normalized core
+  return executeNormalizedReceiptVisionCore(normalizedImage, user, {
+    router: deps.router,
+    credentialProvider: deps.credentialProvider,
+  });
 }

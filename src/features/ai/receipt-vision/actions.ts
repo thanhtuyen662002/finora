@@ -13,8 +13,15 @@ import { createAiCredentialRepository } from '@/lib/ai/credentials/repository';
 import { AiCredentialResolver } from '@/lib/ai/credentials/resolver';
 import { createDefaultServerRouter } from '@/lib/ai/server';
 import { PHASE_12B_MAX_RECEIPT_FILE_BYTES } from './constants';
-import { normalizeReceiptImage } from './image';
-import { executeReceiptVisionCore } from './action-core';
+import {
+  normalizeReceiptImage,
+  ReceiptImageError,
+  type NormalizedReceiptImage,
+} from './image';
+import {
+  executeNormalizedReceiptVisionCore,
+  executeReceiptVisionCore,
+} from './action-core';
 import type { ReceiptVisionActionResult } from './types';
 
 /**
@@ -125,11 +132,19 @@ export interface AnalyzeReceiptActionDeps {
   normalizeImage?: typeof normalizeReceiptImage;
   createRouter?: () => unknown;
   createCredentialResolver?: () => unknown;
+  executeNormalizedCore?: typeof executeNormalizedReceiptVisionCore;
   executeCore?: typeof executeReceiptVisionCore;
 }
 
 /**
  * Testable, dependency-injected orchestration for receipt analysis Server Action.
+ * Guarantees strict ordering:
+ * 1. AUTH
+ * 2. VALIDATE FORMDATA
+ * 3. ARRAY_BUFFER
+ * 4. NORMALIZE IMAGE
+ * 5. CREATE ROUTER & CREDENTIAL RESOLVER
+ * 6. EXECUTE NORMALIZED CORE
  */
 export async function executeAnalyzeReceiptAction(
   formData: FormData,
@@ -169,7 +184,35 @@ export async function executeAnalyzeReceiptAction(
   const arrayBuffer = await file.arrayBuffer();
   const fileBytes = Buffer.from(arrayBuffer);
 
-  // 4. Instantiate or resolve router and credential provider
+  // 4. Normalize image BEFORE constructing any AI router or credential resolver infrastructure
+  const normalizeFn = deps?.normalizeImage ?? normalizeReceiptImage;
+  let normalizedImage: NormalizedReceiptImage;
+  try {
+    normalizedImage = await normalizeFn(fileBytes, {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    });
+  } catch (err: unknown) {
+    if (err instanceof ReceiptImageError) {
+      return {
+        ok: false,
+        error: {
+          code: err.code,
+          message: err.message,
+        },
+      };
+    }
+    return {
+      ok: false,
+      error: {
+        code: 'RECEIPT_IMAGE_DECODE_FAILED',
+        message: 'Lỗi không xác định khi xử lý ảnh hóa đơn.',
+      },
+    };
+  }
+
+  // 5. Instantiate router and credential provider ONLY after normalization succeeds
   const router = deps?.createRouter
     ? (deps.createRouter() as ReturnType<typeof createDefaultServerRouter>)
     : createDefaultServerRouter();
@@ -178,17 +221,14 @@ export async function executeAnalyzeReceiptAction(
     ? (deps.createCredentialResolver() as AiCredentialResolver)
     : new AiCredentialResolver({ repository: createAiCredentialRepository() });
 
-  const normalizeFn = deps?.normalizeImage ?? normalizeReceiptImage;
-  const executeCoreFn = deps?.executeCore ?? executeReceiptVisionCore;
+  const executeNormalizedCoreFn = deps?.executeNormalizedCore ?? executeNormalizedReceiptVisionCore;
 
-  return executeCoreFn(
-    fileBytes,
-    { name: file.name, type: file.type, size: file.size },
+  return executeNormalizedCoreFn(
+    normalizedImage,
     user,
     {
       router,
       credentialProvider,
-      normalizeImage: normalizeFn,
     }
   );
 }

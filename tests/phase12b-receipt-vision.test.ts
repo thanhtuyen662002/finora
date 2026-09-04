@@ -413,12 +413,13 @@ async function runTests() {
   assert.strictEqual(normLarge.mimeType, 'image/png');
   totalTestsPassed += 3;
 
-  // Finding 9: EXIF Auto-orientation & Complete Metadata Stripping Proof
+  // Finding 9: EXIF Auto-orientation & Complete Metadata Stripping Proof (with verified input metadata)
   const exifJpeg = await sharp({
     create: { width: 120, height: 60, channels: 3, background: { r: 200, g: 200, b: 200 } },
   })
     .withMetadata({
       orientation: 6, // 90 deg clockwise
+      icc: 'srgb',
       exif: {
         IFD0: {
           Make: 'FinoraSecureCamera',
@@ -432,8 +433,9 @@ async function runTests() {
 
   const inExifMeta = await sharp(exifJpeg).metadata();
   assert.strictEqual(inExifMeta.orientation, 6);
-  assert.ok(inExifMeta.exif !== undefined && inExifMeta.exif.length > 0);
-  totalTestsPassed += 2;
+  assert.ok(inExifMeta.exif !== undefined && inExifMeta.exif.length > 0, 'Input fixture must have EXIF');
+  assert.ok(inExifMeta.icc !== undefined && inExifMeta.icc.length > 0, 'Input fixture must have ICC profile');
+  totalTestsPassed += 3;
 
   const normExif = await normalizeReceiptImage(exifJpeg);
   // Auto-oriented: 120x60 rotated 90 deg -> 60x120
@@ -442,11 +444,71 @@ async function runTests() {
 
   // Assert complete metadata stripping from output
   const normExifMeta = await sharp(normExif.bytes).metadata();
-  assert.strictEqual(normExifMeta.orientation, undefined);
-  assert.strictEqual(normExifMeta.exif, undefined);
-  assert.strictEqual(normExifMeta.xmp, undefined);
-  assert.strictEqual(normExifMeta.icc, undefined);
+  assert.strictEqual(normExifMeta.orientation, undefined, 'Normalized output orientation must be undefined');
+  assert.strictEqual(normExifMeta.exif, undefined, 'Normalized output EXIF must be undefined');
+  assert.strictEqual(normExifMeta.icc, undefined, 'Normalized output ICC must be undefined');
+  assert.strictEqual(normExifMeta.xmp, undefined, 'Normalized output XMP must be undefined');
   totalTestsPassed += 6;
+
+  // Finding 6: EXIF Date Must Not Become Transaction Date Proof
+  // 3.1: Source code isolation audit - verify no EXIF date extraction exists
+  const imageSource = fs.readFileSync(path.resolve('src/features/ai/receipt-vision/image.ts'), 'utf-8');
+  assert.ok(!imageSource.includes('DateTime'), 'image.ts must not extract DateTime');
+  assert.ok(!imageSource.includes('getExif'), 'image.ts must not export exif metadata');
+  
+  const actionsSource = fs.readFileSync(path.resolve('src/features/ai/receipt-vision/actions.ts'), 'utf-8');
+  assert.ok(!actionsSource.includes('exif') && !actionsSource.includes('DateTime'), 'actions.ts must not inspect EXIF');
+
+  const actionCoreSource = fs.readFileSync(path.resolve('src/features/ai/receipt-vision/action-core.ts'), 'utf-8');
+  assert.ok(!actionCoreSource.includes('exif') && !actionCoreSource.includes('DateTime'), 'action-core.ts must not inspect EXIF');
+
+  const validatorSource = fs.readFileSync(path.resolve('src/features/ai/receipt-vision/validator.ts'), 'utf-8');
+  assert.ok(!validatorSource.includes('exif') && !validatorSource.includes('DateTime'), 'validator.ts must not inspect EXIF');
+  totalTestsPassed += 4;
+
+  // 3.2: Runtime isolation test - EXIF DateTime ('2026:01:01') does NOT override provider output ('2026-03-29')
+  const exifMockRouter = new AiRouter({
+    providers: [
+      new GeminiProviderCore({
+        clientFactory: () => ({
+          models: {
+            async generateContent() {
+              return {
+                text: JSON.stringify({
+                  ...validSampleOutput,
+                  occurred_on: '2026-03-29',
+                  occurred_on_state: 'PRESENT',
+                }),
+                usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 },
+              };
+            },
+          },
+        }),
+      }),
+    ],
+  });
+
+  const exifExtractionRes = await executeReceiptVisionCore(
+    exifJpeg,
+    { name: 'exif_receipt.jpg', type: 'image/jpeg', size: exifJpeg.length },
+    { id: 'usr_test_123' },
+    {
+      router: exifMockRouter,
+      credentialProvider: {
+        async resolveCredential() {
+          return { value: 'AIzaSyFakeTestKey123456789' };
+        },
+      },
+      normalizeImage: normalizeReceiptImage,
+    }
+  );
+
+  assert.strictEqual(exifExtractionRes.ok, true);
+  if (exifExtractionRes.ok) {
+    assert.strictEqual(exifExtractionRes.data.occurred_on, '2026-03-29');
+    assert.notStrictEqual(exifExtractionRes.data.occurred_on, '2026-01-01');
+  }
+  totalTestsPassed += 3;
 
   console.log('  ✓ 3. Image security matrix, bounds, dimension limits, and metadata stripping passed');
 
@@ -772,123 +834,304 @@ async function runTests() {
   console.log('  ✓ 6. Server Action FormData validation 5-case contract verified');
 
   // ==========================================
-  // 7. SERVER ACTION ORCHESTRATION ORDER & PRECEDENCE (Finding 10)
+  // 7. SERVER ACTION ORCHESTRATION ORDER & PRECEDENCE (Findings 1, 2, 3, 4)
   // ==========================================
-  console.log('7. Testing Server Action Orchestration Precedence via Dependency Injection...');
+  console.log('7. Testing Server Action Orchestration Precedence & Lifecycle Matrix...');
 
-  let stepCounter = 0;
-  let authStep = 0;
-  let validateStep = 0;
-  let normalizeStep = 0;
-
-  // 7.1: Unauthenticated request aborts at step 1 BEFORE validation or normalization
-  stepCounter = 0;
-  authStep = 0;
-  validateStep = 0;
-  normalizeStep = 0;
-
-  const anonActionRes = await executeAnalyzeReceiptAction(validFormData, {
-    getUser: async () => {
-      authStep = ++stepCounter;
-      return { user: null, error: null };
-    },
-    validateFormData: (fd) => {
-      validateStep = ++stepCounter;
-      return validateReceiptFormData(fd);
-    },
-    normalizeImage: async (b, m) => {
-      normalizeStep = ++stepCounter;
-      return normalizeReceiptImage(b, m);
-    },
-  });
-
-  assert.strictEqual(anonActionRes.ok, false);
-  if (!anonActionRes.ok) {
-    assert.strictEqual(anonActionRes.error.code, 'AUTH_REQUIRED');
+  // Helper to create a tracked File instance that records ARRAY_BUFFER
+  function createTrackedFile(bytes: Buffer | Uint8Array, name: string, type: string, onArrayBuffer: () => void): File {
+    const rawFile = new File([bytes as BlobPart], name, { type });
+    const originalArrayBuffer = rawFile.arrayBuffer.bind(rawFile);
+    rawFile.arrayBuffer = async () => {
+      onArrayBuffer();
+      return originalArrayBuffer();
+    };
+    return rawFile;
   }
-  assert.strictEqual(authStep, 1);
-  assert.strictEqual(validateStep, 0, 'Validation must not be called when unauthenticated');
-  assert.strictEqual(normalizeStep, 0, 'Normalization must not be called when unauthenticated');
-  totalTestsPassed += 4;
 
-  // 7.2: Invalid FormData aborts at step 2 BEFORE byte reading or normalization
-  stepCounter = 0;
-  authStep = 0;
-  validateStep = 0;
-  normalizeStep = 0;
+  // 7.1: Authenticated valid request executes in exact sequential order:
+  // AUTH < VALIDATE < ARRAY_BUFFER < NORMALIZE < CREATE_ROUTER < CREATE_CREDENTIAL_RESOLVER < RESOLVE_CREDENTIAL < PROVIDER
+  {
+    const events: string[] = [];
+    let routerCreated = 0;
+    let resolverCreated = 0;
+    let credentialResolved = 0;
+    let providerExecuted = 0;
 
-  const invalidActionRes = await executeAnalyzeReceiptAction(emptyFormData, {
-    getUser: async () => {
-      authStep = ++stepCounter;
-      return { user: { id: 'usr_test_123' }, error: null };
-    },
-    validateFormData: (fd) => {
-      validateStep = ++stepCounter;
-      return validateReceiptFormData(fd);
-    },
-    normalizeImage: async (b, m) => {
-      normalizeStep = ++stepCounter;
-      return normalizeReceiptImage(b, m);
-    },
-  });
+    const trackedValidFile = createTrackedFile(sampleJpeg, 'receipt.jpg', 'image/jpeg', () => {
+      events.push('ARRAY_BUFFER');
+    });
+    const trackedValidFormData = new FormData();
+    trackedValidFormData.append('file', trackedValidFile);
 
-  assert.strictEqual(invalidActionRes.ok, false);
-  if (!invalidActionRes.ok) {
-    assert.strictEqual(invalidActionRes.error.code, 'RECEIPT_FILE_REQUIRED');
+    const testMockRouter = new AiRouter({
+      providers: [
+        new GeminiProviderCore({
+          clientFactory: () => ({
+            models: {
+              async generateContent(params) {
+                events.push('PROVIDER');
+                providerExecuted++;
+                return {
+                  text: JSON.stringify(validSampleOutput),
+                  usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 },
+                };
+              },
+            },
+          }),
+        }),
+      ],
+    });
+
+    const testMockCredentialProvider: AiCredentialProvider = {
+      async resolveCredential() {
+        events.push('RESOLVE_CREDENTIAL');
+        credentialResolved++;
+        return { value: 'AIzaSyFakeTestKey123456789' };
+      },
+    };
+
+    const successActionRes = await executeAnalyzeReceiptAction(trackedValidFormData, {
+      getUser: async () => {
+        events.push('AUTH');
+        return { user: { id: 'usr_test_123' }, error: null };
+      },
+      validateFormData: (fd) => {
+        events.push('VALIDATE');
+        return validateReceiptFormData(fd);
+      },
+      normalizeImage: async (b, m) => {
+        events.push('NORMALIZE');
+        return normalizeReceiptImage(b, m);
+      },
+      createRouter: () => {
+        events.push('CREATE_ROUTER');
+        routerCreated++;
+        return testMockRouter;
+      },
+      createCredentialResolver: () => {
+        events.push('CREATE_CREDENTIAL_RESOLVER');
+        resolverCreated++;
+        return testMockCredentialProvider;
+      },
+    });
+
+    assert.strictEqual(successActionRes.ok, true);
+    assert.deepStrictEqual(events, [
+      'AUTH',
+      'VALIDATE',
+      'ARRAY_BUFFER',
+      'NORMALIZE',
+      'CREATE_ROUTER',
+      'CREATE_CREDENTIAL_RESOLVER',
+      'RESOLVE_CREDENTIAL',
+      'PROVIDER',
+    ]);
+    assert.strictEqual(routerCreated, 1);
+    assert.strictEqual(resolverCreated, 1);
+    assert.strictEqual(credentialResolved, 1);
+    assert.strictEqual(providerExecuted, 1);
+    assert.ok(events.indexOf('NORMALIZE') < events.indexOf('CREATE_ROUTER'), 'Normalization must precede router creation');
+    assert.ok(events.indexOf('CREATE_ROUTER') < events.indexOf('CREATE_CREDENTIAL_RESOLVER'), 'Router creation must precede credential resolver creation');
+    assert.ok(events.indexOf('CREATE_CREDENTIAL_RESOLVER') < events.indexOf('RESOLVE_CREDENTIAL'), 'Credential resolver creation must precede credential resolution');
+    assert.ok(events.indexOf('RESOLVE_CREDENTIAL') < events.indexOf('PROVIDER'), 'Credential resolution must precede provider invocation');
+
+    if (successActionRes.ok) {
+      assert.strictEqual(successActionRes.data.merchant, 'Starbucks Coffee');
+      assert.strictEqual(successActionRes.data.amount, '85000');
+      assert.strictEqual(successActionRes.data.canonical_amount, '85000.0000');
+      assert.strictEqual(successActionRes.data.currency_code, 'VND');
+    }
+    totalTestsPassed += 12;
   }
-  assert.strictEqual(authStep, 1);
-  assert.strictEqual(validateStep, 2);
-  assert.strictEqual(normalizeStep, 0, 'Normalization must not be called when FormData is invalid');
-  totalTestsPassed += 4;
 
-  // 7.3: Authenticated valid request executes in exact order
-  stepCounter = 0;
-  authStep = 0;
-  validateStep = 0;
-  normalizeStep = 0;
+  // 7.2: Unauthenticated request aborts at step 1 BEFORE validation, arrayBuffer, normalization, or AI infrastructure (Finding 4)
+  {
+    const events: string[] = [];
+    let routerCreated = 0;
+    let resolverCreated = 0;
 
-  const mockRouter = new AiRouter({
-    providers: [
-      new GeminiProviderCore({
-        clientFactory: () => mockClient,
-      }),
-    ],
-  });
+    const trackedFile = createTrackedFile(sampleJpeg, 'receipt.jpg', 'image/jpeg', () => {
+      events.push('ARRAY_BUFFER');
+    });
+    const fd = new FormData();
+    fd.append('file', trackedFile);
 
-  const mockCredentialProvider: AiCredentialProvider = {
-    async resolveCredential() {
-      return { value: 'AIzaSyFakeTestKey123456789' };
-    },
-  };
+    const anonActionRes = await executeAnalyzeReceiptAction(fd, {
+      getUser: async () => {
+        events.push('AUTH');
+        return { user: null, error: null };
+      },
+      validateFormData: (form) => {
+        events.push('VALIDATE');
+        return validateReceiptFormData(form);
+      },
+      normalizeImage: async (b, m) => {
+        events.push('NORMALIZE');
+        return normalizeReceiptImage(b, m);
+      },
+      createRouter: () => {
+        events.push('CREATE_ROUTER');
+        routerCreated++;
+        return {} as any;
+      },
+      createCredentialResolver: () => {
+        events.push('CREATE_CREDENTIAL_RESOLVER');
+        resolverCreated++;
+        return {} as any;
+      },
+    });
 
-  const successActionRes = await executeAnalyzeReceiptAction(validFormData, {
-    getUser: async () => {
-      authStep = ++stepCounter;
-      return { user: { id: 'usr_test_123' }, error: null };
-    },
-    validateFormData: (fd) => {
-      validateStep = ++stepCounter;
-      return validateReceiptFormData(fd);
-    },
-    normalizeImage: async (b, m) => {
-      normalizeStep = ++stepCounter;
-      return normalizeReceiptImage(b, m);
-    },
-    createRouter: () => mockRouter,
-    createCredentialResolver: () => mockCredentialProvider,
-  });
-
-  assert.strictEqual(successActionRes.ok, true);
-  assert.strictEqual(authStep, 1);
-  assert.strictEqual(validateStep, 2);
-  assert.strictEqual(normalizeStep, 3);
-  if (successActionRes.ok) {
-    assert.strictEqual(successActionRes.data.merchant, 'Starbucks Coffee');
-    assert.strictEqual(successActionRes.data.amount, '85000');
-    assert.strictEqual(successActionRes.data.canonical_amount, '85000.0000');
-    assert.strictEqual(successActionRes.data.currency_code, 'VND');
+    assert.strictEqual(anonActionRes.ok, false);
+    if (!anonActionRes.ok) {
+      assert.strictEqual(anonActionRes.error.code, 'AUTH_REQUIRED');
+    }
+    assert.deepStrictEqual(events, ['AUTH']);
+    assert.strictEqual(routerCreated, 0, 'No router created on unauthenticated request');
+    assert.strictEqual(resolverCreated, 0, 'No credential resolver created on unauthenticated request');
+    totalTestsPassed += 4;
   }
-  totalTestsPassed += 8;
+
+  // 7.3: Authenticated oversized file aborts at step 2 BEFORE arrayBuffer, normalization, or AI infrastructure (Finding 4)
+  {
+    const events: string[] = [];
+    let routerCreated = 0;
+    let resolverCreated = 0;
+
+    const oversizedBytes = new Uint8Array(PHASE_12B_MAX_RECEIPT_FILE_BYTES + 100);
+    const trackedOversizedFile = createTrackedFile(oversizedBytes, 'huge.jpg', 'image/jpeg', () => {
+      events.push('ARRAY_BUFFER');
+    });
+    const fd = new FormData();
+    fd.append('file', trackedOversizedFile);
+
+    const oversizedActionRes = await executeAnalyzeReceiptAction(fd, {
+      getUser: async () => {
+        events.push('AUTH');
+        return { user: { id: 'usr_test_123' }, error: null };
+      },
+      validateFormData: (form) => {
+        events.push('VALIDATE');
+        return validateReceiptFormData(form);
+      },
+      normalizeImage: async (b, m) => {
+        events.push('NORMALIZE');
+        return normalizeReceiptImage(b, m);
+      },
+      createRouter: () => {
+        events.push('CREATE_ROUTER');
+        routerCreated++;
+        return {} as any;
+      },
+      createCredentialResolver: () => {
+        events.push('CREATE_CREDENTIAL_RESOLVER');
+        resolverCreated++;
+        return {} as any;
+      },
+    });
+
+    assert.strictEqual(oversizedActionRes.ok, false);
+    if (!oversizedActionRes.ok) {
+      assert.strictEqual(oversizedActionRes.error.code, 'RECEIPT_FILE_TOO_LARGE');
+    }
+    assert.deepStrictEqual(events, ['AUTH', 'VALIDATE']);
+    assert.strictEqual(routerCreated, 0, 'No router created on oversized file');
+    assert.strictEqual(resolverCreated, 0, 'No credential resolver created on oversized file');
+    totalTestsPassed += 4;
+  }
+
+  // 7.4: Image normalization failure creates zero AI / Credential infrastructure (Finding 2)
+  {
+    const events: string[] = [];
+    let routerCreated = 0;
+    let resolverCreated = 0;
+
+    // Create a payload with JPEG signature header followed by corrupt garbage that fails decoding
+    const corruptJpegBytes = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+      Buffer.from('CORRUPT_PAYLOAD_NOT_A_VALID_IMAGE_STREAM_FOR_SHARP_DECODER_TEST'),
+    ]);
+    const trackedCorruptFile = createTrackedFile(corruptJpegBytes, 'corrupt.jpg', 'image/jpeg', () => {
+      events.push('ARRAY_BUFFER');
+    });
+    const fd = new FormData();
+    fd.append('file', trackedCorruptFile);
+
+    const corruptActionRes = await executeAnalyzeReceiptAction(fd, {
+      getUser: async () => {
+        events.push('AUTH');
+        return { user: { id: 'usr_test_123' }, error: null };
+      },
+      validateFormData: (form) => {
+        events.push('VALIDATE');
+        return validateReceiptFormData(form);
+      },
+      normalizeImage: async (b, m) => {
+        events.push('NORMALIZE');
+        return normalizeReceiptImage(b, m);
+      },
+      createRouter: () => {
+        events.push('CREATE_ROUTER');
+        routerCreated++;
+        return {} as any;
+      },
+      createCredentialResolver: () => {
+        events.push('CREATE_CREDENTIAL_RESOLVER');
+        resolverCreated++;
+        return {} as any;
+      },
+    });
+
+    assert.strictEqual(corruptActionRes.ok, false);
+    if (!corruptActionRes.ok) {
+      assert.strictEqual(corruptActionRes.error.code, 'RECEIPT_IMAGE_DECODE_FAILED');
+    }
+    assert.deepStrictEqual(events, ['AUTH', 'VALIDATE', 'ARRAY_BUFFER', 'NORMALIZE']);
+    assert.strictEqual(routerCreated, 0, 'Zero router created on normalization failure');
+    assert.strictEqual(resolverCreated, 0, 'Zero credential resolver created on normalization failure');
+    totalTestsPassed += 4;
+  }
+
+  // 7.5: Invalid FormData envelope (missing file) aborts at validation (Finding 4)
+  {
+    const events: string[] = [];
+    let routerCreated = 0;
+    let resolverCreated = 0;
+
+    const invalidActionRes = await executeAnalyzeReceiptAction(emptyFormData, {
+      getUser: async () => {
+        events.push('AUTH');
+        return { user: { id: 'usr_test_123' }, error: null };
+      },
+      validateFormData: (form) => {
+        events.push('VALIDATE');
+        return validateReceiptFormData(form);
+      },
+      normalizeImage: async (b, m) => {
+        events.push('NORMALIZE');
+        return normalizeReceiptImage(b, m);
+      },
+      createRouter: () => {
+        events.push('CREATE_ROUTER');
+        routerCreated++;
+        return {} as any;
+      },
+      createCredentialResolver: () => {
+        events.push('CREATE_CREDENTIAL_RESOLVER');
+        resolverCreated++;
+        return {} as any;
+      },
+    });
+
+    assert.strictEqual(invalidActionRes.ok, false);
+    if (!invalidActionRes.ok) {
+      assert.strictEqual(invalidActionRes.error.code, 'RECEIPT_FILE_REQUIRED');
+    }
+    assert.deepStrictEqual(events, ['AUTH', 'VALIDATE']);
+    assert.strictEqual(routerCreated, 0, 'No router created on invalid FormData');
+    assert.strictEqual(resolverCreated, 0, 'No credential resolver created on invalid FormData');
+    totalTestsPassed += 4;
+  }
 
   console.log('  ✓ 7. Server Action orchestration order and precedence verified');
 

@@ -5,10 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 2)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: PASS 12B-1 CORRECTIVE 2 COMPLETE (Phase 12 Overall: IN_PROGRESS)
+- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 3)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: PASS 12B-1 CORRECTIVE 3 COMPLETE (Phase 12 Overall: IN_PROGRESS)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B implementation:** PASS 12B-1 CORRECTIVE 2 COMPLETE (Zero-Media AiError, Genuine Animated WebP, FormData Contract, Security Bounds & 149 Tests PASS)
+- **Phase 12B implementation:** PASS 12B-1 CORRECTIVE 3 COMPLETE (Post-Normalization Credential Construction, Metadata Fixture Proof, Strict Lifecycle Trace & 169 Tests PASS)
 - **Pass 12B-2 implementation:** NOT AUTHORIZED
 - **Real Gemini remote calls:** NOT AUTHORIZED
 - **Phase 12C implementation:** NOT AUTHORIZED
@@ -1119,39 +1119,38 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ### Next Recommended Step
 - Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
 
-## Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 2)
+## Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 3)
 
-### Status: PASS_12B_1_CORRECTIVE_2_COMPLETE / PENDING_AUDIT (Phase 12 Overall: PARTIAL)
+### Status: PASS_12B_1_CORRECTIVE_3_COMPLETE / PENDING_AUDIT (Phase 12 Overall: PARTIAL)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B Implementation Phase:** `PASS 12B-1 CORRECTIVE 2 COMPLETE`
+- **Phase 12B Implementation Phase:** `PASS 12B-1 CORRECTIVE 3 COMPLETE`
 - **Pass 12B-2 Implementation:** NOT AUTHORIZED
 - **Real Gemini Remote Calls:** NOT AUTHORIZED
 - **Phase 12C Implementation:** NOT AUTHORIZED
 - **Live UI Integration:** Unmounted (Receipt Vision picker and actions remain decoupled from live transaction creation modal)
 
-- **Corrective Pass 2 Scope & Findings Addressed:**
-  1. **Zero-Media AiError Construction:** Refactored `src/lib/ai/providers/gemini-core.ts`. Extracted pure `classifyGeminiErrorCode` returning string code; `receipt_vision` catch path constructs `new AiError(code, RECEIPT_SAFE_ERROR_MESSAGES[code])` directly without creating intermediate `AiError` objects that contain raw error messages, protecting sensitive base64/inlineData image payloads from leaking into logs or errors.
-  2. **Genuine Animated WebP Proof:** Generated genuine 2-frame lossless WebP animated buffers via RIFF/WEBP/VP8X/ANIM/ANMF chunk synthesis and proved rejection with `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED` in `tests/phase12b-receipt-vision.test.ts`.
-  3. **Server Action FormData Contract:** Standardized `validateReceiptFormData` in `src/features/ai/receipt-vision/actions.ts` to strictly return `RECEIPT_FILE_REQUIRED` for empty FormData or 0-byte files, and `RECEIPT_FILE_INVALID` for non-file values, misplaced files, and multi-file payloads.
-  4. **Security Verification Closure:**
-     - Width > 8192px rejected with `RECEIPT_IMAGE_TOO_LARGE`.
-     - Height > 8192px rejected with `RECEIPT_IMAGE_TOO_LARGE`.
-     - Decoded pixels > 20,000,000 rejected with `RECEIPT_IMAGE_TOO_LARGE`.
-     - Output buffer cap enforced via `assertNormalizedReceiptSize` (`RECEIPT_IMAGE_NORMALIZED_TOO_LARGE`).
-     - EXIF orientation auto-rotated and full metadata stripping verified (orientation, EXIF, XMP, ICC stripped).
-  5. **Server Action Orchestration Precedence:** Refactored `executeAnalyzeReceiptAction` with full dependency injection to prove that authentication precedes FormData validation, FormData validation precedes byte reading/arrayBuffer, and normalization precedes provider dispatch.
+- **Corrective Pass 3 Scope & Findings Addressed:**
+  1. **Post-Normalization AI / Credential Infrastructure Construction:** Refactored `executeAnalyzeReceiptAction` and `executeReceiptVisionCore` so that bounded image normalization completes strictly BEFORE `createDefaultServerRouter()`, `createAiCredentialRepository()`, `new AiCredentialResolver(...)`, credential resolution, and provider dispatch.
+  2. **Normalization Failure Gate (Zero AI Infrastructure):** Proved deterministically that when image normalization fails (e.g., corrupt image stream), zero AI Router, Credential Resolver, or provider instances are created or invoked (`routerCreated = 0`, `resolverCreated = 0`).
+  3. **Strict Orchestration Lifecycle Trace:** Integrated shared sequential event trace verifying exact execution order:
+     `AUTH < VALIDATE < ARRAY_BUFFER < NORMALIZE < CREATE_ROUTER < CREATE_CREDENTIAL_RESOLVER < RESOLVE_CREDENTIAL < PROVIDER`.
+  4. **Anonymous & Oversized Request Gating:** Verified that unauthenticated requests terminate at `AUTH` (0 subsequent steps) and oversized payloads terminate at `VALIDATE` (0 byte buffering or decoding steps).
+  5. **Metadata Stripping Fixture Proof:** Proved that the input fixture possesses `orientation: 6`, `exif` data, and `icc` color profile on input before proving their complete absence (`undefined`) on normalized output bytes.
+  6. **EXIF Date Independence Proof:** Verified via source code audit and runtime execution that EXIF `DateTime` is never inspected, extracted, or mapped to transaction date `occurred_on`. The visible receipt text returned by the model remains the sole transaction date source.
+  7. **Contract Document Synchronization:** Realigned `docs/PHASE_12B_CONTRACT_DISCOVERY.md` status to `PASS_12B_1_CORRECTIVE_3_COMPLETE`.
 
-### Verification Results (Pass 12B-1 Corrective Pass 2)
-- **Phase 12B Test Suite (`tests/phase12b-receipt-vision.test.ts`)**: 149/149 checks PASS
-- **All Previous Test Suites**: PASS (Phase 8 Math, Base Mode, Cross-Currency; Phase 9 Income Sources & UI; Phase 10 AI Foundation; Phase 11 AI Credentials; Phase 12A Transaction Draft)
+### Verification Results (Pass 12B-1 Corrective Pass 3)
+- **Phase 12B Test Suite (`tests/phase12b-receipt-vision.test.ts`)**: 169/169 checks PASS
+- **All Previous Test Suites**: PASS (Phase 8 Math, Base Mode, Cross-Currency; Phase 9 Income Sources & UI; Phase 10 AI Foundation: 50/50; Phase 11 AI Credentials: 79/79; Phase 12A Transaction Draft: 36/36)
 - **TypeScript Check (`npm run typecheck`)**: PASS (0 errors)
 - **Lint Check (`npm run lint`)**: PASS (0 warnings/errors)
 - **Production Build (`compile_applet`)**: PASS
+- **Clean Package Installation (`npm ci`)**: PASS (493 packages audited, 0 vulnerabilities)
 - **Database Schema**: 0 migrations added, schema strictly unchanged
 - **Remote Network Calls**: 0 Gemini API calls, 0 Supabase remote calls
 
 ### Next Recommended Step
-- Independent source audit of Pass 12B-1 Corrective Pass 2 prior to authorization of Pass 12B-2.
+- Independent source audit of Pass 12B-1 Corrective Pass 3 prior to authorization of Pass 12B-2.
 
 
