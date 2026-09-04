@@ -1546,13 +1546,15 @@ async function runAsyncTests() {
   assert.strictEqual(providerCalls, 0, 'Gemini provider must NOT be invoked on fast path');
   console.log('  ✓ 24. Deterministic Fast Path: simple expense parsed with 0 router, 0 resolver, 0 repo, 0 Gemini calls');
 
-  // Test 25: Deterministic string-only currency parsing (VND k/tr/trieu, USD)
+  // Test 25: Deterministic string-only currency parsing (VND k/tr/trieu, USD) with exact 4-decimal scale assertions
   const currencyParseCases = [
-    { text: 'Luong 25tr', expectedAmount: '25000000', expectedType: 'INCOME' },
-    { text: 'Luong thang 25 trieu', expectedAmount: '25000000', expectedType: 'INCOME' },
-    { text: 'Đổ xăng 50k', expectedAmount: '50000', expectedType: 'EXPENSE' },
-    { text: 'Mua sach 120.000d', expectedAmount: '120000', expectedType: 'EXPENSE' },
-    { text: 'Coffee 4.50 USD', expectedAmount: '4.50', expectedType: 'EXPENSE', expectedCurrency: 'USD' },
+    { text: 'Luong 25tr', expectedAmount: '25000000.0000', expectedType: 'INCOME', expectedCurrency: 'VND' },
+    { text: 'Luong thang 25 trieu', expectedAmount: '25000000.0000', expectedType: 'INCOME', expectedCurrency: 'VND' },
+    { text: 'Đổ xăng 50k', expectedAmount: '50000.0000', expectedType: 'EXPENSE', expectedCurrency: 'VND' },
+    { text: 'Mua sach 120.000d', expectedAmount: '120000.0000', expectedType: 'EXPENSE', expectedCurrency: 'VND' },
+    { text: 'Coffee 4.50 USD', expectedAmount: '4.5000', expectedType: 'EXPENSE', expectedCurrency: 'USD' },
+    { text: 'Ăn tối 1.5tr', expectedAmount: '1500000.0000', expectedType: 'EXPENSE', expectedCurrency: 'VND' },
+    { text: 'Tiền thưởng 2 tỷ', expectedAmount: '2000000000.0000', expectedType: 'INCOME', expectedCurrency: 'VND' },
   ];
 
   for (const c of currencyParseCases) {
@@ -1561,10 +1563,10 @@ async function runAsyncTests() {
       userId: fastPathUserId,
       supabase: fastPathMockSupabase,
       getRouter: () => {
-        throw new Error('Should not call router for simple deterministic currency case');
+        throw new Error(`Should not call router for simple deterministic currency case '${c.text}'`);
       },
       getCredentialProvider: () => {
-        throw new Error('Should not call credential provider for simple deterministic currency case');
+        throw new Error(`Should not call credential provider for simple deterministic currency case '${c.text}'`);
       },
       now: new Date('2026-09-04T12:00:00Z'),
     });
@@ -1572,12 +1574,13 @@ async function runAsyncTests() {
     if (res.ok) {
       assert.strictEqual(res.parse_source, 'DETERMINISTIC');
       assert.strictEqual(res.draft.type, c.expectedType);
+      assert.strictEqual(res.draft.amount, c.expectedAmount, `Amount mismatch for '${c.text}'`);
       if (c.expectedCurrency) {
-        assert.strictEqual(res.draft.currency_code, c.expectedCurrency);
+        assert.strictEqual(res.draft.currency_code, c.expectedCurrency, `Currency mismatch for '${c.text}'`);
       }
     }
   }
-  console.log('  ✓ 25. Deterministic string-only currency parsing verified across VND, USD, k, tr, trieu, d');
+  console.log('  ✓ 25. Deterministic string-only currency parsing verified across VND, USD, k, tr, trieu, d with exact 4-decimal amounts');
 
   // Test 26: Anonymous user access fails closed before any privileged factory call
   let anonRouterCalls = 0;
@@ -1661,7 +1664,212 @@ async function runAsyncTests() {
   assert.strictEqual(capturedTiming?.execution_path, 'gemini');
   console.log('  ✓ 27. Complex/ambiguous prompt falls back to Gemini router exactly once with execution_path=gemini');
 
-  console.log('\nAll 27 Phase 12A AI Transaction Draft tests passed successfully!');
+  // Test 28: Date span isolation and calendar date verification
+  const dateCases = [
+    { text: 'Ăn trưa 85k ngày 2026-09-04', expectedDate: '2026-09-04', expectedAmount: '85000.0000' },
+    { text: 'Ăn trưa 85k ngày 04/09/2026', expectedDate: '2026-09-04', expectedAmount: '85000.0000' },
+    { text: 'Ăn trưa 85k ngày 04-09-2026', expectedDate: '2026-09-04', expectedAmount: '85000.0000' },
+    { text: 'Ăn trưa 85k hôm qua', expectedDate: '2026-09-03', expectedAmount: '85000.0000' },
+    { text: 'Ăn trưa 85k hôm kia', expectedDate: '2026-09-02', expectedAmount: '85000.0000' },
+  ];
+
+  for (const d of dateCases) {
+    const res = await parseTransactionTextCore({
+      prompt: d.text,
+      userId: fastPathUserId,
+      supabase: fastPathMockSupabase,
+      getRouter: () => {
+        throw new Error(`Should not call router for valid date case '${d.text}'`);
+      },
+      getCredentialProvider: () => {
+        throw new Error(`Should not call credential provider for valid date case '${d.text}'`);
+      },
+      now: new Date('2026-09-04T12:00:00Z'),
+    });
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.parse_source, 'DETERMINISTIC');
+      assert.strictEqual(res.draft.amount, d.expectedAmount, `Date string in '${d.text}' must not contaminate amount`);
+      assert.strictEqual(res.draft.occurred_on, d.expectedDate, `Date mismatch for '${d.text}'`);
+    }
+  }
+
+  // Invalid date fallback: Feb 30th -> falls back to Gemini
+  let invalidDateProviderCalls = 0;
+  const invalidDateProvider: AiProvider = {
+    id: 'gemini',
+    execute: async (request) => {
+      invalidDateProviderCalls++;
+      return {
+        text: JSON.stringify(createValidModelOutput()),
+        model: request.model,
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      };
+    },
+  };
+  const invalidDateRouter = createAiRouter({ providers: [invalidDateProvider] });
+  const invalidDateResult = await parseTransactionTextCore({
+    prompt: 'Ăn trưa 85k ngày 2026-02-30',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: invalidDateRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+  assert.strictEqual(invalidDateResult.ok, true);
+  if (invalidDateResult.ok) {
+    assert.strictEqual(invalidDateResult.parse_source, 'AI');
+  }
+  assert.strictEqual(invalidDateProviderCalls, 1, 'Invalid calendar date must fall back to Gemini');
+  console.log('  ✓ 28. Date span masking & calendar date verification: ISO/Slash/Dash/Relative parsed, invalid dates fall back to Gemini');
+
+  // Test 29: Precision preservation & zero silent truncation
+  // 4.12345 USD has 5 fractional digits with non-zero excess -> MUST fall back to Gemini, not truncate to 4.1234
+  let precisionFallbackCalls = 0;
+  const precisionFallbackProvider: AiProvider = {
+    id: 'gemini',
+    execute: async (request) => {
+      precisionFallbackCalls++;
+      return {
+        text: JSON.stringify({ ...createValidModelOutput(), amount: '4.1234', currency_code: 'USD' }),
+        model: request.model,
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      };
+    },
+  };
+  const precisionRouter = createAiRouter({ providers: [precisionFallbackProvider] });
+  const precisionResult = await parseTransactionTextCore({
+    prompt: 'Coffee 4.12345 USD',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: precisionRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+  assert.strictEqual(precisionResult.ok, true);
+  if (precisionResult.ok) {
+    assert.strictEqual(precisionResult.parse_source, 'AI');
+  }
+  assert.strictEqual(precisionFallbackCalls, 1, 'Excess non-zero fractional precision must trigger Gemini fallback');
+  console.log('  ✓ 29. Precision preservation: Non-zero excess precision triggers fallback (zero silent truncation)');
+
+  // Test 30: Full token consumption enforcement
+  // "Mua sach 120.000xyz" has unrecognized suffix attached -> MUST fall back to Gemini, not partially consume "120"
+  let unconsumedFallbackCalls = 0;
+  const unconsumedProvider: AiProvider = {
+    id: 'gemini',
+    execute: async (request) => {
+      unconsumedFallbackCalls++;
+      return {
+        text: JSON.stringify(createValidModelOutput()),
+        model: request.model,
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      };
+    },
+  };
+  const unconsumedRouter = createAiRouter({ providers: [unconsumedProvider] });
+  const unconsumedResult = await parseTransactionTextCore({
+    prompt: 'Mua sach 120.000xyz',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: unconsumedRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+  assert.strictEqual(unconsumedResult.ok, true);
+  if (unconsumedResult.ok) {
+    assert.strictEqual(unconsumedResult.parse_source, 'AI');
+  }
+  assert.strictEqual(unconsumedFallbackCalls, 1, 'Partially unconsumed numeric token must fall back to Gemini');
+  console.log('  ✓ 30. Full token consumption: Unrecognized alphanumeric suffix triggers Gemini fallback');
+
+  // Test 31: Currency conflict detection
+  const conflictPrompts = [
+    'Ăn trưa 85k USD',
+    'Lương 25tr EUR',
+    'Coffee 4.50 USD EUR',
+    'Ăn tối 1.5 triệu JPY',
+  ];
+
+  for (const cp of conflictPrompts) {
+    let conflictProviderCalls = 0;
+    const conflictProvider: AiProvider = {
+      id: 'gemini',
+      execute: async (request) => {
+        conflictProviderCalls++;
+        return {
+          text: JSON.stringify(createValidModelOutput()),
+          model: request.model,
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+        };
+      },
+    };
+    const conflictRouter = createAiRouter({ providers: [conflictProvider] });
+    const conflictRes = await parseTransactionTextCore({
+      prompt: cp,
+      userId: fastPathUserId,
+      supabase: fastPathMockSupabase,
+      router: conflictRouter,
+      credentialProvider: {
+        resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+      },
+      now: new Date('2026-09-04T12:00:00Z'),
+    });
+    assert.strictEqual(conflictRes.ok, true);
+    if (conflictRes.ok) {
+      assert.strictEqual(conflictRes.parse_source, 'AI', `Currency conflict in '${cp}' must fall back to Gemini`);
+    }
+    assert.strictEqual(conflictProviderCalls, 1, `Gemini provider must be called for conflict prompt '${cp}'`);
+  }
+  console.log('  ✓ 31. Currency conflict detection: Vietnamese multiplier + foreign currency or multiple currencies fall back to Gemini');
+
+  // Test 32: Deterministic fail-safes (multiple amounts, ranges, corrections, multi-transactions)
+  const failSafePrompts = [
+    'Ăn trưa 85k và mua nước 20k', // Multiple amounts
+    'Ăn trưa khoảng 80-90k', // Range amount
+    'Ăn trưa 85k à không phải 95k', // Correction phrase
+    'Ăn trưa 85k rồi sau đó đổ xăng 50k', // Multi-transaction
+  ];
+
+  for (const fsp of failSafePrompts) {
+    let fspCalls = 0;
+    const fspProvider: AiProvider = {
+      id: 'gemini',
+      execute: async (request) => {
+        fspCalls++;
+        return {
+          text: JSON.stringify(createValidModelOutput()),
+          model: request.model,
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+        };
+      },
+    };
+    const fspRouter = createAiRouter({ providers: [fspProvider] });
+    const fspRes = await parseTransactionTextCore({
+      prompt: fsp,
+      userId: fastPathUserId,
+      supabase: fastPathMockSupabase,
+      router: fspRouter,
+      credentialProvider: {
+        resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+      },
+      now: new Date('2026-09-04T12:00:00Z'),
+    });
+    assert.strictEqual(fspRes.ok, true);
+    if (fspRes.ok) {
+      assert.strictEqual(fspRes.parse_source, 'AI', `Fail-safe prompt '${fsp}' must fall back to Gemini`);
+    }
+    assert.strictEqual(fspCalls, 1, `Gemini must be called on fail-safe trigger for '${fsp}'`);
+  }
+  console.log('  ✓ 32. Deterministic fail-safes: Multiple amounts, ranges, corrections, and multi-transactions fall back to Gemini');
+
+  console.log('\nAll 32 Phase 12A AI Transaction Draft tests passed successfully!');
 }
 
 runAsyncTests().catch((err) => {

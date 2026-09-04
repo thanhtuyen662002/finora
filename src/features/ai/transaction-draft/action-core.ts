@@ -38,6 +38,7 @@ import {
   isSupportedCurrencyCode,
   type ParseTransactionDraftResult,
   type AiTimingTelemetry,
+  type AiTransactionParseOutput,
 } from './types';
 import { aiTransactionParseOutputValidator } from './validator';
 
@@ -273,71 +274,83 @@ export async function parseTransactionTextCore(
     const fastPathMs = Math.round(performance.now() - fastPathStart);
 
     if (fastPathResult.eligible && fastPathResult.output) {
-      const draft = crossValidateTransactionDraft({
-        rawOutput: fastPathResult.output,
-        candidates,
-        baseCurrency: resolvedSettings.baseCurrency,
-      });
-
-      const revalidationStart = performance.now();
+      let validatedFastOutput: AiTransactionParseOutput | null = null;
       try {
-        const revalidatedDraft = await revalidateResolvedCandidates(
-          params.supabase,
-          params.userId,
-          draft
+        validatedFastOutput = aiTransactionParseOutputValidator.validate(
+          fastPathResult.output
         );
-        const revalidationMs = Math.round(performance.now() - revalidationStart);
-        const totalMs = Math.round(performance.now() - totalStart);
+      } catch (_valErr) {
+        // If deterministic output fails authoritative validator, mark unusable and fallback to Gemini
+        validatedFastOutput = null;
+      }
 
-        emitTimingTelemetry(
-          {
-            event: 'FINORA_AI_TIMING',
-            operation: 'transaction_parser',
-            execution_path: 'deterministic',
-            fast_path_ms: fastPathMs,
-            success: true,
-            context_ms: contextMs,
-            ai_provider_ms: 0,
-            revalidation_ms: revalidationMs,
-            total_ms: totalMs,
-            warning_count: revalidatedDraft.warning_codes.length,
-          },
-          params.onTiming
-        );
+      if (validatedFastOutput) {
+        const draft = crossValidateTransactionDraft({
+          rawOutput: validatedFastOutput,
+          candidates,
+          baseCurrency: resolvedSettings.baseCurrency,
+        });
 
-        return {
-          ok: true,
-          draft: revalidatedDraft,
-          rawText: promptText,
-          parse_source: 'DETERMINISTIC',
-        };
-      } catch (_err: unknown) {
-        const revalidationMs = Math.round(performance.now() - revalidationStart);
-        const totalMs = Math.round(performance.now() - totalStart);
+        const revalidationStart = performance.now();
+        try {
+          const revalidatedDraft = await revalidateResolvedCandidates(
+            params.supabase,
+            params.userId,
+            draft
+          );
+          const revalidationMs = Math.round(performance.now() - revalidationStart);
+          const totalMs = Math.round(performance.now() - totalStart);
 
-        emitTimingTelemetry(
-          {
-            event: 'FINORA_AI_TIMING',
-            operation: 'transaction_parser',
-            execution_path: 'deterministic',
-            fast_path_ms: fastPathMs,
-            success: false,
-            context_ms: contextMs,
-            ai_provider_ms: 0,
-            revalidation_ms: revalidationMs,
-            total_ms: totalMs,
-            error_code: 'CONTEXT_LOAD_FAILED',
-          },
-          params.onTiming
-        );
+          emitTimingTelemetry(
+            {
+              event: 'FINORA_AI_TIMING',
+              operation: 'transaction_parser',
+              execution_path: 'deterministic',
+              fast_path_ms: fastPathMs,
+              success: true,
+              context_ms: contextMs,
+              ai_provider_ms: 0,
+              revalidation_ms: revalidationMs,
+              total_ms: totalMs,
+              warning_count: revalidatedDraft.warning_codes.length,
+            },
+            params.onTiming
+          );
 
-        return {
-          ok: false,
-          error: {
-            code: 'CONTEXT_LOAD_FAILED',
-            message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
-          },
-        };
+          return {
+            ok: true,
+            draft: revalidatedDraft,
+            rawText: promptText,
+            parse_source: 'DETERMINISTIC',
+          };
+        } catch (_err: unknown) {
+          const revalidationMs = Math.round(performance.now() - revalidationStart);
+          const totalMs = Math.round(performance.now() - totalStart);
+
+          emitTimingTelemetry(
+            {
+              event: 'FINORA_AI_TIMING',
+              operation: 'transaction_parser',
+              execution_path: 'deterministic',
+              fast_path_ms: fastPathMs,
+              success: false,
+              context_ms: contextMs,
+              ai_provider_ms: 0,
+              revalidation_ms: revalidationMs,
+              total_ms: totalMs,
+              error_code: 'CONTEXT_LOAD_FAILED',
+            },
+            params.onTiming
+          );
+
+          return {
+            ok: false,
+            error: {
+              code: 'CONTEXT_LOAD_FAILED',
+              message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
+            },
+          };
+        }
       }
     }
   }

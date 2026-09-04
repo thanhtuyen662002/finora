@@ -6,9 +6,9 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion
-- **Phase status:** DETERMINISTIC_FAST_PATH_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
-- **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (27/27 PASS)
-- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (91/91 PASS)
+- **Phase status:** DETERMINISTIC_FAST_PATH_PASS_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+- **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (32/32 PASS)
+- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (104/104 PASS)
 - **Phase 12A parser model:** `gemini-3.5-flash-lite` (exact stable ID fallback)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
@@ -1077,42 +1077,48 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 
 ## Phase 12A — Deterministic Transaction Fast Path & Gemini Fallback
 
-### Status: DETERMINISTIC_FAST_PATH_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+### Status: DETERMINISTIC_FAST_PATH_PASS_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
 
-- **Implementation Overview:**
-  1. **Conservative Deterministic Parser (`src/features/ai/transaction-draft/fast-path.ts`)**:
-     - Implemented `tryDeterministicFastPath` with zero floating-point arithmetic (strictly string-based decimal manipulations).
-     - Handles colloquial amounts: `k` (thousands), `tr` / `trieu` (millions), `ty` (billions), dot-thousands, comma-thousands, explicit decimals.
-     - Multi-currency support: VND, USD, EUR, JPY, CNY, KRW.
-     - Semantic type detection: EXPENSE vs INCOME keywords (fails closed / falls back on conflict or ambiguity).
-     - Relative date detection in user timezone: `hôm nay`, `hôm qua`, `hôm kia`, `ngày mai`.
-     - Candidate matching: exact label and keyword-based category matching, account matching, income source and stream matching.
-     - Conservative eligibility: returns `{ eligible: false, output: null }` for ambiguous phrases, range amounts, corrections, or multi-transactions, seamlessly triggering Gemini fallback.
-  2. **Action Core Integration (`src/features/ai/transaction-draft/action-core.ts`)**:
-     - Pre-Gemini fast-path evaluation: runs before any AI router or credential resolution.
-     - Lazy dependency instantiation: `getRouter` and `getCredentialProvider` are only evaluated if deterministic fast path is ineligible or skipped.
-     - Unified convergence: output flows directly into existing Phase 12A candidate revalidation and domain cross-validation.
-     - Telemetry: captures `execution_path: "deterministic" | "gemini"` and `fast_path_ms`.
-  3. **UI Enhancements (`src/components/finance/AiTransactionDraftInput.tsx`)**:
-     - Renamed action entry to **Nhập nhanh** with helper text **Xử lý nhanh, dùng AI khi cần**.
-     - Added source indicator badge (**Phân tích nhanh** vs **AI**) in the preview banner.
-  4. **Strict Architectural Invariants Preserved**:
+- **Implementation Overview (Pass 1 Corrective):**
+  1. **Exact Money & Canonical Decimal Arithmetic (`src/features/ai/transaction-draft/fast-path.ts`)**:
+     - Formats all output amounts to canonical `numeric(20,4)` string format (e.g. `85000.0000`, `4.5000`).
+     - Pure string-based integer and fractional manipulation: strictly 0 uses of `Number()`, `parseFloat()`, or JS floating point.
+     - Zero silent truncation: excess fractional digits with non-zero values (e.g. `4.12345`) trigger Gemini fallback.
+  2. **Authoritative Output Validator Gate (`src/features/ai/transaction-draft/action-core.ts`)**:
+     - Deterministic output is passed through `aiTransactionParseOutputValidator.validate()` before reaching domain cross-validation.
+     - If deterministic output fails authoritative validation, action-core safely fails closed and falls back to Gemini.
+  3. **Full Token Consumption & Candidate Extraction (`src/features/ai/transaction-draft/fast-path.ts`)**:
+     - Unrecognized alphanumeric tokens or partially matched digits (e.g. `120.000xyz`) trigger fail-safe fallback to Gemini.
+     - Fail-safes enforced for multiple amounts, numeric ranges (`80-90k`), correction phrases (`à không phải`), and multi-transactions (`rồi sau đó`).
+  4. **Date Span Masking & Calendar Date Verification (`src/features/ai/transaction-draft/fast-path.ts`)**:
+     - Date patterns (ISO, slash `DD/MM/YYYY`, dash `DD-MM-YYYY`, relative `hôm qua`/`hôm kia`) are validated via `isValidCalendarDate` and masked out of text before monetary scanning.
+     - Invalid calendar dates (e.g. Feb 30th) trigger Gemini fallback.
+  5. **Currency Conflict Detection (`src/features/ai/transaction-draft/fast-path.ts`)**:
+     - Detecting multiple explicit currencies or combining Vietnamese multipliers with non-VND currencies (e.g. `85k USD`, `1tr EUR`) triggers Gemini fallback.
+  6. **UI & Architectural Invariants Preserved**:
      - 0 database migrations added.
      - Auth precedes all privileged operations.
      - 0 financial mutations in parsing step.
      - Server-only boundaries respected.
 
-### Verification Results (Deterministic Fast Path)
-- **Phase 12A Test Suite (`tests/phase12a-transaction-draft.test.ts`)**: 27/27 PASS
+### Verification Results (Deterministic Fast Path Pass 1)
+- **Phase 12A Test Suite (`tests/phase12a-transaction-draft.test.ts`)**: 32/32 PASS
   - Test 24: Deterministic Fast Path: simple expense parsed with 0 router, 0 resolver, 0 repo, 0 Gemini calls.
-  - Test 25: Deterministic string-only currency parsing verified across VND, USD, k, tr, trieu, d.
+  - Test 25: Deterministic string-only currency parsing verified across VND, USD, k, tr, trieu, d with exact 4-decimal amounts.
   - Test 26: Anonymous access returns AUTH_REQUIRED with 0 privileged factory calls.
   - Test 27: Complex/ambiguous prompt falls back to Gemini router exactly once with execution_path=gemini.
-- **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 91/91 PASS
+  - Test 28: Date span masking & calendar date verification (ISO, slash, dash, relative offsets, invalid date fallback).
+  - Test 29: Precision preservation (non-zero excess precision triggers fallback, zero silent truncation).
+  - Test 30: Full token consumption (unrecognized alphanumeric suffix triggers Gemini fallback).
+  - Test 31: Currency conflict detection (Vietnamese multiplier + foreign currency or multiple currencies fall back to Gemini).
+  - Test 32: Deterministic fail-safes (multiple amounts, ranges, corrections, and multi-transactions fall back to Gemini).
+- **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 104/104 PASS
+- **Phase 10 Test Suite (`tests/phase10-ai-foundation.test.ts`)**: 50/50 PASS
+- **Phase 11 Test Suite (`tests/phase11-ai-credentials.test.ts`)**: 79/79 PASS
 - **TypeScript Check (`npm run typecheck`)**: PASS
 - **Lint Check (`npm run lint`)**: PASS
 - **Production Build (`compile_applet`)**: PASS
 
 ### Next Recommended Step
-- Proceed to live smoke testing or independent verification of the Phase 12A Deterministic Fast Path.
+- Proceed to independent audit of the Phase 12A Deterministic Fast Path Pass 1.
 

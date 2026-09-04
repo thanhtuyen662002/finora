@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Finora AI Foundation — Phase 12A Source & Architecture Verification Script
- * Corrective Pass 1 — Runtime Safety, Candidate Integrity & Verification Fidelity
+ * Corrective Pass 1 — Runtime Safety, Exact Money, Boundary Convergence & Fail-Safe Fast Path
  *
- * Verifies all 16 corrective specifications completely offline:
+ * Verifies all corrective specifications offline:
  * - Scope & file tree integrity (no unexpected schema mutations)
  * - Server-only module boundary enforcement
  * - Income stream database contract (income_source_id)
@@ -16,6 +16,13 @@
  * - AI ambiguity masking prevention & form state provenance
  * - Auth-before-privileged-factory sequencing
  * - Zero financial mutation invariant
+ * - Exact money string decimal arithmetic (0 Number, 0 parseFloat, no silent truncation)
+ * - Deterministic output validator convergence (aiTransactionParseOutputValidator.validate)
+ * - Full amount token consumption
+ * - Currency conflict & multiple currency detection
+ * - Date span masking & isolation from amount scanning
+ * - Fast-path fail-safes (multi-amount, range, correction, multi-transaction)
+ * - Telemetry & privacy invariants
  */
 
 import fs from 'node:fs';
@@ -35,6 +42,12 @@ function check(id, condition, failureMessage) {
     failed++;
     console.error(`[FAIL] ${id}: ${failureMessage}`);
   }
+}
+
+function stripComments(code) {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*/g, '');
 }
 
 console.log('--- Finora Phase 12A Source & Architecture Static Verification ---');
@@ -332,12 +345,6 @@ check(
 // 10. Central AI Operation Config Authority (Corrective 8)
 // =========================================================================
 
-function stripComments(code) {
-  return code
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*/g, '');
-}
-
 const cleanActionCore = stripComments(actionCoreContent);
 const routerCallMatch = /router\.execute(?:<[^>]*>)?\s*\(\s*\{([\s\S]*?)\}/.exec(cleanActionCore);
 const routerCallBody = routerCallMatch ? routerCallMatch[1] : '';
@@ -533,7 +540,7 @@ check(
 );
 
 // =========================================================================
-// 14. Phase 12A Model Policy & Live Smoke Configuration
+// 15. Phase 12A Model Policy & Live Smoke Configuration
 // =========================================================================
 
 const aiConfigPath = path.join(ROOT, 'src/lib/ai/config.ts');
@@ -554,7 +561,7 @@ check(
 );
 
 // =========================================================================
-// 15. Money Presentation & Boundary Integrity (Corrective 2)
+// 16. Money Presentation & Boundary Integrity (Corrective 2)
 // =========================================================================
 
 const moneyIndexPath = path.join(ROOT, 'src/lib/money/index.ts');
@@ -584,7 +591,7 @@ check(
 );
 
 // =========================================================================
-// 16. Performance Concurrency & Privacy-Safe Timing Telemetry (Corrective 2)
+// 17. Performance Concurrency & Privacy-Safe Timing Telemetry (Corrective 2)
 // =========================================================================
 
 check(
@@ -612,7 +619,6 @@ check(
   'domain.ts revalidateResolvedCandidates must query accounts, categories, sources, and streams concurrently using Promise.all'
 );
 
-// typesContent is already read at top
 check(
   'TIMING_INSTRUMENTATION_PRESENT',
   typesContent.includes('export interface AiTimingTelemetry') &&
@@ -642,7 +648,7 @@ check(
 );
 
 // =========================================================================
-// 17. Deterministic Transaction Fast Path Verification
+// 18. Deterministic Transaction Fast Path Structural Invariants
 // =========================================================================
 
 const fastPathContent = fs.readFileSync(
@@ -656,11 +662,102 @@ check(
   'fast-path.ts must export tryDeterministicFastPath'
 );
 
+check(
+  'FAST_PATH_NO_AI_PROVIDER_IMPORT',
+  !fastPathContent.includes('@google/genai') &&
+    !fastPathContent.includes('/lib/ai/router') &&
+    !fastPathContent.includes('/lib/ai/provider'),
+  'fast-path.ts must NOT import AI provider, router, or Google GenAI SDK'
+);
+
+check(
+  'FAST_PATH_NO_CREDENTIAL_IMPORT',
+  !fastPathContent.includes('/lib/ai/credentials') &&
+    !fastPathContent.includes('createAiCredential'),
+  'fast-path.ts must NOT import AI credential repository or resolver modules'
+);
+
+check(
+  'FAST_PATH_NO_TRANSACTION_MUTATION_IMPORT',
+  !fastPathContent.includes('createTransaction') &&
+    !fastPathContent.includes('updateTransaction') &&
+    !fastPathContent.includes('.insert('),
+  'fast-path.ts must NOT import transaction mutation actions'
+);
+
 const fastPathCodeOnly = fastPathContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '');
 check(
-  'FAST_PATH_ZERO_FLOAT_MONEY',
-  !fastPathCodeOnly.includes('Number(') && !fastPathCodeOnly.includes('parseFloat('),
-  'fast-path.ts must NOT use Number() or parseFloat() for money computation (strict string decimal arithmetic)'
+  'FAST_PATH_NO_NUMBER',
+  !fastPathCodeOnly.includes('Number('),
+  'fast-path.ts must NOT use Number() in parsing logic'
+);
+
+check(
+  'FAST_PATH_NO_PARSE_FLOAT',
+  !fastPathCodeOnly.includes('parseFloat('),
+  'fast-path.ts must NOT use parseFloat() in parsing logic'
+);
+
+check(
+  'FAST_PATH_NO_SILENT_FRACTION_TRUNCATION',
+  fastPathContent.includes('fracPartRaw.length > 4') &&
+    fastPathContent.includes('excessDigits'),
+  'fast-path.ts must check for non-zero excess fractional digits and reject silent truncation'
+);
+
+check(
+  'FAST_PATH_FULL_AMOUNT_TOKEN_CONSUMPTION',
+  fastPathContent.includes('hasUnconsumedToken') &&
+    fastPathContent.includes('amountAnalysis.hasUnconsumedToken'),
+  'fast-path.ts must verify full token consumption for candidate amounts'
+);
+
+check(
+  'FAST_PATH_MULTIPLE_AMOUNT_FAILSAFE',
+  fastPathContent.includes('amountAnalysis.amounts.length !== 1'),
+  'fast-path.ts must fail closed / fallback on multiple amounts'
+);
+
+check(
+  'FAST_PATH_RANGE_FAILSAFE',
+  fastPathContent.includes('amountAnalysis.hasRange') &&
+    fastPathContent.includes('hasRange'),
+  'fast-path.ts must fail closed / fallback on amount range expressions'
+);
+
+check(
+  'FAST_PATH_CORRECTION_FAILSAFE',
+  fastPathContent.includes('amountAnalysis.hasCorrection') &&
+    fastPathContent.includes('hasCorrection'),
+  'fast-path.ts must fail closed / fallback on correction phrases'
+);
+
+check(
+  'FAST_PATH_MULTI_TRANSACTION_FAILSAFE',
+  fastPathContent.includes('amountAnalysis.hasMultiTransaction') &&
+    fastPathContent.includes('hasMultiTransaction'),
+  'fast-path.ts must fail closed / fallback on multi-transaction phrases'
+);
+
+check(
+  'FAST_PATH_CURRENCY_CONFLICT_FAILSAFE',
+  fastPathContent.includes('currencyResolution.hasConflict') &&
+    fastPathContent.includes('detectExplicitCurrencies'),
+  'fast-path.ts must detect and fail closed on currency conflicts'
+);
+
+check(
+  'FAST_PATH_DATE_SPAN_EXCLUDED_FROM_AMOUNT_SCAN',
+  fastPathContent.includes('maskDateSpansAndExtractDate') &&
+    fastPathContent.includes('extractPotentialAmounts(dateScan.maskedText)'),
+  'fast-path.ts must mask date spans prior to scanning amounts'
+);
+
+check(
+  'FAST_PATH_SHARED_RUNTIME_VALIDATOR',
+  actionCoreContent.includes('aiTransactionParseOutputValidator.validate(fastPathResult.output)') ||
+    actionCoreContent.includes('aiTransactionParseOutputValidator.validate('),
+  'action-core.ts must validate fast path output through aiTransactionParseOutputValidator before cross-validation'
 );
 
 check(
@@ -682,15 +779,10 @@ check(
   'types.ts must declare execution_path and fast_path_ms in AiTimingTelemetry'
 );
 
-const inputComponentContent = fs.readFileSync(
-  path.join(ROOT, 'src/components/finance/AiTransactionDraftInput.tsx'),
-  'utf8'
-);
-
 check(
   'UI_LABEL_NHAP_NHANH',
-  inputComponentContent.includes('Nhập nhanh') &&
-    inputComponentContent.includes('Xử lý nhanh, dùng AI khi cần'),
+  clientInputContent.includes('Nhập nhanh') &&
+    clientInputContent.includes('Xử lý nhanh, dùng AI khi cần'),
   'AiTransactionDraftInput.tsx must feature "Nhập nhanh" and "Xử lý nhanh, dùng AI khi cần"'
 );
 
