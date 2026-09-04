@@ -5,10 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 3
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_3_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Core Image & Provider Pipeline)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: PASS 12B-1 IMPLEMENTED / TESTED (Phase 12 Overall: IN_PROGRESS)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B implementation:** NOT AUTHORIZED
+- **Phase 12B implementation:** PASS 12B-1 COMPLETE (Multimodal Pipeline, Exact Money, Bounded Sharp Normalization, 11-Key Output Schema & Tests PASS)
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`

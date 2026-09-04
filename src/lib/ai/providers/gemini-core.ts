@@ -29,6 +29,11 @@ export interface GeminiClientLike {
         responseMimeType?: string;
         responseJsonSchema?: unknown;
         abortSignal?: AbortSignal;
+        httpOptions?: {
+          retryOptions?: {
+            attempts?: number;
+          };
+        };
       };
     }): Promise<{
       text?: string | null;
@@ -158,6 +163,11 @@ export class GeminiProviderCore implements AiProvider {
         responseMimeType?: string;
         responseJsonSchema?: unknown;
         abortSignal?: AbortSignal;
+        httpOptions?: {
+          retryOptions?: {
+            attempts?: number;
+          };
+        };
       } = {};
 
       if (request.systemInstruction) {
@@ -179,9 +189,41 @@ export class GeminiProviderCore implements AiProvider {
         config.responseJsonSchema = request.outputValidator.jsonSchema;
       }
 
+      // Receipt Vision specific single HTTP attempt policy
+      if (request.operation === 'receipt_vision') {
+        config.httpOptions = {
+          retryOptions: {
+            attempts: 1,
+          },
+        };
+      }
+
+      // Map contents: text-only vs multimodal inline image
+      let contents: string | Array<unknown> = request.prompt;
+      if (request.media && request.media.length > 0) {
+        if (request.media.length !== 1 || request.media[0].kind !== 'inline_image') {
+          throw new AiError({
+            code: 'AI_INVALID_REQUEST',
+            message: 'Gemini provider currently supports exactly one inline image in multimodal requests.',
+            providerId: this.id,
+          });
+        }
+        const mediaPart = request.media[0];
+        const base64Data = Buffer.from(mediaPart.bytes).toString('base64');
+        contents = [
+          {
+            inlineData: {
+              mimeType: mediaPart.mimeType,
+              data: base64Data,
+            },
+          },
+          request.prompt,
+        ];
+      }
+
       const response = await client.models.generateContent({
         model: modelName,
-        contents: request.prompt,
+        contents,
         config: Object.keys(config).length > 0 ? config : undefined,
       });
 
@@ -208,6 +250,29 @@ export class GeminiProviderCore implements AiProvider {
           message: 'AI request was aborted by the caller signal.',
           providerId: this.id,
           cause: err,
+        });
+      }
+      if (request.operation === 'receipt_vision') {
+        const normalized = normalizeGeminiError(err);
+        const safeMessages: Record<AiErrorCode, string> = {
+          AI_AUTH_FAILED: 'Gemini authentication failed during receipt vision analysis.',
+          AI_RATE_LIMITED: 'Gemini rate limit exceeded during receipt vision analysis.',
+          AI_TIMEOUT: 'Receipt vision analysis timed out.',
+          AI_ABORTED: 'Receipt vision analysis was aborted.',
+          AI_PROVIDER_UNAVAILABLE: 'Gemini service is currently unavailable for receipt vision.',
+          AI_INVALID_REQUEST: 'Invalid request payload sent to receipt vision provider.',
+          AI_INVALID_RESPONSE: 'Invalid response received from receipt vision provider.',
+          AI_STRUCTURED_OUTPUT_INVALID: 'Failed to validate structured receipt vision output.',
+          AI_NOT_CONFIGURED: 'AI credentials not configured for receipt vision.',
+          AI_PROVIDER_ERROR: 'An error occurred with the AI provider during receipt vision analysis.',
+          AI_CREDENTIAL_CORRUPTED: 'AI credential is corrupted.',
+          AI_CREDENTIAL_KEY_UNAVAILABLE: 'AI credential encryption key is unavailable.',
+          AI_CREDENTIAL_RESOLUTION_FAILED: 'Failed to resolve AI credential for receipt vision.',
+        };
+        throw new AiError({
+          code: normalized.code,
+          message: safeMessages[normalized.code] ?? 'An error occurred during receipt vision analysis.',
+          providerId: this.id,
         });
       }
       throw normalizeGeminiError(err);
