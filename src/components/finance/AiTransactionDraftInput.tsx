@@ -83,6 +83,7 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
   const [isParsing, setIsParsing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [draft, setDraft] = useState<ParsedTransactionDraft | null>(null);
+  const [parseSource, setParseSource] = useState<'DETERMINISTIC' | 'AI' | null>(null);
 
   const handleParse = async () => {
     if (!prompt.trim() || isParsing) return;
@@ -90,6 +91,7 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
     setIsParsing(true);
     setErrorMsg(null);
     setDraft(null);
+    setParseSource(null);
 
     try {
       const res = await parseTransactionDraftAction(prompt);
@@ -97,6 +99,7 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
         setErrorMsg(res.error.message);
       } else {
         setDraft(res.draft);
+        setParseSource(res.parse_source ?? 'AI');
       }
     } catch {
       setErrorMsg('Không thể kết nối đến máy chủ AI. Vui lòng thử lại sau.');
@@ -109,12 +112,14 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
     if (!draft) return;
     onApplyDraft(draft);
     setDraft(null);
+    setParseSource(null);
     setPrompt('');
     setIsOpen(false);
   };
 
   const handleDismissDraft = () => {
     setDraft(null);
+    setParseSource(null);
   };
 
   // Helper lookups for draft preview
@@ -134,7 +139,7 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
           className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline focus:outline-none"
         >
           <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-          <span>Nhập nhanh với AI</span>
+          <span>Nhập nhanh</span>
           <span className="text-[10px] text-muted-foreground font-normal">
             ({isOpen ? 'Ẩn' : 'Hiện'})
           </span>
@@ -148,6 +153,10 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
 
       {isOpen && (
         <div className="space-y-2.5 pt-1">
+          <p className="text-[11px] text-muted-foreground">
+            Xử lý nhanh, dùng AI khi cần
+          </p>
+
           <div className="flex gap-2">
             <Input
               value={prompt}
@@ -241,6 +250,11 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
                   <span className="text-sm font-bold text-foreground">
                     {draft.amount ? formatMoneyWithCode(draft.amount, draft.currency_code || 'VND') : 'Chưa có số tiền'}
                   </span>
+                  {parseSource && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {parseSource === 'DETERMINISTIC' ? 'Phân tích nhanh' : 'AI'}
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"

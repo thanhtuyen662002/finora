@@ -39,15 +39,14 @@ export async function parseTransactionDraftAction(
     };
   }
 
-  const repository = createAiCredentialRepository();
-  const credentialProvider = new AiCredentialResolver({ repository });
-  const router = createDefaultServerRouter();
-
   return parseTransactionTextCore({
     prompt,
     userId: user.id,
     supabase,
-    router,
-    credentialProvider,
+    getRouter: () => createDefaultServerRouter(),
+    getCredentialProvider: () => {
+      const repository = createAiCredentialRepository();
+      return new AiCredentialResolver({ repository });
+    },
   });
 }

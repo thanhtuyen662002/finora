@@ -6,10 +6,10 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion
-- **Phase status:** PERFORMANCE_AND_MONEY_CORRECTIVE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
-- **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (23/23 PASS)
-- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (83/83 PASS)
-- **Phase 12A parser model:** `gemini-3.5-flash-lite` (exact stable ID)
+- **Phase status:** DETERMINISTIC_FAST_PATH_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+- **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (27/27 PASS)
+- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (91/91 PASS)
+- **Phase 12A parser model:** `gemini-3.5-flash-lite` (exact stable ID fallback)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
 - **Phase 11 structural gate:** PASS
@@ -1074,4 +1074,45 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 
 ### Next Recommended Step
 - Independent audit of the Performance & Money Presentation Corrective prior to live explicit-save smoke test.
+
+## Phase 12A — Deterministic Transaction Fast Path & Gemini Fallback
+
+### Status: DETERMINISTIC_FAST_PATH_COMPLETE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+
+- **Implementation Overview:**
+  1. **Conservative Deterministic Parser (`src/features/ai/transaction-draft/fast-path.ts`)**:
+     - Implemented `tryDeterministicFastPath` with zero floating-point arithmetic (strictly string-based decimal manipulations).
+     - Handles colloquial amounts: `k` (thousands), `tr` / `trieu` (millions), `ty` (billions), dot-thousands, comma-thousands, explicit decimals.
+     - Multi-currency support: VND, USD, EUR, JPY, CNY, KRW.
+     - Semantic type detection: EXPENSE vs INCOME keywords (fails closed / falls back on conflict or ambiguity).
+     - Relative date detection in user timezone: `hôm nay`, `hôm qua`, `hôm kia`, `ngày mai`.
+     - Candidate matching: exact label and keyword-based category matching, account matching, income source and stream matching.
+     - Conservative eligibility: returns `{ eligible: false, output: null }` for ambiguous phrases, range amounts, corrections, or multi-transactions, seamlessly triggering Gemini fallback.
+  2. **Action Core Integration (`src/features/ai/transaction-draft/action-core.ts`)**:
+     - Pre-Gemini fast-path evaluation: runs before any AI router or credential resolution.
+     - Lazy dependency instantiation: `getRouter` and `getCredentialProvider` are only evaluated if deterministic fast path is ineligible or skipped.
+     - Unified convergence: output flows directly into existing Phase 12A candidate revalidation and domain cross-validation.
+     - Telemetry: captures `execution_path: "deterministic" | "gemini"` and `fast_path_ms`.
+  3. **UI Enhancements (`src/components/finance/AiTransactionDraftInput.tsx`)**:
+     - Renamed action entry to **Nhập nhanh** with helper text **Xử lý nhanh, dùng AI khi cần**.
+     - Added source indicator badge (**Phân tích nhanh** vs **AI**) in the preview banner.
+  4. **Strict Architectural Invariants Preserved**:
+     - 0 database migrations added.
+     - Auth precedes all privileged operations.
+     - 0 financial mutations in parsing step.
+     - Server-only boundaries respected.
+
+### Verification Results (Deterministic Fast Path)
+- **Phase 12A Test Suite (`tests/phase12a-transaction-draft.test.ts`)**: 27/27 PASS
+  - Test 24: Deterministic Fast Path: simple expense parsed with 0 router, 0 resolver, 0 repo, 0 Gemini calls.
+  - Test 25: Deterministic string-only currency parsing verified across VND, USD, k, tr, trieu, d.
+  - Test 26: Anonymous access returns AUTH_REQUIRED with 0 privileged factory calls.
+  - Test 27: Complex/ambiguous prompt falls back to Gemini router exactly once with execution_path=gemini.
+- **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 91/91 PASS
+- **TypeScript Check (`npm run typecheck`)**: PASS
+- **Lint Check (`npm run lint`)**: PASS
+- **Production Build (`compile_applet`)**: PASS
+
+### Next Recommended Step
+- Proceed to live smoke testing or independent verification of the Phase 12A Deterministic Fast Path.
 

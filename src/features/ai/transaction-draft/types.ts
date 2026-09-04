@@ -201,6 +201,7 @@ export interface ParseTransactionDraftSuccess {
   readonly ok: true;
   readonly draft: ParsedTransactionDraft;
   readonly rawText: string;
+  readonly parse_source?: 'DETERMINISTIC' | 'AI';
 }
 
 export interface ParseTransactionDraftFailure {
@@ -222,6 +223,8 @@ export type ParseTransactionDraftResult =
 export interface AiTimingTelemetry {
   readonly event: 'FINORA_AI_TIMING';
   readonly operation: 'transaction_parser';
+  readonly execution_path?: 'deterministic' | 'gemini';
+  readonly fast_path_ms?: number;
   readonly success: boolean;
   readonly context_ms: number;
   readonly ai_provider_ms: number;

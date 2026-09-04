@@ -32,6 +32,7 @@ import {
   crossValidateTransactionDraft,
   revalidateResolvedCandidates,
 } from './domain';
+import { tryDeterministicFastPath } from './fast-path';
 import { buildTransactionParserPrompt } from './prompt';
 import {
   isSupportedCurrencyCode,
@@ -108,8 +109,10 @@ export interface ParseTransactionTextCoreParams {
   readonly prompt: string;
   readonly userId: string;
   readonly supabase: SupabaseClient<Database>;
-  readonly router: AiRouter;
-  readonly credentialProvider: AiCredentialProvider;
+  readonly router?: AiRouter;
+  readonly credentialProvider?: AiCredentialProvider;
+  readonly getRouter?: () => AiRouter;
+  readonly getCredentialProvider?: () => AiCredentialProvider;
   readonly now?: Date;
   readonly userSettings?: {
     readonly baseCurrency?: string;
@@ -117,6 +120,7 @@ export interface ParseTransactionTextCoreParams {
     readonly locale?: string;
   };
   readonly onTiming?: (telemetry: AiTimingTelemetry) => void;
+  readonly skipFastPath?: boolean;
 }
 
 export async function parseTransactionTextCore(
@@ -255,7 +259,120 @@ export async function parseTransactionTextCore(
 
   const contextMs = Math.round(performance.now() - contextStart);
 
-  // 4. Build prompt & system instruction
+  // 4. Deterministic Fast Path (Phase 12A)
+  if (!params.skipFastPath) {
+    const fastPathStart = performance.now();
+    const fastPathResult = tryDeterministicFastPath({
+      text: promptText,
+      candidates,
+      baseCurrency: resolvedSettings.baseCurrency,
+      timezone: resolvedSettings.timezone,
+      locale: resolvedSettings.locale,
+      now: params.now,
+    });
+    const fastPathMs = Math.round(performance.now() - fastPathStart);
+
+    if (fastPathResult.eligible && fastPathResult.output) {
+      const draft = crossValidateTransactionDraft({
+        rawOutput: fastPathResult.output,
+        candidates,
+        baseCurrency: resolvedSettings.baseCurrency,
+      });
+
+      const revalidationStart = performance.now();
+      try {
+        const revalidatedDraft = await revalidateResolvedCandidates(
+          params.supabase,
+          params.userId,
+          draft
+        );
+        const revalidationMs = Math.round(performance.now() - revalidationStart);
+        const totalMs = Math.round(performance.now() - totalStart);
+
+        emitTimingTelemetry(
+          {
+            event: 'FINORA_AI_TIMING',
+            operation: 'transaction_parser',
+            execution_path: 'deterministic',
+            fast_path_ms: fastPathMs,
+            success: true,
+            context_ms: contextMs,
+            ai_provider_ms: 0,
+            revalidation_ms: revalidationMs,
+            total_ms: totalMs,
+            warning_count: revalidatedDraft.warning_codes.length,
+          },
+          params.onTiming
+        );
+
+        return {
+          ok: true,
+          draft: revalidatedDraft,
+          rawText: promptText,
+          parse_source: 'DETERMINISTIC',
+        };
+      } catch (_err: unknown) {
+        const revalidationMs = Math.round(performance.now() - revalidationStart);
+        const totalMs = Math.round(performance.now() - totalStart);
+
+        emitTimingTelemetry(
+          {
+            event: 'FINORA_AI_TIMING',
+            operation: 'transaction_parser',
+            execution_path: 'deterministic',
+            fast_path_ms: fastPathMs,
+            success: false,
+            context_ms: contextMs,
+            ai_provider_ms: 0,
+            revalidation_ms: revalidationMs,
+            total_ms: totalMs,
+            error_code: 'CONTEXT_LOAD_FAILED',
+          },
+          params.onTiming
+        );
+
+        return {
+          ok: false,
+          error: {
+            code: 'CONTEXT_LOAD_FAILED',
+            message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
+          },
+        };
+      }
+    }
+  }
+
+  // 5. Fallback to Gemini AI Router (requires lazy initialization of credentials/router)
+  const router = params.router ?? params.getRouter?.();
+  const credentialProvider = params.credentialProvider ?? params.getCredentialProvider?.();
+
+  if (!router || !credentialProvider) {
+    const totalMs = Math.round(performance.now() - totalStart);
+    emitTimingTelemetry(
+      {
+        event: 'FINORA_AI_TIMING',
+        operation: 'transaction_parser',
+        execution_path: 'gemini',
+        success: false,
+        context_ms: contextMs,
+        ai_provider_ms: 0,
+        revalidation_ms: 0,
+        total_ms: totalMs,
+        error_code: 'AI_NOT_CONFIGURED',
+      },
+      params.onTiming
+    );
+
+    return {
+      ok: false,
+      error: {
+        code: 'AI_NOT_CONFIGURED',
+        message: AI_ERROR_MESSAGES.AI_NOT_CONFIGURED,
+      },
+    };
+  }
+
+  // 6. Build prompt & system instruction for Gemini fallback
   const { prompt, systemInstruction } = buildTransactionParserPrompt({
     promptText,
     candidates,
@@ -263,9 +380,9 @@ export async function parseTransactionTextCore(
     now: params.now,
   });
 
-  // 5. Execute router — Central AI operation config is authority; no duplicate parameters passed
+  // 7. Execute router — Central AI operation config is authority; no duplicate parameters passed
   const aiStart = performance.now();
-  const result = await params.router.execute<unknown, any>(
+  const result = await router.execute<unknown, any>(
     {
       operation: 'transaction_parser',
       prompt,
@@ -275,12 +392,12 @@ export async function parseTransactionTextCore(
     },
     {
       userId: params.userId,
-      credentialProvider: params.credentialProvider,
+      credentialProvider,
     }
   );
   const aiProviderMs = Math.round(performance.now() - aiStart);
 
-  // 6. Handle failure
+  // 8. Handle failure
   if (!result.ok) {
     const code = result.error.code;
     const totalMs = Math.round(performance.now() - totalStart);
@@ -288,6 +405,7 @@ export async function parseTransactionTextCore(
       {
         event: 'FINORA_AI_TIMING',
         operation: 'transaction_parser',
+        execution_path: 'gemini',
         success: false,
         context_ms: contextMs,
         ai_provider_ms: aiProviderMs,
@@ -307,14 +425,14 @@ export async function parseTransactionTextCore(
     };
   }
 
-  // 7. Cross-validate raw output into safe application draft
+  // 9. Cross-validate raw output into safe application draft
   const draft = crossValidateTransactionDraft({
     rawOutput: result.data,
     candidates,
     baseCurrency: resolvedSettings.baseCurrency,
   });
 
-  // 8. Post-AI Stale Revalidation (re-read resolved entities concurrently via authenticated RLS client)
+  // 10. Post-AI Stale Revalidation (re-read resolved entities concurrently via authenticated RLS client)
   const revalidationStart = performance.now();
   try {
     const revalidatedDraft = await revalidateResolvedCandidates(
@@ -329,6 +447,7 @@ export async function parseTransactionTextCore(
       {
         event: 'FINORA_AI_TIMING',
         operation: 'transaction_parser',
+        execution_path: 'gemini',
         success: true,
         context_ms: contextMs,
         ai_provider_ms: aiProviderMs,
@@ -343,6 +462,7 @@ export async function parseTransactionTextCore(
       ok: true,
       draft: revalidatedDraft,
       rawText: promptText,
+      parse_source: 'AI',
     };
   } catch (_err: unknown) {
     const revalidationMs = Math.round(performance.now() - revalidationStart);
@@ -352,6 +472,7 @@ export async function parseTransactionTextCore(
       {
         event: 'FINORA_AI_TIMING',
         operation: 'transaction_parser',
+        execution_path: 'gemini',
         success: false,
         context_ms: contextMs,
         ai_provider_ms: aiProviderMs,
@@ -411,20 +532,19 @@ export async function runParseTransactionDraftAction(
   const resolverFactory = deps.createAiCredentialResolver;
   const routerFactory = deps.createDefaultServerRouter;
 
-  if (!repoFactory || !resolverFactory || !routerFactory) {
-    throw new Error('All dependency factories must be provided for test execution');
-  }
-
-  const repository = repoFactory();
-  const credentialProvider = resolverFactory({ repository });
-  const router = routerFactory();
-
   return parseTransactionTextCore({
     prompt,
     userId: user.id,
     supabase,
-    router,
-    credentialProvider,
+    getRouter: () => {
+      if (!routerFactory) throw new Error('routerFactory is required');
+      return routerFactory();
+    },
+    getCredentialProvider: () => {
+      if (!repoFactory || !resolverFactory) throw new Error('credential factories required');
+      const repository = repoFactory();
+      return resolverFactory({ repository });
+    },
   });
 }
 

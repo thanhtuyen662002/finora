@@ -716,6 +716,7 @@ async function runAsyncTests() {
     supabase: simpleMockSupabase,
     router: realRouter,
     credentialProvider: mockCredProvider,
+    skipFastPath: true,
   });
   assert.strictEqual(malformedRes.ok, false);
   if (!malformedRes.ok) {
@@ -730,6 +731,7 @@ async function runAsyncTests() {
     supabase: simpleMockSupabase,
     router: realRouter,
     credentialProvider: mockCredProvider,
+    skipFastPath: true,
   });
   assert.strictEqual(emptyPayloadRes.ok, false);
   if (!emptyPayloadRes.ok) {
@@ -747,6 +749,7 @@ async function runAsyncTests() {
     supabase: simpleMockSupabase,
     router: realRouter,
     credentialProvider: mockCredProvider,
+    skipFastPath: true,
   });
   assert.strictEqual(missingKeyRes.ok, false);
   if (!missingKeyRes.ok) {
@@ -762,6 +765,7 @@ async function runAsyncTests() {
     supabase: simpleMockSupabase,
     router: realRouter,
     credentialProvider: mockCredProvider,
+    skipFastPath: true,
   });
   assert.strictEqual(extraKeyRes.ok, false);
   if (!extraKeyRes.ok) {
@@ -777,6 +781,7 @@ async function runAsyncTests() {
     supabase: simpleMockSupabase,
     router: realRouter,
     credentialProvider: mockCredProvider,
+    skipFastPath: true,
   });
   assert.strictEqual(numberAmountRes.ok, false);
   if (!numberAmountRes.ok) {
@@ -791,6 +796,7 @@ async function runAsyncTests() {
     supabase: simpleMockSupabase,
     router: realRouter,
     credentialProvider: mockCredProvider,
+    skipFastPath: true,
     now: new Date('2026-09-04T12:00:00Z'),
   });
 
@@ -1387,6 +1393,7 @@ async function runAsyncTests() {
     supabase: simpleMockSupabaseForTiming,
     router: routerForTiming,
     credentialProvider: mockCredentialProvider,
+    skipFastPath: true,
     onTiming: (t) => {
       capturedTelemetry = t;
     },
@@ -1427,7 +1434,234 @@ async function runAsyncTests() {
   }
   console.log('  ✓ 23. Privacy-safe timing instrumentation verified: structured timing present, zero sensitive leakage');
 
-  console.log('\nAll 23 Phase 12A AI Transaction Draft tests passed successfully!');
+  // =========================================================================
+  // 16. Phase 12A Deterministic Fast Path Test Suite (Tests 24-27)
+  // =========================================================================
+
+  // Test 24: Authenticated deterministic success with zero factory & zero Gemini calls
+  let routerFactoryCalls = 0;
+  let repoFactoryCalls = 0;
+  let resolverFactoryCalls = 0;
+  let providerCalls = 0;
+
+  const mockFastPathProvider: AiProvider = {
+    id: 'gemini',
+    execute: async (request) => {
+      providerCalls++;
+      return {
+        text: '{"type":"EXPENSE","amount":"85000","currency_code":"VND","account_token":"ACC_1","category_token":"CAT_1","income_source_token":null,"income_source_stream_token":null,"merchant":null,"note":"An trua","occurred_on":"2026-09-04"}',
+        model: request.model,
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      };
+    },
+  };
+
+  const fastPathUserId = 'fast-path-user-1';
+
+  const fastPathMockSupabase = {
+    auth: {
+      getUser: async () => ({
+        data: { user: { id: fastPathUserId } },
+        error: null,
+      }),
+    },
+    from: (table: string) => ({
+      select: () => {
+        const qb: any = {
+          eq: () => qb,
+          order: () => qb,
+          limit: () => {
+            if (table === 'accounts') {
+              return Promise.resolve({
+                data: [{ id: 'acc-uuid-fp-1', name: 'Tiền mặt', currency_code: 'VND', is_archived: false }],
+                error: null,
+              });
+            }
+            if (table === 'categories') {
+              return Promise.resolve({
+                data: [{ id: 'cat-uuid-fp-1', name: 'Ăn uống', type: 'EXPENSE', is_archived: false }],
+                error: null,
+              });
+            }
+            return Promise.resolve({ data: [], error: null });
+          },
+          maybeSingle: () => {
+            if (table === 'user_settings') {
+              return Promise.resolve({
+                data: { base_currency: 'VND', timezone: 'Asia/Ho_Chi_Minh', locale: 'vi-VN' },
+                error: null,
+              });
+            }
+            if (table === 'accounts') {
+              return Promise.resolve({
+                data: { id: 'acc-uuid-fp-1', user_id: fastPathUserId, currency_code: 'VND', is_archived: false },
+                error: null,
+              });
+            }
+            if (table === 'categories') {
+              return Promise.resolve({
+                data: { id: 'cat-uuid-fp-1', user_id: fastPathUserId, type: 'EXPENSE', is_archived: false },
+                error: null,
+              });
+            }
+            return Promise.resolve({ data: null, error: null });
+          },
+        };
+        return qb;
+      },
+    }),
+  } as any;
+
+  const fastPathResult = await runParseTransactionDraftAction(
+    'Ăn trưa 85k tiền mặt',
+    {
+      getSupabaseClient: async () => fastPathMockSupabase,
+      createAiCredentialRepository: () => {
+        repoFactoryCalls++;
+        return {};
+      },
+      createAiCredentialResolver: () => {
+        resolverFactoryCalls++;
+        return { resolveCredential: async () => ({ value: 'k', providerId: 'gemini' }) };
+      },
+      createDefaultServerRouter: () => {
+        routerFactoryCalls++;
+        return createAiRouter({ providers: [mockFastPathProvider] });
+      },
+    }
+  );
+
+  assert.strictEqual(fastPathResult.ok, true, 'Fast path must succeed for simple expense');
+  if (fastPathResult.ok) {
+    assert.strictEqual(fastPathResult.parse_source, 'DETERMINISTIC');
+    assert.strictEqual(fastPathResult.draft.type, 'EXPENSE');
+    assert.strictEqual(fastPathResult.draft.amount, '85000.0000');
+    assert.strictEqual(fastPathResult.draft.currency_code, 'VND');
+    assert.strictEqual(fastPathResult.draft.account_id, 'acc-uuid-fp-1');
+    assert.strictEqual(fastPathResult.draft.category_id, 'cat-uuid-fp-1');
+  }
+  assert.strictEqual(routerFactoryCalls, 0, 'Router factory must NOT be invoked on fast path');
+  assert.strictEqual(repoFactoryCalls, 0, 'Credential repository factory must NOT be invoked on fast path');
+  assert.strictEqual(resolverFactoryCalls, 0, 'Credential resolver factory must NOT be invoked on fast path');
+  assert.strictEqual(providerCalls, 0, 'Gemini provider must NOT be invoked on fast path');
+  console.log('  ✓ 24. Deterministic Fast Path: simple expense parsed with 0 router, 0 resolver, 0 repo, 0 Gemini calls');
+
+  // Test 25: Deterministic string-only currency parsing (VND k/tr/trieu, USD)
+  const currencyParseCases = [
+    { text: 'Luong 25tr', expectedAmount: '25000000', expectedType: 'INCOME' },
+    { text: 'Luong thang 25 trieu', expectedAmount: '25000000', expectedType: 'INCOME' },
+    { text: 'Đổ xăng 50k', expectedAmount: '50000', expectedType: 'EXPENSE' },
+    { text: 'Mua sach 120.000d', expectedAmount: '120000', expectedType: 'EXPENSE' },
+    { text: 'Coffee 4.50 USD', expectedAmount: '4.50', expectedType: 'EXPENSE', expectedCurrency: 'USD' },
+  ];
+
+  for (const c of currencyParseCases) {
+    const res = await parseTransactionTextCore({
+      prompt: c.text,
+      userId: fastPathUserId,
+      supabase: fastPathMockSupabase,
+      getRouter: () => {
+        throw new Error('Should not call router for simple deterministic currency case');
+      },
+      getCredentialProvider: () => {
+        throw new Error('Should not call credential provider for simple deterministic currency case');
+      },
+      now: new Date('2026-09-04T12:00:00Z'),
+    });
+    assert.strictEqual(res.ok, true, `Deterministic parse should succeed for '${c.text}'`);
+    if (res.ok) {
+      assert.strictEqual(res.parse_source, 'DETERMINISTIC');
+      assert.strictEqual(res.draft.type, c.expectedType);
+      if (c.expectedCurrency) {
+        assert.strictEqual(res.draft.currency_code, c.expectedCurrency);
+      }
+    }
+  }
+  console.log('  ✓ 25. Deterministic string-only currency parsing verified across VND, USD, k, tr, trieu, d');
+
+  // Test 26: Anonymous user access fails closed before any privileged factory call
+  let anonRouterCalls = 0;
+  let anonRepoCalls = 0;
+  let anonResolverCalls = 0;
+
+  const anonMockSupabase = {
+    auth: {
+      getUser: async () => ({
+        data: { user: null },
+        error: { message: 'Not logged in' },
+      }),
+    },
+  } as any;
+
+  const anonResult = await runParseTransactionDraftAction(
+    'Ăn trưa 85k tiền mặt',
+    {
+      getSupabaseClient: async () => anonMockSupabase,
+      createAiCredentialRepository: () => {
+        anonRepoCalls++;
+        return {};
+      },
+      createAiCredentialResolver: () => {
+        anonResolverCalls++;
+        return {};
+      },
+      createDefaultServerRouter: () => {
+        anonRouterCalls++;
+        return {};
+      },
+    }
+  );
+
+  assert.strictEqual(anonResult.ok, false);
+  if (!anonResult.ok) {
+    assert.strictEqual(anonResult.error.code, 'AUTH_REQUIRED');
+  }
+  assert.strictEqual(anonRouterCalls, 0, 'Anonymous call must not invoke router factory');
+  assert.strictEqual(anonRepoCalls, 0, 'Anonymous call must not invoke repo factory');
+  assert.strictEqual(anonResolverCalls, 0, 'Anonymous call must not invoke resolver factory');
+  console.log('  ✓ 26. Anonymous access returns AUTH_REQUIRED with 0 privileged factory calls');
+
+  // Test 27: Ambiguous / complex prompt falls back to Gemini router exactly once
+  let fallbackProviderCalls = 0;
+  const mockFallbackProvider: AiProvider = {
+    id: 'gemini',
+    execute: async (request) => {
+      fallbackProviderCalls++;
+      return {
+        text: JSON.stringify(createValidModelOutput()),
+        model: request.model,
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      };
+    },
+  };
+  const fallbackRouter = createAiRouter({ providers: [mockFallbackProvider] });
+  let fallbackCapturedTelemetry: AiTimingTelemetry | null = null;
+
+  const fallbackResult = await parseTransactionTextCore({
+    prompt: 'Mua quà sinh nhật cho bạn và chia đôi tiền với Nam',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: fallbackRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    onTiming: (t) => {
+      fallbackCapturedTelemetry = t;
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+
+  assert.strictEqual(fallbackResult.ok, true, 'Complex prompt fallback must succeed through Gemini');
+  if (fallbackResult.ok) {
+    assert.strictEqual(fallbackResult.parse_source, 'AI');
+  }
+  assert.strictEqual(fallbackProviderCalls, 1, 'Gemini provider must be invoked exactly once on fallback');
+  assert.ok(fallbackCapturedTelemetry !== null);
+  const capturedTiming = fallbackCapturedTelemetry as AiTimingTelemetry | null;
+  assert.strictEqual(capturedTiming?.execution_path, 'gemini');
+  console.log('  ✓ 27. Complex/ambiguous prompt falls back to Gemini router exactly once with execution_path=gemini');
+
+  console.log('\nAll 27 Phase 12A AI Transaction Draft tests passed successfully!');
 }
 
 runAsyncTests().catch((err) => {

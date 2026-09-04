@@ -49,6 +49,7 @@ const requiredFiles = [
   'src/features/ai/transaction-draft/candidates.ts',
   'src/features/ai/transaction-draft/domain.ts',
   'src/features/ai/transaction-draft/prompt.ts',
+  'src/features/ai/transaction-draft/fast-path.ts',
   'src/features/ai/transaction-draft/action-core.ts',
   'src/features/ai/transaction-draft/actions.ts',
   'src/features/ai/transaction-draft/form-state.ts',
@@ -82,6 +83,7 @@ const serverOnlyInternalFiles = [
   'src/features/ai/transaction-draft/candidates.ts',
   'src/features/ai/transaction-draft/domain.ts',
   'src/features/ai/transaction-draft/prompt.ts',
+  'src/features/ai/transaction-draft/fast-path.ts',
   'src/features/ai/transaction-draft/action-core.ts',
 ];
 
@@ -637,6 +639,59 @@ check(
     !telemetryBody.includes('credential') &&
     !telemetryBody.includes('token: string'),
   'AiTimingTelemetry must strictly exclude all sensitive data (prompts, UUIDs, credentials, emails, notes, merchant, tokens)'
+);
+
+// =========================================================================
+// 17. Deterministic Transaction Fast Path Verification
+// =========================================================================
+
+const fastPathContent = fs.readFileSync(
+  path.join(ROOT, 'src/features/ai/transaction-draft/fast-path.ts'),
+  'utf8'
+);
+
+check(
+  'FAST_PATH_EXPORTS_TRY_DETERMINISTIC',
+  fastPathContent.includes('export function tryDeterministicFastPath'),
+  'fast-path.ts must export tryDeterministicFastPath'
+);
+
+const fastPathCodeOnly = fastPathContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '');
+check(
+  'FAST_PATH_ZERO_FLOAT_MONEY',
+  !fastPathCodeOnly.includes('Number(') && !fastPathCodeOnly.includes('parseFloat('),
+  'fast-path.ts must NOT use Number() or parseFloat() for money computation (strict string decimal arithmetic)'
+);
+
+check(
+  'ACTION_CORE_INTEGRATES_FAST_PATH',
+  actionCoreContent.includes('tryDeterministicFastPath'),
+  'action-core.ts must integrate tryDeterministicFastPath before Gemini fallback'
+);
+
+check(
+  'TYPES_EXPORT_PARSE_SOURCE',
+  typesContent.includes("parse_source?: 'DETERMINISTIC' | 'AI'"),
+  'types.ts must declare parse_source in ParseTransactionDraftResult'
+);
+
+check(
+  'TIMING_TELEMETRY_EXECUTION_PATH',
+  typesContent.includes("execution_path?: 'deterministic' | 'gemini'") &&
+    typesContent.includes('fast_path_ms?: number'),
+  'types.ts must declare execution_path and fast_path_ms in AiTimingTelemetry'
+);
+
+const inputComponentContent = fs.readFileSync(
+  path.join(ROOT, 'src/components/finance/AiTransactionDraftInput.tsx'),
+  'utf8'
+);
+
+check(
+  'UI_LABEL_NHAP_NHANH',
+  inputComponentContent.includes('Nhập nhanh') &&
+    inputComponentContent.includes('Xử lý nhanh, dùng AI khi cần'),
+  'AiTransactionDraftInput.tsx must feature "Nhập nhanh" and "Xử lý nhanh, dùng AI khi cần"'
 );
 
 // =========================================================================
