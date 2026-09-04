@@ -57,31 +57,38 @@ AI parsing must **never** execute a financial mutation or insert a row into `tra
 ```text
 [User Prompt] 
      ↓
-[Authenticated Server Action] (Reads user candidate metadata via authenticated RLS client)
+[Authenticated Server Action] (`auth.getUser()` verifies session -> establishes verified `userId`)
      ↓
-[Phase 10 AI Router + Phase 11 Credential Resolver] (Resolves API key server-side)
+[RLS Domain Reads] (Reads active accounts, categories, income sources via authenticated RLS client)
      ↓
-[Gemini Provider] (Executes structured prompt with ephemeral opaque tokens)
+[Construct/Reuse Phase 11 Credential Provider] (`new AiCredentialResolver({ repository, keyRing, systemKey })`)
      ↓
-[Phase 10 AiOutputValidator] (Validates AiTransactionParseOutput: tokens only, 0 UUIDs)
+[Phase 10 AI Router Dispatch] (`AiRouter.execute(transaction_parser request, { userId: verifiedUserId, credentialProvider })`)
      ↓
-[Server Domain Cross-Validator] (Maps tokens to UUIDs, validates currency/type/parent, generates warning codes)
+[Internal Credential Resolution Owned by Router] (`credentialProvider.resolveCredential({ providerId: 'gemini', userId, operation: 'transaction_parser' })`)
+     ↓
+[Gemini Provider Adapter] (Executes structured prompt with ephemeral opaque tokens)
+     ↓
+[Phase 10 AiOutputValidator] (Runtime validation of AiTransactionParseOutput: exact keyset, tokens only, 0 UUIDs, 0 coercion)
+     ↓
+[Server Domain Cross-Validator] (Maps tokens to UUIDs, handles candidate overflow & stale tokens, validates currency/type/parent, generates warning codes)
      ↓
 [Structured In-Memory ParsedTransactionDraft DTO]
      ↓
-[AddTransactionModal UI Preview] (Populates form fields; highlights parsed values & warning badges)
+[AddTransactionModal UI Preview] (Populates form fields; highlights parsed values & warning badges; zero database writes)
      ↓
-[User Edits / Reviews] (User retains full manual override)
+[User Edits / Reviews] (User retains full manual override; zero database writes)
      ↓
 [Explicit User Click: "Lưu giao dịch"]
      ↓
-[Standard Finora Mutation Engine] (`createTransaction()` with existing domain & RLS validation)
+[Standard Finora Mutation Engine] (`createTransaction()` with existing domain & RLS validation; exactly 1 write)
 ```
 
 **Mandatory Invariants:**
-1. **Zero Direct AI Mutation:** The AI execution layer must not import, reference, or invoke `createTransaction`, `updateTransaction`, `voidTransaction`, or `restoreTransaction`.
-2. **No Auto-Save:** There is no automated confirmation, background saving, or "high-confidence auto-persist" bypass.
-3. **Graceful Degradation:** If AI parsing fails, times out, or returns invalid data, the modal displays a clear, localized warning and preserves the user's manual input form.
+1. **Zero Direct AI Mutation (`PHASE_12A_AI_FINANCIAL_WRITE_CAPABILITY=false`):** The AI execution layer must not import, reference, or invoke `createTransaction`, `updateTransaction`, `voidTransaction`, or `restoreTransaction`, nor perform any direct financial writes (e.g., `.from('transactions').insert(...)`, `.from('transfers').insert(...)`).
+2. **Router Owns Credential Resolution (`PHASE_12A_ROUTER_OWNS_CREDENTIAL_RESOLUTION=true`, `PHASE_12A_DIRECT_CREDENTIAL_RESOLUTION=false`):** Feature orchestration passes `credentialProvider` into `AiRouter.execute(...)`. The router internally dispatches credential resolution. Feature orchestration must not manually resolve, read `FINORA_SYSTEM_GEMINI_API_KEY`, or decrypt credentials.
+3. **No Auto-Save (`PHASE_12A_UI_APPLY_MUTATION=false`):** There is no automated confirmation, background saving, or "high-confidence auto-persist" bypass. Applying a draft to the UI performs zero mutations.
+4. **Graceful Degradation:** If AI parsing fails, times out, or returns invalid data, the modal displays a clear, localized warning and preserves the user's manual input form, allowing uninterrupted manual transaction creation.
 
 ---
 
@@ -91,7 +98,30 @@ To guarantee data minimization, prevent hallucination of internal database ident
 
 #### A. Provider/Model Boundary (`AiTransactionParseOutput`)
 The raw structured output schema returned by the model and validated at runtime by the Phase 10 `AiOutputValidator`.
-**Mandatory Invariant:** Contains **zero** database UUIDs, **zero** user IDs, and **zero** credential identifiers.
+**Mandatory Invariants:**
+- Contains **zero** database UUIDs, **zero** user IDs, and **zero** credential identifiers.
+- Validated via `AiOutputValidator<AiTransactionParseOutput>` exact contract:
+  ```typescript
+  export interface AiOutputValidator<T> {
+    readonly name?: string;
+    readonly jsonSchema?: Record<string, unknown>;
+    validate(value: unknown): T;
+  }
+  ```
+- **Authoritative Runtime Boundary:** `validate(value)` performs 100% deterministic runtime validation. `jsonSchema` serves strictly as upstream model guidance / structured output configuration metadata and **never** replaces runtime validation.
+- **Exact Keyset Enforcement (`PHASE_12A_OUTPUT_VALIDATOR_EXACT_KEYSET=true`):** All 11 schema properties are mandatory top-level keys. If any property is missing or if any unexpected extra property exists, validation fails closed immediately. Nullable fields must be explicitly passed as `null`.
+- **Zero Coercion (`PHASE_12A_OUTPUT_VALIDATOR_COERCION=false`):** No automatic stringification of numbers (e.g., `amount: 85000` is rejected, not coerced to `"85000"`), no default value insertion, and no heuristic property renaming.
+- **Fail-Closed Validation Rules:**
+  - Value must be a non-null, non-array object.
+  - Exactly the 11 recognized keys must be present.
+  - `type` must be `'INCOME'`, `'EXPENSE'`, or `null`.
+  - `amount` must be string or `null` (numbers strictly rejected).
+  - `currency_code` must be an uppercase 3-letter ISO-4217 string or `null`.
+  - `account_token`, `category_token`, `income_source_token`, `income_source_stream_token` must be valid token strings (e.g., matching `/^(ACC|CAT|SRC|STR)_[0-9]+$/`) or `null`.
+  - `merchant` max length 100 characters or `null`.
+  - `note` max length 255 characters or `null`.
+  - `occurred_on` must be a valid ISO `YYYY-MM-DD` date string or `null`.
+  - `unmatched_text` max length 255 characters or `null`.
 
 ```typescript
 export interface AiTransactionParseOutput {
@@ -209,14 +239,18 @@ export type TransactionDraftWarningCode =
   | 'CURRENCY_INVALID'
   | 'ACCOUNT_NOT_MATCHED'
   | 'ACCOUNT_CURRENCY_CONFLICT'
+  | 'ACCOUNT_CANDIDATES_OMITTED'
   | 'CATEGORY_NOT_MATCHED'
   | 'CATEGORY_TYPE_CONFLICT'
+  | 'CATEGORY_CANDIDATES_OMITTED'
   | 'DATE_MISSING'
   | 'DATE_AMBIGUOUS'
   | 'DATE_YEAR_INFERRED'
   | 'INCOME_SOURCE_NOT_MATCHED'
+  | 'INCOME_SOURCE_CANDIDATES_OMITTED'
   | 'INCOME_STREAM_NOT_MATCHED'
   | 'INCOME_STREAM_PARENT_CONFLICT'
+  | 'INCOME_STREAM_CANDIDATES_OMITTED'
   | 'UNKNOWN_MODEL_TOKEN'
   | 'MODEL_FIELD_INVALID';
 ```
@@ -227,25 +261,33 @@ export type TransactionDraftWarningCode =
 
 ---
 
-### 3.4 Entity Cross-Validation & Consistency Rules
+### 3.4 Entity Cross-Validation, Token Mapping & Consistency Rules
 
 After the model produces `AiTransactionParseOutput`, the server executes strict post-validation against the user's active domain state:
 
-1. **Account Validation:**
-   - The returned `account_token` must exist in the request-scoped candidate map.
-   - The mapped account must belong to the authenticated user and be active.
-   - If `account_token` is unknown, stale, or absent: set `account_id = null`, append `ACCOUNT_NOT_MATCHED`.
-2. **Category Validation:**
-   - The returned `category_token` must exist in the candidate map and be active.
-   - Category transaction type must match the resolved `type` (e.g., expense category for `EXPENSE`).
+1. **Token Mapping & Distinctions (Unknown vs. Stale vs. Valid):**
+   - **Valid Token:** Token exists in the request-scoped candidate map and points to an active, authorized user entity -> mapped to real database UUID.
+   - **Unknown / Fabricated Token:** Token format exists but was never supplied in the request candidate list (e.g., model returned `CAT_99` when only `CAT_1`..`CAT_5` were provided) -> mapped to `null`, appends `UNKNOWN_MODEL_TOKEN`.
+   - **Stale Token:** Token was supplied in the request map, but upon domain cross-validation the backing entity is no longer active, has been deleted, or fails authorization -> mapped to `null`, appends domain-specific no-match warning (e.g., `ACCOUNT_NOT_MATCHED`, `CATEGORY_NOT_MATCHED`). No stale candidate may ever be returned as an authoritative ID.
+2. **Account Validation:**
+   - The returned `account_token` must map to an active account owned by the user.
+   - If `account_token` is null, unmapped, stale, or absent: set `account_id = null`, append `ACCOUNT_NOT_MATCHED`.
+3. **Category Validation:**
+   - The returned `category_token` must map to an active category.
+   - Category transaction type must match the resolved `type` (e.g., expense category for `EXPENSE`, income category for `INCOME`).
    - If `type` is null or if there is a type conflict: set `category_id = null`, append `CATEGORY_TYPE_CONFLICT`.
-3. **Income Source Validation:**
+4. **Income Source Validation:**
    - Income sources are only valid when `type = 'INCOME'`.
    - If `type = 'EXPENSE'` or `type = null`: unconditionally set `income_source_id = null` and `income_source_stream_id = null`.
    - If `type = 'INCOME'` but token is unmapped or unknown: set `income_source_id = null`, append `INCOME_SOURCE_NOT_MATCHED`.
-4. **Income Stream Validation:**
+5. **Income Stream Validation:**
    - Must be active, exist in candidate map, and explicitly belong to the resolved `income_source_id` (`stream.source_id === income_source_id`).
    - If parent income source does not match: set `income_source_stream_id = null`, append `INCOME_STREAM_PARENT_CONFLICT`.
+6. **Candidate Overflow Failsafe (`PHASE_12A_CANDIDATE_OVERFLOW_FAILSAFE=true`):**
+   - If the user's active candidates exceed the bounding cap for a given dimension, the entire dimension is omitted from the model prompt (rather than silently truncated).
+   - The corresponding resolved ID in `ParsedTransactionDraft` is set to `null`.
+   - The specific overflow warning code is appended (`ACCOUNT_CANDIDATES_OMITTED`, `CATEGORY_CANDIDATES_OMITTED`, `INCOME_SOURCE_CANDIDATES_OMITTED`, or `INCOME_STREAM_CANDIDATES_OMITTED`).
+   - This prevents misleading the user into thinking Gemini searched their entire candidate list and found no match, clearly signaling that manual selection is required due to candidate volume.
 
 ---
 
@@ -274,15 +316,22 @@ If the user explicitly specifies a currency (e.g., `"USD"`) that conflicts with 
 
 Money calculations must live in Finora's money domain layer (`src/lib/money/index.ts`). No floating-point arithmetic is permitted.
 
-1. **Supported Semantic Notations in Prompt:**
-   - Vietnamese colloquial: `85k`, `85 nghìn`, `85 ngàn` -> `85000`
-   - Millions: `1.5tr`, `1.5 triệu`, `2m`, `2tr` -> `1500000`, `2000000`
-   - Billions: `1 tỷ`, `1.2 tỷ`, `1b` -> `1000000000`, `1200000000`
-   - Standard international decimals: `4.50 USD`, `1,250.00 EUR` -> `4.5000`, `1250.0000`
-   - Vietnamese dot-thousands notation: `50.000 VND`, `1.200.000 đ` -> `50000`, `1200000`
+1. **Required Money Test Matrix Cases:**
+   - Vietnamese colloquial abbreviations: `85k`, `85 nghìn`, `85 ngàn` -> `"85000"`
+   - Millions: `1tr`, `1 triệu`, `1.5tr`, `1.5 triệu`, `2m`, `2tr` -> `"1000000"`, `"1500000"`, `"2000000"`
+   - Billions: `1 tỷ`, `1.2 tỷ`, `1b` -> `"1000000000"`, `"1200000000"`
+   - Vietnamese dot-thousands notation: `50.000 VND`, `1.200.000 đ` -> `"50000"`, `"1200000"`
+   - Integer amounts (e.g., VND integer): `"50000"` -> preserved as exact string decimal
+   - Standard international decimals (e.g., USD decimal): `4.50 USD` -> `"4.5000"`, `1,250.00 EUR` -> `"1250.0000"`
+   - Rejection cases (mapped to `amount = null` with warning `AMOUNT_INVALID`):
+     - `zero` (`0`, `0.00`) -> rejected
+     - `negative` (`-50000`, `-10 USD`) -> rejected
+     - `NaN`, `Infinity`, `-Infinity` -> rejected
+     - `too many fractional digits` (more than 4 decimal places, e.g., `4.12345`) -> rejected
+     - `numeric JS value instead of string` (e.g., raw JSON number `85000` rather than string `"85000"`) -> rejected at `AiOutputValidator` boundary
 2. **Server-Side Deterministic Normalization:**
-   - Validated against `isPositiveExactDecimal(val)`.
-   - Formatted to Finora's standard decimal representation via `toExactDecimal(val)`.
+   - String validated against `isPositiveExactDecimal(val)`.
+   - Formatted to Finora's standard 4-decimal representation via `toExactDecimal(val)`.
    - Negative values, zero, `NaN`, `Infinity`, or malformed numbers are rejected to `amount = null` with `AMOUNT_INVALID`.
 
 ---
@@ -341,8 +390,17 @@ To prevent token exhaustion and prompt bloat, candidate sets are strictly bounde
 - Active income sources cap: **20 sources** (label max 50 chars).
 - Active income streams cap: **30 streams** (label max 50 chars).
 
-**Fail-Safe Omission Rule:**
-If a user's candidate collection exceeds the cap, the server **must not** silently truncate the collection and pretend it was complete. Instead, the server omits that candidate dimension from the prompt, returns the corresponding field as `null`, adds a warning code (e.g., `CATEGORY_NOT_MATCHED`), and allows the user to select manually in the UI.
+**Fail-Safe Omission Rule & Warning Truthfulness (`PHASE_12A_CANDIDATE_OVERFLOW_FAILSAFE=true`):**
+If a user's candidate collection exceeds the cap for a given dimension, the server **must not** silently truncate the collection and pretend it was complete. Doing so would risk the model matching an arbitrary subset while misleading the user into believing all candidates were searched.
+Instead:
+1. The server completely omits that candidate dimension from the prompt.
+2. The corresponding draft field is set to `null`.
+3. An explicit overflow warning code is appended:
+   - Accounts exceed 30 -> `account_id = null`, adds `ACCOUNT_CANDIDATES_OMITTED`
+   - Categories exceed 50 -> `category_id = null`, adds `CATEGORY_CANDIDATES_OMITTED`
+   - Income sources exceed 20 -> `income_source_id = null`, adds `INCOME_SOURCE_CANDIDATES_OMITTED`
+   - Income streams exceed 30 -> `income_source_stream_id = null`, adds `INCOME_STREAM_CANDIDATES_OMITTED`
+4. The user is prompted in the UI to select the field manually. This guarantees transparency and prevents false negative/no-match conclusions.
 
 ---
 
@@ -375,12 +433,45 @@ A strict distinction is maintained between Finora user authentication and AI pro
 1. **Domain Context Reads:** All financial context (accounts, categories, income sources) is queried using the authenticated user's RLS Supabase client.
 2. **Service-Role Boundary:** The `service_role` client is strictly quarantined to the Phase 11 encrypted credential repository. Service-role access is **never** used to query transactions, accounts, categories, or reports.
 
-### 5.3 Phase 11 Credential Resolution Integration
+### 5.3 Phase 11 Credential Resolution Integration & Router Ownership
 
-Every AI request passes the verified `userId` to `AiCredentialResolver.resolve(userId, 'GEMINI')`:
-- Preserves exact precedence: `PERSONAL > ADMIN_ASSIGNED > SYSTEM`.
-- If a selected credential source is corrupted or its key is unavailable, it fails closed immediately (`AI_CREDENTIAL_CORRUPTED` / `AI_CREDENTIAL_KEY_UNAVAILABLE`) with **zero silent fallback** to lower-priority sources.
-- No decrypted key or plaintext credential is ever transmitted to the client.
+Credential resolution is strictly integrated via the Phase 10/11 dependency port and owned exclusively by `AiRouter`:
+
+```typescript
+export interface AiCredentialContext {
+  readonly providerId: AiProviderId; // 'gemini' at runtime
+  readonly userId?: string;
+  readonly operation?: AiOperation; // 'transaction_parser'
+}
+
+export interface AiCredentialProvider {
+  resolveCredential(context: AiCredentialContext): Promise<AiCredential | null>;
+}
+```
+
+**Key Architectural Boundaries:**
+1. **Identifier Separation:**
+   - Runtime provider identifier in `AiProviderId`: `'gemini'`.
+   - Database credential provider enum in `private.ai_credentials.provider`: `'GEMINI'`.
+   - *Note:* The method `AiCredentialResolver.resolve(userId, 'GEMINI')` does not exist; callers interact strictly through `resolveCredential(context)`.
+2. **Router Owns Credential Resolution (`PHASE_12A_ROUTER_OWNS_CREDENTIAL_RESOLUTION=true`, `PHASE_12A_DIRECT_CREDENTIAL_RESOLUTION=false`):**
+   - Feature orchestration does **not** manually resolve, query, or decrypt credentials prior to calling the AI router.
+   - Flow:
+     1. Authenticated server action verifies session via `auth.getUser()` to establish `verifiedUserId`.
+     2. RLS client performs read-only candidate queries.
+     3. The server action instantiates/injects the Phase 11 `AiCredentialResolver` (implementing `AiCredentialProvider`) into execution context.
+     4. The action calls `AiRouter.execute(request, { userId: verifiedUserId, credentialProvider })`.
+     5. `AiRouter` internally calls `credentialProvider.resolveCredential({ providerId: 'gemini', userId: verifiedUserId, operation: 'transaction_parser' })`.
+3. **Phase 12A Non-Interference Mandates:**
+   - Phase 12A code must **never** read `process.env.FINORA_SYSTEM_GEMINI_API_KEY` directly.
+   - Phase 12A code must **never** decrypt database credentials directly.
+   - Phase 12A code must **never** re-implement credential source prioritization.
+   - Phase 12A code must **never** call repository `readActiveCredentials` as feature logic.
+4. **Authoritative Phase 11 Invariants Enforced by Resolver:**
+   - Strict source precedence: `PERSONAL > ADMIN_ASSIGNED > SYSTEM`.
+   - Fail-closed behavior on selected source: If the highest active credential fails decryption or references an unavailable master key, resolution fails immediately (`AI_CREDENTIAL_CORRUPTED` or `AI_CREDENTIAL_KEY_UNAVAILABLE`) with **zero silent fallback** to lower-priority sources.
+   - Authenticated user required: Anonymous contexts return `null` (SYSTEM key is an authenticated user fallback, never an anonymous quota).
+   - Plaintext credentials exist only in server memory and are passed directly to the provider adapter. Zero decrypted keys or plaintext secrets are ever exposed to the client.
 
 ### 5.4 Server-Only Module Boundaries
 
@@ -469,8 +560,8 @@ All 13 `AiErrorCode` values from Phase 10 are mapped to clear, user-friendly, lo
 | T5 | Arbitrary Database ID Inject  | Entity Mapping Layer        | Request-scoped opaque tokens  | Unknown/malicious token    |
 |    |                               |                             | (ACC_1, CAT_1); server lookup | rejection unit tests       |
 +----+-------------------------------+-----------------------------+-------------------------------+----------------------------+
-| T6 | Direct / Silent AI Mutation   | Transaction Mutation Layer  | AI layer imports 0 mutation   | Static AST import check;   |
-|    |                               |                             | functions; explicit user save | DB row count assertion     |
+| T6 | Direct / Silent AI Mutation   | Transaction Mutation Layer  | AI layer imports 0 mutation   | Static AST check; UI zero- |
+|    |                               |                             | functions; explicit user save | mutation call assertions   |
 +----+-------------------------------+-----------------------------+-------------------------------+----------------------------+
 | T7 | Excessive Token / Cost Drain  | Router / Provider           | 300 char cap; 1 call per parse| Bounded input unit tests;  |
 |    |                               |                             | zero auto-retries             | call-count assertion test  |
@@ -496,46 +587,93 @@ All 13 `AiErrorCode` values from Phase 10 are mapped to clear, user-friendly, lo
 
 ## 9. Comprehensive Testing & Verification Plan (Phase 12A)
 
-Automated tests for Phase 12A require **zero real network calls** to Google Gemini (`REAL_GEMINI_NETWORK_CALL=false`), utilizing deterministic mock/fake providers.
+Automated tests for Phase 12A require **zero real network calls** to Google Gemini (`REAL_GEMINI_NETWORK_CALL=false`), utilizing deterministic mock/fake providers and faked credential dependencies.
 
-### 9.1 Provider Output Validator Tests
-- Valid JSON matching `AiTransactionParseOutput`.
-- Missing required fields, invalid enum types, and extra unrecognized top-level fields.
-- Rejection of numeric amounts (e.g., `amount: 85000` must be rejected).
-- Oversized merchant, note, or unmatched text.
-- Invalid currency strings (non-ISO-4217).
-- Malformed date strings.
+### 9.1 Provider Output Validator & Structured Parse Tests
+- **Exact Keyset Validation (`PHASE_12A_OUTPUT_VALIDATOR_EXACT_KEYSET=true`):**
+  - Rejects non-objects (e.g., strings, booleans, numbers).
+  - Rejects arrays.
+  - Rejects payloads missing any of the 11 required keys (even if other fields are valid).
+  - Rejects payloads with extra / unknown top-level properties (no undeclared fields allowed).
+  - Rejects numeric amounts (e.g., `amount: 85000` must throw; `PHASE_12A_OUTPUT_VALIDATOR_COERCION=false`).
+  - Rejects invalid enum values for `type` (e.g., `'TRANSFER'` or `'UNKNOWN'`).
+  - Rejects oversized strings (`merchant > 100`, `note > 255`, `unmatched_text > 255`).
+  - Rejects invalid currency strings (non-ISO-4217, lowercase, or non-3-letter).
+  - Rejects malformed date strings (non-ISO `YYYY-MM-DD`).
+- **Router Structured Parse Normalization:**
+  - Provider returns malformed JSON text -> normalized to `AI_STRUCTURED_OUTPUT_INVALID`.
+  - Provider returns empty string or whitespace -> normalized to `AI_INVALID_RESPONSE`.
+  - Provider returns valid JSON but invalid schema -> normalized to `AI_STRUCTURED_OUTPUT_INVALID`.
+  - Output validator throws validation error -> normalized to `AI_STRUCTURED_OUTPUT_INVALID`.
+  - Unknown extra top-level field -> validator fails closed -> normalized to `AI_STRUCTURED_OUTPUT_INVALID`.
 
 ### 9.2 Token Mapping & Domain Cross-Validation Tests
-- Correct mapping of valid `ACC_1`, `CAT_1`, `SRC_1`, `STR_1` tokens to actual user UUIDs.
-- Unknown or fabricated model tokens safely mapped to `null` with `UNKNOWN_MODEL_TOKEN` warning.
-- Category/Type conflict: `EXPENSE` type with income category token resolves to `category_id = null` and `CATEGORY_TYPE_CONFLICT`.
-- Account/Currency conflict: Account with `VND` resolved against explicit `USD` prompt resolves to `account_id = null` and `ACCOUNT_CURRENCY_CONFLICT`.
-- Income Stream parent conflict: Stream belonging to Source A returned with Source B resolves to `income_source_stream_id = null` and `INCOME_STREAM_PARENT_CONFLICT`.
-- `type = 'EXPENSE'` with returned income source token forces `income_source_id = null`.
+- **Three Token Classes:**
+  - `Valid Token`: Exists in candidate map and backing entity is active/authorized -> resolves to correct real user UUID.
+  - `Unknown / Fabricated Token`: Token format not in request-scoped candidate list -> resolves to `ID = null`, appends `UNKNOWN_MODEL_TOKEN`.
+  - `Stale Token`: Token existed in request map, but domain cross-validation detects backing entity was deactivated or deleted -> resolves to `ID = null`, appends `ACCOUNT_NOT_MATCHED` or `CATEGORY_NOT_MATCHED`. No stale candidate is ever returned as an authoritative ID.
+- **Candidate Overflow Failsafe (`PHASE_12A_CANDIDATE_OVERFLOW_FAILSAFE=true`):**
+  - Accounts > 30 -> account candidate dimension omitted from prompt, `account_id = null`, warning `ACCOUNT_CANDIDATES_OMITTED`.
+  - Categories > 50 -> category candidate dimension omitted from prompt, `category_id = null`, warning `CATEGORY_CANDIDATES_OMITTED`.
+  - Income sources > 20 -> source candidate dimension omitted from prompt, `income_source_id = null`, warning `INCOME_SOURCE_CANDIDATES_OMITTED`.
+  - Income streams > 30 -> stream candidate dimension omitted from prompt, `income_source_stream_id = null`, warning `INCOME_STREAM_CANDIDATES_OMITTED`.
+- **Domain Consistency Checks:**
+  - Category/Type conflict: `EXPENSE` type with income category token resolves to `category_id = null` and `CATEGORY_TYPE_CONFLICT`.
+  - Account/Currency conflict: Account with `VND` resolved against explicit `USD` prompt resolves to `account_id = null` and `ACCOUNT_CURRENCY_CONFLICT`.
+  - Income Stream parent conflict: Stream belonging to Source A returned with Source B resolves to `income_source_stream_id = null` and `INCOME_STREAM_PARENT_CONFLICT`.
+  - `type = 'EXPENSE'` with returned income source token forces `income_source_id = null` and `income_source_stream_id = null`.
 
-### 9.3 Money & Abbreviation Parsing Tests
-- Verification of colloquial expressions: `85k`, `85 nghìn`, `1.5tr`, `1 tỷ`, `4.50 USD`, `50.000 VND`.
-- Rejection of invalid values: negative amounts, zero, `NaN`, `Infinity`, more than 4 decimal places.
+### 9.3 Money & Decimal Normalization Tests
+- **Full Test Matrix Cases:**
+  - `85k` -> `"85000"`
+  - `85 nghìn` -> `"85000"`
+  - `1tr` -> `"1000000"`
+  - `1 triệu` -> `"1000000"`
+  - `1.5tr` -> `"1500000"`
+  - `50.000 VND` -> `"50000"`
+  - `VND integer` (e.g., `"200000"`) -> preserved as exact string decimal
+  - `4.50 USD` -> `"4.5000"`
+  - `USD decimal` (e.g., `"1250.75"`) -> `"1250.7500"`
+  - `too many fractional digits` (e.g., `"4.12345"`) -> rejected to `amount = null` with `AMOUNT_INVALID`
+  - `zero` (`"0"`, `"0.00"`) -> rejected to `amount = null` with `AMOUNT_INVALID`
+  - `negative` (`"-50000"`, `"-10"`) -> rejected to `amount = null` with `AMOUNT_INVALID`
+  - `NaN`, `Infinity`, `-Infinity` -> rejected to `amount = null` with `AMOUNT_INVALID`
+  - `numeric JS value instead of string` (e.g., `85000` as JS number) -> rejected at `AiOutputValidator` boundary
+- Verification that all math and formatting use `src/lib/money/index.ts` with zero JavaScript floating-point arithmetic.
 
 ### 9.4 Authentication & Authorization Tests
-- Unauthenticated requests rejected at server action boundary before AI invocation.
-- User A authenticated context cannot access User B candidate tokens.
-- Spoofed client-provided user IDs are completely ignored.
-- Verification that service-role client is not used for financial domain reads.
+- Unauthenticated requests rejected at server action boundary with `AUTH_REQUIRED` before AI invocation.
+- User A authenticated context cannot access User B candidate tokens (RLS isolation).
+- Spoofed client-provided user IDs are completely ignored; session-verified `userId` is always used.
+- Verification that service-role client is strictly quarantined to credential repository and never used for domain context reads.
 
-### 9.5 Phase 11 Credential Integration Tests
-- Resolution from `PERSONAL`, `ADMIN_ASSIGNED`, and `SYSTEM` sources.
-- Corrupted `PERSONAL` key fails closed without falling back to `ADMIN_ASSIGNED` or `SYSTEM`.
+### 9.5 Phase 11 Credential Integration & Regression Matrix (`PHASE_12A_PHASE11_REGRESSION_MATRIX_COMPLETE=true`)
+Tested via dependency fakes and accepted Phase 11 integration boundaries (zero real secrets):
+- `PERSONAL` credential active -> used for resolution.
+- No `PERSONAL` + `ADMIN_ASSIGNED` active -> `ADMIN_ASSIGNED` used.
+- No DB credentials + `SYSTEM` configured -> `SYSTEM` used.
+- No credentials anywhere -> returns null -> router fails closed with `AI_NOT_CONFIGURED`.
+- Selected `PERSONAL` corrupted -> fail closed -> zero fallback to `ADMIN_ASSIGNED` or `SYSTEM`.
+- Selected credential references unavailable master key -> fails closed with `AI_CREDENTIAL_KEY_UNAVAILABLE` -> zero lower-source fallback.
+- Credential repository/resolver unexpected generic error -> router returns `AI_CREDENTIAL_RESOLUTION_FAILED`.
+- Unregistered or unavailable provider -> router returns `AI_PROVIDER_UNAVAILABLE`.
 
-### 9.6 Mutation Isolation Static Tests
-- Static AST assertion proving AI parse module does not import `createTransaction`, `updateTransaction`, `voidTransaction`, or `restoreTransaction`.
+### 9.6 Mutation Isolation Static Tests (`PHASE_12A_AI_FINANCIAL_WRITE_CAPABILITY=false`)
+- Static AST assertion proving AI parse, orchestration, and helper modules contain neither:
+  - `createTransaction`, `updateTransaction`, `voidTransaction`, `restoreTransaction`
+  - nor direct financial writes:
+    `.from('transactions').insert(...)`, `.from('transactions').update(...)`, `.from('transfers').insert(...)`
+- Static verification that AI feature code has read-only access to financial candidates via authenticated RLS client.
 
-### 9.7 UI & Interaction Tests
-- Populating `AddTransactionModal` form fields from AI draft.
-- User manual edits override draft values cleanly.
-- Parse failure surfaces localized message without closing modal or wiping form state.
-- Manual transaction creation works 100% normally when AI is unconfigured or failing.
+### 9.7 UI No-Save & Manual Override Tests (`PHASE_12A_UI_APPLY_MUTATION=false`)
+- Automated mock assertions:
+  - AI parse returns draft -> database / transaction mutation mock call count = 0.
+  - Draft preview rendered in `AddTransactionModal` -> mutation mock call count = 0.
+  - User clicks "Apply" or populates form fields -> mutation mock call count = 0.
+  - User edits AI-applied fields in form -> mutation mock call count = 0.
+  - User explicitly clicks "Lưu giao dịch" -> domain `createTransaction` call count = 1.
+- Error resilience:
+  - AI parse error / timeout -> modal error banner rendered, form remains open, user manually fills fields -> clicks "Lưu giao dịch" -> `createTransaction` call count = 1.
 
 ---
 
@@ -605,6 +743,19 @@ PHASE_12A_SEPARATE_CATEGORIZATION_CALL=false
 
 PHASE_12A_DURABLE_RATE_LIMIT=false
 PHASE_12A_PROCESS_LOCAL_THROTTLE_SECURITY_BOUNDARY=false
+
+PHASE_12A_ROUTER_OWNS_CREDENTIAL_RESOLUTION=true
+PHASE_12A_DIRECT_CREDENTIAL_RESOLUTION=false
+
+PHASE_12A_OUTPUT_VALIDATOR_EXACT_KEYSET=true
+PHASE_12A_OUTPUT_VALIDATOR_COERCION=false
+
+PHASE_12A_PHASE11_REGRESSION_MATRIX_COMPLETE=true
+
+PHASE_12A_AI_FINANCIAL_WRITE_CAPABILITY=false
+PHASE_12A_UI_APPLY_MUTATION=false
+
+PHASE_12A_CANDIDATE_OVERFLOW_FAILSAFE=true
 
 PHASE_12A_ACCOUNT_CURRENCY_CROSS_VALIDATION=true
 PHASE_12A_CATEGORY_TYPE_CROSS_VALIDATION=true
