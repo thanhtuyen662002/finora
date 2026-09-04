@@ -1,7 +1,7 @@
 import { CurrencyCode } from '@/types/finance';
-import { formatExactMoney } from './index';
+import { formatExactMoney, formatMoneyWithCode } from './index';
 
-export { formatExactMoney };
+export { formatExactMoney, formatMoneyWithCode };
 
 export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
   VND: '₫',

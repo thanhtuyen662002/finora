@@ -69,17 +69,39 @@ export async function readCandidateContext(
   supabase: SupabaseClient<Database>,
   userId: string
 ): Promise<OpaqueCandidateContext> {
-  // 1. Query Accounts (bounded: CAP + 1, active only)
-  const accountsRes = await supabase
-    .from('accounts')
-    .select('id, name, currency_code, is_archived')
-    .eq('user_id', userId)
-    .eq('is_archived', false)
-    .order('created_at', { ascending: true })
-    .limit(CANDIDATE_LIMITS.MAX_ACCOUNTS + 1);
+  // Query Accounts, Categories, and Income Sources concurrently
+  const [accountsRes, categoriesRes, sourcesRes] = await Promise.all([
+    supabase
+      .from('accounts')
+      .select('id, name, currency_code, is_archived')
+      .eq('user_id', userId)
+      .eq('is_archived', false)
+      .order('created_at', { ascending: true })
+      .limit(CANDIDATE_LIMITS.MAX_ACCOUNTS + 1),
+    supabase
+      .from('categories')
+      .select('id, name, type, is_archived')
+      .eq('user_id', userId)
+      .eq('is_archived', false)
+      .order('created_at', { ascending: true })
+      .limit(CANDIDATE_LIMITS.MAX_CATEGORIES + 1),
+    supabase
+      .from('income_sources')
+      .select('id, name, is_archived')
+      .eq('user_id', userId)
+      .eq('is_archived', false)
+      .order('created_at', { ascending: true })
+      .limit(CANDIDATE_LIMITS.MAX_INCOME_SOURCES + 1),
+  ]);
 
   if (accountsRes.error) {
     throw new ContextLoadError(`Failed to load accounts: ${accountsRes.error.message}`, accountsRes.error);
+  }
+  if (categoriesRes.error) {
+    throw new ContextLoadError(`Failed to load categories: ${categoriesRes.error.message}`, categoriesRes.error);
+  }
+  if (sourcesRes.error) {
+    throw new ContextLoadError(`Failed to load income sources: ${sourcesRes.error.message}`, sourcesRes.error);
   }
 
   const rawAccounts = accountsRes.data ?? [];
@@ -96,19 +118,6 @@ export async function readCandidateContext(
           is_archived: Boolean(acc.is_archived),
         }));
 
-  // 2. Query Categories (bounded: CAP + 1, active only)
-  const categoriesRes = await supabase
-    .from('categories')
-    .select('id, name, type, is_archived')
-    .eq('user_id', userId)
-    .eq('is_archived', false)
-    .order('created_at', { ascending: true })
-    .limit(CANDIDATE_LIMITS.MAX_CATEGORIES + 1);
-
-  if (categoriesRes.error) {
-    throw new ContextLoadError(`Failed to load categories: ${categoriesRes.error.message}`, categoriesRes.error);
-  }
-
   const rawCategories = categoriesRes.data ?? [];
   const categoriesOmitted = rawCategories.length > CANDIDATE_LIMITS.MAX_CATEGORIES;
   const categories: CandidateCategory[] = categoriesOmitted
@@ -120,19 +129,6 @@ export async function readCandidateContext(
         type: cat.type as 'INCOME' | 'EXPENSE',
         is_archived: Boolean(cat.is_archived),
       }));
-
-  // 3. Query Income Sources (bounded: CAP + 1, active only)
-  const sourcesRes = await supabase
-    .from('income_sources')
-    .select('id, name, is_archived')
-    .eq('user_id', userId)
-    .eq('is_archived', false)
-    .order('created_at', { ascending: true })
-    .limit(CANDIDATE_LIMITS.MAX_INCOME_SOURCES + 1);
-
-  if (sourcesRes.error) {
-    throw new ContextLoadError(`Failed to load income sources: ${sourcesRes.error.message}`, sourcesRes.error);
-  }
 
   const rawSources = sourcesRes.data ?? [];
   const incomeSourcesOmitted = rawSources.length > CANDIDATE_LIMITS.MAX_INCOME_SOURCES;

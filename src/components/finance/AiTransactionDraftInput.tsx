@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import type { AccountRow, CategoryRow } from '@/types/database';
 import type { IncomeSourceWithStreams } from '@/features/income-sources';
+import { formatMoneyWithCode } from '@/lib/money';
 import {
   parseTransactionDraftAction,
   type ParsedTransactionDraft,
@@ -238,7 +239,7 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
                       : 'Chưa rõ loại'}
                   </span>
                   <span className="text-sm font-bold text-foreground">
-                    {draft.amount ? `${draft.amount} ${draft.currency_code || ''}` : 'Chưa có số tiền'}
+                    {draft.amount ? formatMoneyWithCode(draft.amount, draft.currency_code || 'VND') : 'Chưa có số tiền'}
                   </span>
                 </div>
                 <button

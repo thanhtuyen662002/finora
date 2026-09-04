@@ -36,8 +36,25 @@ import { buildTransactionParserPrompt } from './prompt';
 import {
   isSupportedCurrencyCode,
   type ParseTransactionDraftResult,
+  type AiTimingTelemetry,
 } from './types';
 import { aiTransactionParseOutputValidator } from './validator';
+
+export { type AiTimingTelemetry };
+
+export function emitTimingTelemetry(
+  telemetry: AiTimingTelemetry,
+  onTiming?: (timing: AiTimingTelemetry) => void
+): void {
+  try {
+    if (onTiming) {
+      onTiming(telemetry);
+    }
+  } catch {
+    // Ignore callback errors
+  }
+  console.info(JSON.stringify(telemetry));
+}
 
 export const AI_ERROR_MESSAGES: Record<AiErrorCode, string> = {
   AI_NOT_CONFIGURED:
@@ -99,11 +116,14 @@ export interface ParseTransactionTextCoreParams {
     readonly timezone?: string;
     readonly locale?: string;
   };
+  readonly onTiming?: (telemetry: AiTimingTelemetry) => void;
 }
 
 export async function parseTransactionTextCore(
   params: ParseTransactionTextCoreParams
 ): Promise<ParseTransactionDraftResult> {
+  const totalStart = performance.now();
+
   // 1. Validate prompt text
   if (typeof params.prompt !== 'string' || params.prompt.trim().length === 0) {
     return {
@@ -140,34 +160,86 @@ export async function parseTransactionTextCore(
     };
   }
 
-  // 3. Resolve user settings (base currency, timezone, locale)
+  // 3. Pre-AI Context: Read user settings and candidate context concurrently
+  const contextStart = performance.now();
+
   let baseCurrency = params.userSettings?.baseCurrency;
   let timezone = params.userSettings?.timezone;
   let locale = params.userSettings?.locale;
 
-  if (!baseCurrency || !timezone || !locale) {
-    const { data: settingsData, error: settingsError } = await params.supabase
-      .from('user_settings')
-      .select('base_currency, timezone, locale')
-      .eq('user_id', params.userId)
-      .maybeSingle();
+  const needSettingsQuery = !baseCurrency || !timezone || !locale;
+  const settingsPromise = needSettingsQuery
+    ? params.supabase
+        .from('user_settings')
+        .select('base_currency, timezone, locale')
+        .eq('user_id', params.userId)
+        .maybeSingle()
+    : Promise.resolve(null);
 
-    if (settingsError) {
-      // Query error fails closed immediately
-      return {
-        ok: false,
-        error: {
-          code: 'CONTEXT_LOAD_FAILED',
-          message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
-        },
-      };
-    }
+  const candidatesPromise = readCandidateContext(params.supabase, params.userId);
 
-    if (settingsData) {
-      baseCurrency = baseCurrency || settingsData.base_currency;
-      timezone = timezone || settingsData.timezone;
-      locale = locale || settingsData.locale;
-    }
+  let settingsRes;
+  let candidates;
+  try {
+    const [sRes, cRes] = await Promise.all([settingsPromise, candidatesPromise]);
+    settingsRes = sRes;
+    candidates = cRes;
+  } catch (_err) {
+    const contextMs = Math.round(performance.now() - contextStart);
+    const totalMs = Math.round(performance.now() - totalStart);
+    emitTimingTelemetry(
+      {
+        event: 'FINORA_AI_TIMING',
+        operation: 'transaction_parser',
+        success: false,
+        context_ms: contextMs,
+        ai_provider_ms: 0,
+        revalidation_ms: 0,
+        total_ms: totalMs,
+        error_code: 'CONTEXT_LOAD_FAILED',
+      },
+      params.onTiming
+    );
+
+    return {
+      ok: false,
+      error: {
+        code: 'CONTEXT_LOAD_FAILED',
+        message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
+      },
+    };
+  }
+
+  if (settingsRes && 'error' in settingsRes && settingsRes.error) {
+    const contextMs = Math.round(performance.now() - contextStart);
+    const totalMs = Math.round(performance.now() - totalStart);
+    emitTimingTelemetry(
+      {
+        event: 'FINORA_AI_TIMING',
+        operation: 'transaction_parser',
+        success: false,
+        context_ms: contextMs,
+        ai_provider_ms: 0,
+        revalidation_ms: 0,
+        total_ms: totalMs,
+        error_code: 'CONTEXT_LOAD_FAILED',
+      },
+      params.onTiming
+    );
+
+    return {
+      ok: false,
+      error: {
+        code: 'CONTEXT_LOAD_FAILED',
+        message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
+      },
+    };
+  }
+
+  if (settingsRes && 'data' in settingsRes && settingsRes.data) {
+    baseCurrency = baseCurrency || settingsRes.data.base_currency;
+    timezone = timezone || settingsRes.data.timezone;
+    locale = locale || settingsRes.data.locale;
   }
 
   const safeBaseCurrency =
@@ -181,21 +253,9 @@ export async function parseTransactionTextCore(
     locale: locale || 'vi-VN',
   };
 
-  // 4. Read candidates via authenticated RLS (fails closed on error)
-  let candidates;
-  try {
-    candidates = await readCandidateContext(params.supabase, params.userId);
-  } catch {
-    return {
-      ok: false,
-      error: {
-        code: 'CONTEXT_LOAD_FAILED',
-        message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
-      },
-    };
-  }
+  const contextMs = Math.round(performance.now() - contextStart);
 
-  // 5. Build prompt & system instruction
+  // 4. Build prompt & system instruction
   const { prompt, systemInstruction } = buildTransactionParserPrompt({
     promptText,
     candidates,
@@ -203,7 +263,8 @@ export async function parseTransactionTextCore(
     now: params.now,
   });
 
-  // 6. Execute router — Central AI operation config is authority; no duplicate parameters passed
+  // 5. Execute router — Central AI operation config is authority; no duplicate parameters passed
+  const aiStart = performance.now();
   const result = await params.router.execute<unknown, any>(
     {
       operation: 'transaction_parser',
@@ -217,10 +278,26 @@ export async function parseTransactionTextCore(
       credentialProvider: params.credentialProvider,
     }
   );
+  const aiProviderMs = Math.round(performance.now() - aiStart);
 
-  // 7. Handle failure
+  // 6. Handle failure
   if (!result.ok) {
     const code = result.error.code;
+    const totalMs = Math.round(performance.now() - totalStart);
+    emitTimingTelemetry(
+      {
+        event: 'FINORA_AI_TIMING',
+        operation: 'transaction_parser',
+        success: false,
+        context_ms: contextMs,
+        ai_provider_ms: aiProviderMs,
+        revalidation_ms: 0,
+        total_ms: totalMs,
+        error_code: code,
+      },
+      params.onTiming
+    );
+
     return {
       ok: false,
       error: {
@@ -230,19 +307,36 @@ export async function parseTransactionTextCore(
     };
   }
 
-  // 8. Cross-validate raw output into safe application draft
+  // 7. Cross-validate raw output into safe application draft
   const draft = crossValidateTransactionDraft({
     rawOutput: result.data,
     candidates,
     baseCurrency: resolvedSettings.baseCurrency,
   });
 
-  // 9. Post-AI Stale Revalidation (re-read resolved entities via authenticated RLS client)
+  // 8. Post-AI Stale Revalidation (re-read resolved entities concurrently via authenticated RLS client)
+  const revalidationStart = performance.now();
   try {
     const revalidatedDraft = await revalidateResolvedCandidates(
       params.supabase,
       params.userId,
       draft
+    );
+    const revalidationMs = Math.round(performance.now() - revalidationStart);
+    const totalMs = Math.round(performance.now() - totalStart);
+
+    emitTimingTelemetry(
+      {
+        event: 'FINORA_AI_TIMING',
+        operation: 'transaction_parser',
+        success: true,
+        context_ms: contextMs,
+        ai_provider_ms: aiProviderMs,
+        revalidation_ms: revalidationMs,
+        total_ms: totalMs,
+        warning_count: revalidatedDraft.warning_codes.length,
+      },
+      params.onTiming
     );
 
     return {
@@ -251,6 +345,23 @@ export async function parseTransactionTextCore(
       rawText: promptText,
     };
   } catch (_err: unknown) {
+    const revalidationMs = Math.round(performance.now() - revalidationStart);
+    const totalMs = Math.round(performance.now() - totalStart);
+
+    emitTimingTelemetry(
+      {
+        event: 'FINORA_AI_TIMING',
+        operation: 'transaction_parser',
+        success: false,
+        context_ms: contextMs,
+        ai_provider_ms: aiProviderMs,
+        revalidation_ms: revalidationMs,
+        total_ms: totalMs,
+        error_code: 'CONTEXT_LOAD_FAILED',
+      },
+      params.onTiming
+    );
+
     return {
       ok: false,
       error: {

@@ -62,7 +62,9 @@ import {
   type AiTransactionParseOutput,
   type OpaqueCandidateContext,
   type ParsedTransactionDraft,
+  type AiTimingTelemetry,
 } from '../src/features/ai/transaction-draft/types';
+import { formatMoneyWithCode } from '../src/lib/money';
 import { AiError, type AiErrorCode } from '../src/lib/ai/errors';
 import type { AiProvider } from '../src/lib/ai/provider';
 import type {
@@ -1187,7 +1189,245 @@ async function runAsyncTests() {
   }
   console.log('  ✓ 20. Invariant verified: AI layer and client draft UI possess ZERO financial mutation capability');
 
-  console.log('\nAll 20 Phase 12A AI Transaction Draft tests passed successfully!');
+  // =========================================================================
+  // 21. Money Formatting & Preview Boundary Integrity (Corrective 2)
+  // =========================================================================
+  assert.strictEqual(
+    formatMoneyWithCode('85000.0000', 'VND'),
+    '85.000 VND',
+    'VND amount must format without .0000 decimals and use dot thousands separator'
+  );
+  assert.strictEqual(
+    formatMoneyWithCode('4.5000', 'USD'),
+    '4.50 USD',
+    'USD amount must format with 2 decimals and comma thousands separator'
+  );
+  assert.strictEqual(
+    formatMoneyWithCode('1234567.8900', 'EUR'),
+    '1,234,567.89 EUR',
+    'EUR amount must format with 2 decimals and comma thousands separator'
+  );
+  assert.strictEqual(
+    formatMoneyWithCode('1000', 'JPY'),
+    '1,000 JPY',
+    'JPY zero-decimal amount must format without decimals'
+  );
+  assert.strictEqual(
+    formatMoneyWithCode('-85000.0000', 'VND'),
+    '-85.000 VND',
+    'Negative amount must preserve negative sign'
+  );
+  assert.strictEqual(formatMoneyWithCode('', 'VND'), '', 'Empty amount returns empty string');
+  assert.ok(
+    !formatMoneyWithCode('85000.0000', 'VND').includes('.0000'),
+    'Raw exact-decimal storage representation must not be exposed in preview'
+  );
+  console.log('  ✓ 21. Money formatting boundary verified: raw .0000 eliminated, locale formatting exact');
+
+  // =========================================================================
+  // 22. Concurrent Query Error Resilience & Revalidation (Corrective 2)
+  // =========================================================================
+  // Test accounts query failure in Promise.all
+  const mockFailAccountsSupabase: any = {
+    from: (table: string) => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: () => {
+                if (table === 'accounts') {
+                  return Promise.resolve({ data: null, error: { message: 'DB connection reset' } });
+                }
+                return Promise.resolve({ data: [], error: null });
+              },
+            }),
+          }),
+        }),
+      }),
+    }),
+  };
+
+  await assert.rejects(
+    async () => {
+      await readCandidateContext(mockFailAccountsSupabase, 'user-123');
+    },
+    ContextLoadError,
+    'Failure in parallel accounts query must fail closed via ContextLoadError'
+  );
+
+  // Test categories query failure in Promise.all
+  const mockFailCategoriesSupabase: any = {
+    from: (table: string) => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: () => {
+                if (table === 'categories') {
+                  return Promise.resolve({ data: null, error: { message: 'DB timeout' } });
+                }
+                return Promise.resolve({ data: [], error: null });
+              },
+            }),
+          }),
+        }),
+      }),
+    }),
+  };
+
+  await assert.rejects(
+    async () => {
+      await readCandidateContext(mockFailCategoriesSupabase, 'user-123');
+    },
+    ContextLoadError,
+    'Failure in parallel categories query must fail closed via ContextLoadError'
+  );
+
+  // Test income sources query failure in Promise.all
+  const mockFailSourcesSupabase: any = {
+    from: (table: string) => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: () => {
+                if (table === 'income_sources') {
+                  return Promise.resolve({ data: null, error: { message: 'RLS denial' } });
+                }
+                return Promise.resolve({ data: [], error: null });
+              },
+            }),
+          }),
+        }),
+      }),
+    }),
+  };
+
+  await assert.rejects(
+    async () => {
+      await readCandidateContext(mockFailSourcesSupabase, 'user-123');
+    },
+    ContextLoadError,
+    'Failure in parallel income sources query must fail closed via ContextLoadError'
+  );
+  console.log('  ✓ 22. Concurrent query fail-closed resilience verified across all parallel branches');
+
+  // =========================================================================
+  // 23. Privacy-Safe Timing Telemetry (Corrective 2)
+  // =========================================================================
+  let capturedTelemetry: AiTimingTelemetry | null = null;
+
+  const validOutputFixture = createValidModelOutput();
+  const mockProviderForTiming: AiProvider = {
+    id: 'gemini',
+    execute: async () => ({
+      text: JSON.stringify(validOutputFixture),
+      model: 'gemini-3.5-flash-lite',
+      usage: { inputTokens: 50, outputTokens: 20, totalTokens: 70 },
+    }),
+  };
+  const routerForTiming = createAiRouter({
+    providers: [mockProviderForTiming],
+  });
+  const mockCredentialProvider: AiCredentialProvider = {
+    resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+  };
+
+  const simpleMockSupabaseForTiming = {
+    from: (table: string) => ({
+      select: () => {
+        const queryBuilder: any = {
+          eq: () => queryBuilder,
+          order: () => queryBuilder,
+          limit: () => {
+            if (table === 'accounts') {
+              return Promise.resolve({
+                data: [{ id: 'acc-uuid-1', name: 'Tiền mặt', currency_code: 'VND', is_archived: false }],
+                error: null,
+              });
+            }
+            if (table === 'categories') {
+              return Promise.resolve({
+                data: [{ id: 'cat-uuid-1', name: 'Ăn uống', type: 'EXPENSE', is_archived: false }],
+                error: null,
+              });
+            }
+            return Promise.resolve({ data: [], error: null });
+          },
+          maybeSingle: () => {
+            if (table === 'user_settings') {
+              return Promise.resolve({
+                data: { base_currency: 'VND', timezone: 'Asia/Ho_Chi_Minh', locale: 'vi-VN' },
+                error: null,
+              });
+            }
+            if (table === 'accounts') {
+              return Promise.resolve({
+                data: { id: 'acc-uuid-1', user_id: 'user-telemetry-1', currency_code: 'VND', is_archived: false },
+                error: null,
+              });
+            }
+            if (table === 'categories') {
+              return Promise.resolve({
+                data: { id: 'cat-uuid-1', user_id: 'user-telemetry-1', type: 'EXPENSE', is_archived: false },
+                error: null,
+              });
+            }
+            return Promise.resolve({ data: null, error: null });
+          },
+        };
+        return queryBuilder;
+      },
+    }),
+  } as any;
+
+  const timingResult = await parseTransactionTextCore({
+    prompt: 'Ăn trưa 85k tiền mặt',
+    userId: 'user-telemetry-1',
+    supabase: simpleMockSupabaseForTiming,
+    router: routerForTiming,
+    credentialProvider: mockCredentialProvider,
+    onTiming: (t) => {
+      capturedTelemetry = t;
+    },
+  });
+
+  assert.strictEqual(timingResult.ok, true, 'Timing parse run must succeed');
+  assert.ok(capturedTelemetry !== null, 'Telemetry callback must receive payload');
+  const telemetry = capturedTelemetry as unknown as AiTimingTelemetry;
+  assert.strictEqual(telemetry.event, 'FINORA_AI_TIMING');
+  assert.strictEqual(telemetry.operation, 'transaction_parser');
+  assert.strictEqual(telemetry.success, true);
+  assert.ok(typeof telemetry.context_ms === 'number' && telemetry.context_ms >= 0);
+  assert.ok(typeof telemetry.ai_provider_ms === 'number' && telemetry.ai_provider_ms >= 0);
+  assert.ok(typeof telemetry.revalidation_ms === 'number' && telemetry.revalidation_ms >= 0);
+  assert.ok(typeof telemetry.total_ms === 'number' && telemetry.total_ms >= 0);
+
+  // Strict privacy invariant: verify NO sensitive data is present in the telemetry object
+  const forbiddenSensitiveKeys = [
+    'userId',
+    'user_id',
+    'prompt',
+    'email',
+    'merchant',
+    'note',
+    'apiKey',
+    'credential',
+    'credentials',
+    'account_id',
+    'category_id',
+    'token',
+  ];
+  for (const forbiddenKey of forbiddenSensitiveKeys) {
+    assert.strictEqual(
+      forbiddenKey in (telemetry as unknown as Record<string, unknown>),
+      false,
+      `Privacy violation: sensitive key '${forbiddenKey}' present in telemetry payload`
+    );
+  }
+  console.log('  ✓ 23. Privacy-safe timing instrumentation verified: structured timing present, zero sensitive leakage');
+
+  console.log('\nAll 23 Phase 12A AI Transaction Draft tests passed successfully!');
 }
 
 runAsyncTests().catch((err) => {

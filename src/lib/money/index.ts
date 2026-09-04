@@ -166,6 +166,38 @@ export function formatExactMoney(
   return result;
 }
 
+export function formatMoneyWithCode(
+  amountStr: string,
+  currency: string = 'VND',
+  options?: { showSign?: boolean }
+): string {
+  if (!amountStr || typeof amountStr !== 'string') return '';
+  const normalizedCurrency = (currency || 'VND').toUpperCase();
+  const normalized = toExactDecimal(amountStr);
+  const isNegative = normalized.startsWith('-');
+  const unsigned = isNegative ? normalized.slice(1) : normalized;
+  const [integerPart, fractionalPart] = unsigned.split('.');
+
+  const thousandsSeparator = normalizedCurrency === 'VND' ? '.' : ',';
+  const decimalSeparator = normalizedCurrency === 'VND' ? ',' : '.';
+  const groupedInteger = groupThousands(integerPart, thousandsSeparator);
+
+  let formattedNumber: string;
+  if (normalizedCurrency === 'VND' || normalizedCurrency === 'JPY' || normalizedCurrency === 'KRW') {
+    formattedNumber = groupedInteger;
+  } else {
+    const firstTwo = fractionalPart.slice(0, 2);
+    const remaining = fractionalPart.slice(2).replace(/0+$/, '');
+    const displayFraction = remaining.length > 0 ? firstTwo + remaining : firstTwo;
+    formattedNumber = `${groupedInteger}${decimalSeparator}${displayFraction}`;
+  }
+
+  const result = `${formattedNumber} ${normalizedCurrency}`;
+  if (isNegative) return `-${result}`;
+  if (options?.showSign && compareExactDecimals(normalized, '0.0000') > 0) return `+${result}`;
+  return result;
+}
+
 /**
  * Computes the ratio of a part to a total in integer basis points [0..10000].
  * 10000 bps = 100.00%.

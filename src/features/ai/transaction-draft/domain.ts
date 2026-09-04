@@ -262,19 +262,67 @@ export async function revalidateResolvedCandidates(
   let resolvedSourceId = draft.income_source_id;
   let resolvedStreamId = draft.income_source_stream_id;
 
+  // Execute revalidation queries concurrently
+  const accountPromise = resolvedAccountId !== null
+    ? supabase
+        .from('accounts')
+        .select('id, user_id, currency_code, is_archived')
+        .eq('id', resolvedAccountId)
+        .eq('user_id', userId)
+        .maybeSingle()
+    : Promise.resolve(null);
+
+  const categoryPromise = resolvedCategoryId !== null
+    ? supabase
+        .from('categories')
+        .select('id, user_id, type, is_archived')
+        .eq('id', resolvedCategoryId)
+        .eq('user_id', userId)
+        .maybeSingle()
+    : Promise.resolve(null);
+
+  const sourcePromise = resolvedSourceId !== null && draft.type === 'INCOME'
+    ? supabase
+        .from('income_sources')
+        .select('id, user_id, is_archived')
+        .eq('id', resolvedSourceId)
+        .eq('user_id', userId)
+        .maybeSingle()
+    : Promise.resolve(null);
+
+  const streamPromise = resolvedStreamId !== null && draft.type === 'INCOME'
+    ? supabase
+        .from('income_source_streams')
+        .select('id, user_id, income_source_id, is_archived')
+        .eq('id', resolvedStreamId)
+        .eq('user_id', userId)
+        .maybeSingle()
+    : Promise.resolve(null);
+
+  const [accRes, catRes, srcRes, strRes] = await Promise.all([
+    accountPromise,
+    categoryPromise,
+    sourcePromise,
+    streamPromise,
+  ]);
+
+  // Check database errors (fail closed)
+  if (accRes && 'error' in accRes && accRes.error) {
+    throw new ContextLoadError(`Failed to revalidate account: ${accRes.error.message}`, accRes.error);
+  }
+  if (catRes && 'error' in catRes && catRes.error) {
+    throw new ContextLoadError(`Failed to revalidate category: ${catRes.error.message}`, catRes.error);
+  }
+  if (srcRes && 'error' in srcRes && srcRes.error) {
+    throw new ContextLoadError(`Failed to revalidate income source: ${srcRes.error.message}`, srcRes.error);
+  }
+  if (strRes && 'error' in strRes && strRes.error) {
+    throw new ContextLoadError(`Failed to revalidate income stream: ${strRes.error.message}`, strRes.error);
+  }
+
   // 1. Account revalidation
-  if (resolvedAccountId !== null) {
-    const { data: acc, error: accErr } = await supabase
-      .from('accounts')
-      .select('id, user_id, currency_code, is_archived')
-      .eq('id', resolvedAccountId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (accErr) {
-      throw new ContextLoadError(`Failed to revalidate account: ${accErr.message}`, accErr);
-    }
-
+  if (resolvedAccountId !== null && accRes && 'data' in accRes) {
+    const acc = accRes.data;
     if (!acc || acc.is_archived) {
       resolvedAccountId = null;
       addWarning('ACCOUNT_NOT_MATCHED');
@@ -288,18 +336,8 @@ export async function revalidateResolvedCandidates(
   }
 
   // 2. Category revalidation
-  if (resolvedCategoryId !== null) {
-    const { data: cat, error: catErr } = await supabase
-      .from('categories')
-      .select('id, user_id, type, is_archived')
-      .eq('id', resolvedCategoryId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (catErr) {
-      throw new ContextLoadError(`Failed to revalidate category: ${catErr.message}`, catErr);
-    }
-
+  if (resolvedCategoryId !== null && catRes && 'data' in catRes) {
+    const cat = catRes.data;
     if (!cat || cat.is_archived) {
       resolvedCategoryId = null;
       addWarning('CATEGORY_NOT_MATCHED');
@@ -311,17 +349,7 @@ export async function revalidateResolvedCandidates(
 
   // 3. Income Source revalidation (only if type is INCOME)
   if (resolvedSourceId !== null && draft.type === 'INCOME') {
-    const { data: src, error: srcErr } = await supabase
-      .from('income_sources')
-      .select('id, user_id, is_archived')
-      .eq('id', resolvedSourceId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (srcErr) {
-      throw new ContextLoadError(`Failed to revalidate income source: ${srcErr.message}`, srcErr);
-    }
-
+    const src = srcRes && 'data' in srcRes ? srcRes.data : null;
     if (!src || src.is_archived) {
       resolvedSourceId = null;
       addWarning('INCOME_SOURCE_NOT_MATCHED');
@@ -336,17 +364,7 @@ export async function revalidateResolvedCandidates(
       resolvedStreamId = null;
       addWarning('INCOME_STREAM_PARENT_CONFLICT');
     } else {
-      const { data: str, error: strErr } = await supabase
-        .from('income_source_streams')
-        .select('id, user_id, income_source_id, is_archived')
-        .eq('id', resolvedStreamId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (strErr) {
-        throw new ContextLoadError(`Failed to revalidate income stream: ${strErr.message}`, strErr);
-      }
-
+      const str = strRes && 'data' in strRes ? strRes.data : null;
       if (!str || str.is_archived) {
         resolvedStreamId = null;
         addWarning('INCOME_STREAM_NOT_MATCHED');

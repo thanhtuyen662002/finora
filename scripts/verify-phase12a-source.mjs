@@ -552,6 +552,94 @@ check(
 );
 
 // =========================================================================
+// 15. Money Presentation & Boundary Integrity (Corrective 2)
+// =========================================================================
+
+const moneyIndexPath = path.join(ROOT, 'src/lib/money/index.ts');
+const moneyIndexContent = fs.readFileSync(moneyIndexPath, 'utf8');
+
+check(
+  'MONEY_WITH_CODE_EXPORTED',
+  moneyIndexContent.includes('export function formatMoneyWithCode('),
+  'src/lib/money/index.ts must export formatMoneyWithCode'
+);
+
+const formatMoneyFns =
+  (moneyIndexContent.match(/export function formatMoneyWithCode[\s\S]*?^}/m)?.[0] || '') +
+  (moneyIndexContent.match(/export function formatExactMoney[\s\S]*?^}/m)?.[0] || '');
+
+check(
+  'EXACT_MONEY_NO_FLOAT_CONVERSION',
+  !formatMoneyFns.includes('parseFloat(') && !formatMoneyFns.includes('Number('),
+  'Exact money formatting must not convert amounts using parseFloat or Number'
+);
+
+check(
+  'AI_PREVIEW_NO_RAW_EXACT_MONEY',
+  !clientInputContent.includes('${draft.amount}') &&
+    clientInputContent.includes('formatMoneyWithCode(draft.amount'),
+  'AiTransactionDraftInput preview must format draft.amount using formatMoneyWithCode instead of raw .0000 decimal string'
+);
+
+// =========================================================================
+// 16. Performance Concurrency & Privacy-Safe Timing Telemetry (Corrective 2)
+// =========================================================================
+
+check(
+  'CONCURRENT_CANDIDATE_READS',
+  candidatesContent.includes('Promise.all([') &&
+    candidatesContent.includes("from('accounts')") &&
+    candidatesContent.includes("from('categories')") &&
+    candidatesContent.includes("from('income_sources')"),
+  'candidates.ts must read accounts, categories, and income sources concurrently using Promise.all'
+);
+
+check(
+  'CONCURRENT_PRE_AI_READS',
+  actionCoreContent.includes('Promise.all([settingsPromise, candidatesPromise])'),
+  'action-core.ts must read user_settings and candidate context concurrently using Promise.all'
+);
+
+check(
+  'CONCURRENT_POST_AI_REVALIDATION',
+  domainContent.includes('Promise.all([') &&
+    domainContent.includes('accountPromise') &&
+    domainContent.includes('categoryPromise') &&
+    domainContent.includes('sourcePromise') &&
+    domainContent.includes('streamPromise'),
+  'domain.ts revalidateResolvedCandidates must query accounts, categories, sources, and streams concurrently using Promise.all'
+);
+
+// typesContent is already read at top
+check(
+  'TIMING_INSTRUMENTATION_PRESENT',
+  typesContent.includes('export interface AiTimingTelemetry') &&
+    actionCoreContent.includes('FINORA_AI_TIMING') &&
+    actionCoreContent.includes('context_ms') &&
+    actionCoreContent.includes('ai_provider_ms') &&
+    actionCoreContent.includes('revalidation_ms') &&
+    actionCoreContent.includes('total_ms'),
+  'action-core.ts must emit FINORA_AI_TIMING event with context_ms, ai_provider_ms, revalidation_ms, and total_ms'
+);
+
+const timingTelemetryMatch = typesContent.match(/export interface AiTimingTelemetry\s*\{([^}]+)\}/);
+const telemetryBody = timingTelemetryMatch ? timingTelemetryMatch[1] : '';
+
+check(
+  'PRIVACY_SAFE_TELEMETRY',
+  !telemetryBody.includes('userId') &&
+    !telemetryBody.includes('user_id') &&
+    !telemetryBody.includes('prompt') &&
+    !telemetryBody.includes('email') &&
+    !telemetryBody.includes('merchant') &&
+    !telemetryBody.includes('note') &&
+    !telemetryBody.includes('apiKey') &&
+    !telemetryBody.includes('credential') &&
+    !telemetryBody.includes('token: string'),
+  'AiTimingTelemetry must strictly exclude all sensitive data (prompts, UUIDs, credentials, emails, notes, merchant, tokens)'
+);
+
+// =========================================================================
 // Summary
 // =========================================================================
 

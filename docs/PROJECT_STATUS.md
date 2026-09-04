@@ -6,9 +6,9 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion
-- **Phase status:** MODEL_POLICY_CORRECTIVE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
-- **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (20/20 PASS)
-- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (75/75 PASS)
+- **Phase status:** PERFORMANCE_AND_MONEY_CORRECTIVE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+- **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (23/23 PASS)
+- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (83/83 PASS)
 - **Phase 12A parser model:** `gemini-3.5-flash-lite` (exact stable ID)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
@@ -1001,19 +1001,21 @@ FINORA_PHASE_11=PASS
 
 PHASE_12A_AUTHORIZED=true
 PHASE_12A_SCOPE=NATURAL_LANGUAGE_TRANSACTION_DRAFT_AND_SMART_CATEGORY
-PHASE_12A_STATUS=MODEL_POLICY_CORRECTIVE_PENDING_INDEPENDENT_AUDIT
+PHASE_12A_STATUS=PERFORMANCE_AND_MONEY_CORRECTIVE_PENDING_INDEPENDENT_AUDIT
 PHASE_12A_CORRECTIVE_PASS_1=PASS
 PHASE_12A_CORRECTIVE_PASS_2=PASS
 PHASE_12A_LIVE_SMOKE_ATTEMPT_1=AI_STRUCTURED_OUTPUT_INVALID
 PHASE_12A_LIVE_SMOKE_ATTEMPT_1_FINANCIAL_MUTATION=false
 PHASE_12A_TRANSACTION_PARSER_MODEL=gemini-3.5-flash-lite
-PHASE_12A_MODEL_POLICY_CORRECTIVE=PENDING_INDEPENDENT_AUDIT
-PHASE_12A_REAL_GEMINI_SMOKE=PENDING_RETRY
+PHASE_12A_MODEL_POLICY_CORRECTIVE=PASS
+PHASE_12A_PERFORMANCE_AND_MONEY_CORRECTIVE=PENDING_INDEPENDENT_AUDIT
+PHASE_12A_LIVE_GEMINI_PARSE=PASS
+PHASE_12A_PARSE_APPLY_ZERO_MUTATION=PASS
 PHASE_12A_OVERALL=PARTIAL
 PHASE_12B_IMPLEMENTATION_AUTHORIZED=false
 PHASE_12C_IMPLEMENTATION_AUTHORIZED=false
-PHASE_12A_TEST_SUITE=20_OF_20_PASS
-PHASE_12A_SOURCE_VERIFIER=75_OF_75_PASS
+PHASE_12A_TEST_SUITE=23_OF_23_PASS
+PHASE_12A_SOURCE_VERIFIER=83_OF_83_PASS
 PHASE_12A_TYPESCRIPT=PASS
 PHASE_12A_LINT=PASS
 PHASE_12A_BUILD=PASS
@@ -1021,29 +1023,45 @@ PHASE_12A_SCHEMA_MUTATION=NONE
 PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ```
 
-## Phase 12A — Natural-Language Transaction Draft (Model Policy Corrective: Flash-Lite)
+## Phase 12A — Natural-Language Transaction Draft (Performance & Money Presentation Corrective)
 
-### Status: MODEL_POLICY_CORRECTIVE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
+### Status: PERFORMANCE_AND_MONEY_CORRECTIVE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
 
 - **Production Live Evidence Analysis:**
-  - In initial live smoke attempt 1, a real request reached the AI path and returned `AI_STRUCTURED_OUTPUT_INVALID`.
-  - Transaction count remained identical before and after (`PRE_PARSE_TRANSACTION_COUNT=14`, `POST_FAILED_PARSE_TRANSACTION_COUNT=14`).
-  - Strict invariant verified: `FAILED_PARSE_FINANCIAL_MUTATION=false` (zero financial mutation authority confirmed in production).
-- **Model Policy Corrective:**
-  - Switched Phase 12A `transaction_parser` operation from `gemini-2.5-flash` to exact stable ID `gemini-3.5-flash-lite`.
-  - Defined central constant `GEMINI_FLASH_LITE_MODEL = 'gemini-3.5-flash-lite'` in `src/lib/ai/config.ts`.
-  - Prohibited all floating aliases (`gemini-flash-latest`) and preview identifiers (`gemini-3.1-flash-lite-preview`).
-  - Future AI operations (`financial_assistant`, `receipt_vision`, `report_summary`) remain on `DEFAULT_GEMINI_MODEL`.
-  - Kept exact structured output contract: 11 required keys, string amount, opaque tokens, supported Finora currencies, strict calendar dates, zero coercion.
-  - Zero financial mutations, zero migrations, zero package changes, zero Vercel env changes.
-  - Verification is strictly offline; live Gemini retry pending independent audit.
+  - In production real Gemini smoke on `gemini-3.5-flash-lite`, the model returned a valid transaction draft (`PHASE_12A_LIVE_GEMINI_PARSE=PASS`).
+  - Database verification confirmed `PRE_PARSE_TRANSACTION_COUNT=14` and `AFTER_PARSE_AND_APPLY_TRANSACTION_COUNT=14` (`PHASE_12A_PARSE_APPLY_ZERO_MUTATION=PASS`).
+  - Explicit save smoke remains pending.
+- **Correctives Applied:**
+  1. **Money Preview Presentation**:
+     - Created `formatMoneyWithCode` in `src/lib/money/format.ts` and exported via `src/lib/money/index.ts`.
+     - Uses string-based integer/fractional separation and `groupThousands` without `Number` or `parseFloat` floating-point conversions.
+     - Updated `AiTransactionDraftInput.tsx` preview badge: VND displays as `85.000 VND` (eliminating raw storage `.0000`), USD displays as `4.50 USD`.
+     - Preserves existing money input behavior (`MONEY_INPUT_VND_GROUPING_UNCHANGED=true`).
+  2. **Latency Reduction via Parallel Concurrency**:
+     - Refactored `readCandidateContext` in `src/features/ai/transaction-draft/candidates.ts` to query `accounts`, `categories`, and `income_sources` concurrently via `Promise.all`.
+     - Refactored `parseTransactionTextCore` in `src/features/ai/transaction-draft/action-core.ts` to query `user_settings` and candidate context concurrently via `Promise.all`.
+     - Refactored `revalidateResolvedCandidates` in `src/features/ai/transaction-draft/domain.ts` to query accounts, categories, sources, and streams concurrently via `Promise.all`.
+     - Preserved all fail-closed invariants via `ContextLoadError` checks on query errors.
+  3. **Privacy-Safe Structured Timing Telemetry**:
+     - Defined `AiTimingTelemetry` in `src/features/ai/transaction-draft/types.ts`.
+     - Added `emitTimingTelemetry` helper in `src/features/ai/transaction-draft/action-core.ts`.
+     - Captures `context_ms`, `ai_provider_ms`, `revalidation_ms`, and `total_ms`.
+     - Emits structured `FINORA_AI_TIMING` telemetry event.
+     - Strict privacy guarantees: zero prompts, zero user IDs, zero merchant names, zero notes, zero emails, zero raw responses, zero API keys, zero credentials.
+  4. **Strict Architectural Invariants Preserved**:
+     - Kept exact model `gemini-3.5-flash-lite`.
+     - Post-AI cross-validation, currency matching, and candidate revalidation fully preserved.
+     - Zero financial mutations, zero migrations, zero third-party dependencies added.
 
-### Verification Results (Model Policy Corrective)
-- **Phase 12A Test Suite (`tests/phase12a-transaction-draft.test.ts`)**: 20/20 PASS
-  - Verified real router execution targets exact model `gemini-3.5-flash-lite`.
-- **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 75/75 PASS
-  - Establishes `TRANSACTION_PARSER_MODEL_EXACT = gemini-3.5-flash-lite`.
-  - Asserts rejection of floating aliases and preview model identifiers.
+### Verification Results (Performance & Money Presentation Corrective)
+- **Phase 12A Test Suite (`tests/phase12a-transaction-draft.test.ts`)**: 23/23 PASS
+  - Added Test 21: Money formatting boundary verified (eliminates raw `.0000`, exact locale formatting).
+  - Added Test 22: Concurrent query fail-closed resilience verified across all parallel branches.
+  - Added Test 23: Privacy-safe timing instrumentation verified (structured timing present, zero sensitive leakage).
+- **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 83/83 PASS
+  - Verified `MONEY_WITH_CODE_EXPORTED`, `EXACT_MONEY_NO_FLOAT_CONVERSION`, `AI_PREVIEW_NO_RAW_EXACT_MONEY`.
+  - Verified `CONCURRENT_CANDIDATE_READS`, `CONCURRENT_PRE_AI_READS`, `CONCURRENT_POST_AI_REVALIDATION`.
+  - Verified `TIMING_INSTRUMENTATION_PRESENT` and `PRIVACY_SAFE_TELEMETRY`.
 - **Phase 10 Test Suite (`tests/phase10-ai-foundation.test.ts`)**: 50/50 PASS
 - **Phase 10 Source Verifier (`scripts/verify-phase10-source.mjs`)**: 38/38 PASS
 - **Phase 11 Test Suite (`tests/phase11-ai-credentials.test.ts`)**: 79/79 PASS
@@ -1055,5 +1073,5 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - **Database Schema**: 0 migrations added, schema strictly unchanged
 
 ### Next Recommended Step
-- Independent audit evaluation of the Phase 12A model policy corrective prior to authorized production live smoke retry.
+- Independent audit of the Performance & Money Presentation Corrective prior to live explicit-save smoke test.
 

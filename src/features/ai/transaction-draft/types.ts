@@ -214,3 +214,19 @@ export interface ParseTransactionDraftFailure {
 export type ParseTransactionDraftResult =
   | ParseTransactionDraftSuccess
   | ParseTransactionDraftFailure;
+
+/**
+ * Structured privacy-safe timing instrumentation event.
+ * Contains ZERO sensitive data (no prompts, UUIDs, credentials, emails, or labels).
+ */
+export interface AiTimingTelemetry {
+  readonly event: 'FINORA_AI_TIMING';
+  readonly operation: 'transaction_parser';
+  readonly success: boolean;
+  readonly context_ms: number;
+  readonly ai_provider_ms: number;
+  readonly revalidation_ms: number;
+  readonly total_ms: number;
+  readonly warning_count?: number;
+  readonly error_code?: string;
+}
