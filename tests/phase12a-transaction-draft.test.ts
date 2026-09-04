@@ -1869,7 +1869,207 @@ async function runAsyncTests() {
   }
   console.log('  ✓ 32. Deterministic fail-safes: Multiple amounts, ranges, corrections, and multi-transactions fall back to Gemini');
 
-  console.log('\nAll 32 Phase 12A AI Transaction Draft tests passed successfully!');
+  // Test 33: Attached ISO / Symbol currency tokens (Coffee 4.50USD, Coffee 4.50EUR, Mua sách 120.000d)
+  let attachedProviderCalls = 0;
+  const attachedProvider: AiProvider = {
+    id: 'gemini',
+    execute: async (request) => {
+      attachedProviderCalls++;
+      return {
+        text: JSON.stringify(createValidModelOutput()),
+        model: request.model,
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      };
+    },
+  };
+  const attachedRouter = createAiRouter({ providers: [attachedProvider] });
+
+  // 33a. Coffee 4.50USD
+  const usdAttachedRes = await parseTransactionTextCore({
+    prompt: 'Coffee 4.50USD',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: attachedRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+  assert.strictEqual(usdAttachedRes.ok, true);
+  if (usdAttachedRes.ok) {
+    assert.strictEqual(usdAttachedRes.parse_source, 'DETERMINISTIC');
+    assert.strictEqual(usdAttachedRes.draft.amount, '4.5000');
+    assert.strictEqual(usdAttachedRes.draft.currency_code, 'USD');
+  }
+
+  // 33b. Coffee 4.50EUR
+  const eurAttachedRes = await parseTransactionTextCore({
+    prompt: 'Coffee 4.50EUR',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: attachedRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+  assert.strictEqual(eurAttachedRes.ok, true);
+  if (eurAttachedRes.ok) {
+    assert.strictEqual(eurAttachedRes.parse_source, 'DETERMINISTIC');
+    assert.strictEqual(eurAttachedRes.draft.amount, '4.5000');
+    assert.strictEqual(eurAttachedRes.draft.currency_code, 'EUR');
+  }
+
+  // 33c. Mua sách 120.000d
+  const vndAttachedRes = await parseTransactionTextCore({
+    prompt: 'Mua sách 120.000d',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: attachedRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+  assert.strictEqual(vndAttachedRes.ok, true);
+  if (vndAttachedRes.ok) {
+    assert.strictEqual(vndAttachedRes.parse_source, 'DETERMINISTIC');
+    assert.strictEqual(vndAttachedRes.draft.amount, '120000.0000');
+    assert.strictEqual(vndAttachedRes.draft.currency_code, 'VND');
+  }
+  assert.strictEqual(attachedProviderCalls, 0, 'Attached valid currency tokens must parse deterministically with zero Gemini calls');
+  console.log('  ✓ 33. Attached ISO and symbol currency parsing: 4.50USD, 4.50EUR, 120.000d parse deterministically');
+
+  // Test 34: Attached Vietnamese multiplier + foreign currency conflict (85kUSD, 85k$, 1trEUR)
+  const attachedConflictPrompts = ['Ăn trưa 85kUSD', 'Ăn trưa 85k$', 'Ăn tối 1trEUR'];
+  for (const acp of attachedConflictPrompts) {
+    let acpCalls = 0;
+    const acpProvider: AiProvider = {
+      id: 'gemini',
+      execute: async (request) => {
+        acpCalls++;
+        return {
+          text: JSON.stringify(createValidModelOutput()),
+          model: request.model,
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+        };
+      },
+    };
+    const acpRouter = createAiRouter({ providers: [acpProvider] });
+    const acpRes = await parseTransactionTextCore({
+      prompt: acp,
+      userId: fastPathUserId,
+      supabase: fastPathMockSupabase,
+      router: acpRouter,
+      credentialProvider: {
+        resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+      },
+      now: new Date('2026-09-04T12:00:00Z'),
+    });
+    assert.strictEqual(acpRes.ok, true);
+    if (acpRes.ok) {
+      assert.strictEqual(acpRes.parse_source, 'AI', `Attached conflict '${acp}' must fall back to Gemini`);
+    }
+    assert.strictEqual(acpCalls, 1, `Gemini provider must be called for attached conflict '${acp}'`);
+  }
+  console.log('  ✓ 34. Attached currency conflict fail-safe: Vietnamese multiplier attached to foreign currency (85kUSD, 85k$, 1trEUR) falls back to Gemini');
+
+  // Test 35: Conflicting & Multiple Date Claims Fail-Safe
+  // "Ăn trưa 85k hôm nay ngày 2026-09-03" (hôm nay is 2026-09-04, conflicting with 2026-09-03)
+  // "Ăn trưa 85k ngày 2026-09-03 ngày 04/09/2026"
+  const dateConflictPrompts = [
+    'Ăn trưa 85k hôm nay ngày 2026-09-03',
+    'Ăn trưa 85k ngày 2026-09-03 ngày 04/09/2026',
+    'Ăn trưa 85k hôm qua hôm nay',
+  ];
+  for (const dcp of dateConflictPrompts) {
+    let dcpCalls = 0;
+    const dcpProvider: AiProvider = {
+      id: 'gemini',
+      execute: async (request) => {
+        dcpCalls++;
+        return {
+          text: JSON.stringify(createValidModelOutput()),
+          model: request.model,
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+        };
+      },
+    };
+    const dcpRouter = createAiRouter({ providers: [dcpProvider] });
+    const dcpRes = await parseTransactionTextCore({
+      prompt: dcp,
+      userId: fastPathUserId,
+      supabase: fastPathMockSupabase,
+      router: dcpRouter,
+      credentialProvider: {
+        resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+      },
+      now: new Date('2026-09-04T12:00:00Z'),
+    });
+    assert.strictEqual(dcpRes.ok, true);
+    if (dcpRes.ok) {
+      assert.strictEqual(dcpRes.parse_source, 'AI', `Conflicting date prompt '${dcp}' must fall back to Gemini`);
+    }
+    assert.strictEqual(dcpCalls, 1, `Gemini provider must be called for conflicting date prompt '${dcp}'`);
+  }
+
+  // Consistent non-conflicting multiple date claims ("hôm nay" + "2026-09-04") must succeed deterministically
+  const consistentDateRes = await parseTransactionTextCore({
+    prompt: 'Ăn trưa 85k hôm nay ngày 2026-09-04',
+    userId: fastPathUserId,
+    supabase: fastPathMockSupabase,
+    router: attachedRouter,
+    credentialProvider: {
+      resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+    },
+    now: new Date('2026-09-04T12:00:00Z'),
+  });
+  assert.strictEqual(consistentDateRes.ok, true);
+  if (consistentDateRes.ok) {
+    assert.strictEqual(consistentDateRes.parse_source, 'DETERMINISTIC');
+    assert.strictEqual(consistentDateRes.draft.occurred_on, '2026-09-04');
+  }
+  console.log('  ✓ 35. Date claim conflict fail-safe: Conflicting dates fall back to Gemini, identical multi-claims succeed');
+
+  // Test 36: Partial Date Fail-Safe (Do NOT default "ngày 4" to today)
+  const partialDatePrompts = [
+    'Ăn trưa 85k ngày 4',
+    'Ăn trưa 85k ngày 4 tháng 9',
+    'Ăn trưa 85k tháng 9',
+  ];
+  for (const pdp of partialDatePrompts) {
+    let pdpCalls = 0;
+    const pdpProvider: AiProvider = {
+      id: 'gemini',
+      execute: async (request) => {
+        pdpCalls++;
+        return {
+          text: JSON.stringify(createValidModelOutput()),
+          model: request.model,
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+        };
+      },
+    };
+    const pdpRouter = createAiRouter({ providers: [pdpProvider] });
+    const pdpRes = await parseTransactionTextCore({
+      prompt: pdp,
+      userId: fastPathUserId,
+      supabase: fastPathMockSupabase,
+      router: pdpRouter,
+      credentialProvider: {
+        resolveCredential: async () => ({ value: 'test-key', providerId: 'gemini' }),
+      },
+      now: new Date('2026-09-04T12:00:00Z'),
+    });
+    assert.strictEqual(pdpRes.ok, true);
+    if (pdpRes.ok) {
+      assert.strictEqual(pdpRes.parse_source, 'AI', `Partial date prompt '${pdp}' must fall back to Gemini`);
+    }
+    assert.strictEqual(pdpCalls, 1, `Gemini provider must be called for partial date prompt '${pdp}'`);
+  }
+  console.log('  ✓ 36. Partial date fail-safe: Incomplete date claims (ngày 4, ngày 4 tháng 9) fall back to Gemini instead of defaulting to today');
+
+  console.log('\nAll 36 Phase 12A AI Transaction Draft tests passed successfully!');
 }
 
 runAsyncTests().catch((err) => {

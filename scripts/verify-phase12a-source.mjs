@@ -747,6 +747,52 @@ check(
 );
 
 check(
+  'ATTACHED_ISO_CURRENCY_BOUND_TO_AMOUNT_TOKEN',
+  fastPathContent.includes('parseAtomicMonetaryToken') &&
+    fastPathContent.includes('attachedCurrency') &&
+    fastPathContent.includes('trailingCurrency'),
+  'fast-path.ts must bind attached ISO currency suffixes directly to atomic monetary tokens'
+);
+
+check(
+  'ATTACHED_SYMBOL_CURRENCY_BOUND_TO_AMOUNT_TOKEN',
+  fastPathContent.includes('leadingSymbolMatch') &&
+    fastPathContent.includes('leadingCurrency'),
+  'fast-path.ts must bind attached currency symbols ($ € ¥ d đ) directly to atomic monetary tokens'
+);
+
+check(
+  'VND_MULTIPLIER_ATTACHED_FOREIGN_CURRENCY_CONFLICT',
+  fastPathContent.includes('hasMultiplier && attachedCurrency && attachedCurrency !== \'VND\'') ||
+    fastPathContent.includes('hasMultiplier && attachedCurrency !== \'VND\''),
+  'fast-path.ts must detect conflicts when Vietnamese multipliers are attached to foreign currencies'
+);
+
+check(
+  'MULTIPLE_DATE_CLAIMS_FAILSAFE',
+  fastPathContent.includes('dateClaims') &&
+    fastPathContent.includes('distinctDates') &&
+    fastPathContent.includes('Set(dateClaims.map'),
+  'fast-path.ts must aggregate all date claims and evaluate uniqueness'
+);
+
+check(
+  'CONFLICTING_DATE_CLAIMS_FAILSAFE',
+  fastPathContent.includes('hasDateConflict') &&
+    fastPathContent.includes('distinctDates.length === 1') &&
+    fastPathContent.includes('dateScan.hasDateConflict'),
+  'fast-path.ts must fail closed to Gemini when multiple conflicting date claims exist'
+);
+
+check(
+  'PARTIAL_DATE_DOES_NOT_DEFAULT_TODAY',
+  fastPathContent.includes('hasPartialDate') &&
+    fastPathContent.includes('partialDayPattern') &&
+    fastPathContent.includes('dateScan.hasPartialDate'),
+  'fast-path.ts must detect partial date claims and fail closed to Gemini instead of defaulting to today'
+);
+
+check(
   'FAST_PATH_DATE_SPAN_EXCLUDED_FROM_AMOUNT_SCAN',
   fastPathContent.includes('maskDateSpansAndExtractDate') &&
     fastPathContent.includes('extractPotentialAmounts(dateScan.maskedText)'),

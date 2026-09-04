@@ -2,14 +2,15 @@ import 'server-only';
 
 /**
  * Finora AI Feature Module — Deterministic Transaction Fast Path
- * Phase 12A — Corrective Pass 1: Conservative Deterministic Parser with Gemini Fallback
+ * Phase 12A — Corrective Pass 2: Attached Currency Semantics + Date Ambiguity Fail-Safe
  *
  * Invariants:
  * 1. Zero Gemini / AI Provider Usage:
  *    Executes purely deterministic string and regex parsing. No external network or LLM calls.
  * 2. Conservative Eligibility Gate:
  *    Any ambiguity, multiple amounts, range amounts, correction markers, multi-transaction markers,
- *    conflicting income/expense semantics, currency conflicts, or invalid dates returns eligible: false (falls back to Gemini).
+ *    conflicting income/expense semantics, currency conflicts, conflicting date claims, partial dates,
+ *    or invalid dates returns eligible: false (falls back to Gemini).
  * 3. Exact 11-Key Output Boundary:
  *    When eligible, returns the exact AiTransactionParseOutput shape, which converges through
  *    aiTransactionParseOutputValidator.validate, crossValidateTransactionDraft, candidate revalidation, and user preview.
@@ -19,6 +20,13 @@ import 'server-only';
  *    Colloquial multipliers (k, tr, triệu, tỷ, etc.) are computed via pure string manipulations.
  *    Canonical exact scale is numeric(20,4). Never silently truncates non-zero fractional digits.
  *    NEVER uses Number(), parseFloat(), or JavaScript floating-point arithmetic for money.
+ * 6. Attached Currency Semantics:
+ *    Atomic monetary token parsing binds ISO currency codes (USD, EUR, etc.) and symbols ($, €, ¥, d, đ)
+ *    directly to amount tokens. Vietnamese multipliers (k, tr, etc.) attached to foreign currencies
+ *    strictly trigger fail-safe fallback.
+ * 7. Date Claim Conflict Detection:
+ *    Collects all date claims in prompt. Single resolved date or multiple claims resolving to the same
+ *    calendar date are accepted. Conflicting dates, invalid dates, or partial dates strictly fail closed to Gemini.
  */
 
 import {
@@ -41,6 +49,14 @@ export interface FastPathParams {
   readonly timezone: string;
   readonly locale: string;
   readonly now?: Date;
+}
+
+export interface ParsedMonetaryToken {
+  readonly raw: string;
+  readonly exactAmount: string | null;
+  readonly attachedCurrency: string | null;
+  readonly hasMultiplier: boolean;
+  readonly hasConflict: boolean;
 }
 
 /**
@@ -111,46 +127,128 @@ function formatExactMoneyDecimal(intPartRaw: string, fracPartRaw: string): strin
 }
 
 /**
- * Parses monetary amount using string manipulations with ZERO floating point arithmetic.
- * Returns exact string decimal (e.g. "85000.0000", "4.5000") or null if invalid / ambiguous / non-zero truncated.
+ * Parse an atomic monetary token, extracting exact amount, attached currency, and Vietnamese multiplier semantics.
+ * ATTACHED_ISO_CURRENCY_BOUND_TO_AMOUNT_TOKEN & ATTACHED_SYMBOL_CURRENCY_BOUND_TO_AMOUNT_TOKEN
  */
-export function parseFastPathAmount(rawAmountStr: string): string | null {
-  const trimmed = rawAmountStr.trim().toLowerCase();
-  if (!trimmed) return null;
-
-  // Clean currency symbols / suffixes if present at start or end
-  let cleaned = trimmed;
-  cleaned = cleaned.replace(/^[\$€¥]/, '').trim();
-  cleaned = cleaned.replace(/\s*(?:vnd|usd|eur|jpy|cny|krw|dong|đồng|đ|d|\$|€|¥)$/iu, '').trim();
-  if (!cleaned) return null;
-
-  // 1. Dot-thousands standard Vietnamese formatted number e.g. "85.000", "120.000", "1.000.000"
-  const dotThousandsMatch = cleaned.match(/^(\d{1,3}(?:\.\d{3})+)$/);
-  if (dotThousandsMatch) {
-    const intStr = dotThousandsMatch[1].replace(/\./g, '');
-    return formatExactMoneyDecimal(intStr, '');
+export function parseAtomicMonetaryToken(rawToken: string): ParsedMonetaryToken {
+  const trimmed = rawToken.trim();
+  if (!trimmed) {
+    return {
+      raw: rawToken,
+      exactAmount: null,
+      attachedCurrency: null,
+      hasMultiplier: false,
+      hasConflict: false,
+    };
   }
 
-  // 2. Comma-thousands standard Western formatted number e.g. "1,000" or "1,000.50"
-  const commaThousandsMatch = cleaned.match(/^(\d{1,3}(?:,\d{3})+)(?:\.(\d+))?$/);
+  let working = trimmed;
+  let leadingCurrency: string | null = null;
+  let trailingCurrency: string | null = null;
+  let hasConflict = false;
+
+  // 1. Check leading currency symbol
+  const leadingSymbolMatch = working.match(/^([\$€¥])\s*/);
+  if (leadingSymbolMatch) {
+    const sym = leadingSymbolMatch[1];
+    if (sym === '$') leadingCurrency = 'USD';
+    else if (sym === '€') leadingCurrency = 'EUR';
+    else if (sym === '¥') leadingCurrency = 'JPY';
+    working = working.slice(leadingSymbolMatch[0].length).trim();
+  }
+
+  // 2. Check trailing currency code / symbol / name
+  const trailingMatch = working.match(
+    /\s*(vnd|usd|eur|jpy|cny|krw|dong|đồng|đ|d|dollar|dollars|euro|euros|yen|yuan|tệ|won|\$|€|¥)$/iu
+  );
+  if (trailingMatch) {
+    const suffix = trailingMatch[1].toLowerCase();
+    if (suffix === 'vnd' || suffix === 'dong' || suffix === 'đồng' || suffix === 'đ' || suffix === 'd') {
+      trailingCurrency = 'VND';
+    } else if (suffix === 'usd' || suffix === 'dollar' || suffix === 'dollars' || suffix === '$') {
+      trailingCurrency = 'USD';
+    } else if (suffix === 'eur' || suffix === 'euro' || suffix === 'euros' || suffix === '€') {
+      trailingCurrency = 'EUR';
+    } else if (suffix === 'jpy' || suffix === 'yen' || suffix === '¥') {
+      trailingCurrency = 'JPY';
+    } else if (suffix === 'cny' || suffix === 'yuan' || suffix === 'tệ') {
+      trailingCurrency = 'CNY';
+    } else if (suffix === 'krw' || suffix === 'won') {
+      trailingCurrency = 'KRW';
+    }
+    working = working.slice(0, working.length - trailingMatch[0].length).trim();
+  }
+
+  // If both leading and trailing currency exist and disagree, flag conflict
+  let attachedCurrency: string | null = null;
+  if (leadingCurrency && trailingCurrency) {
+    if (leadingCurrency !== trailingCurrency) {
+      hasConflict = true;
+    } else {
+      attachedCurrency = leadingCurrency;
+    }
+  } else {
+    attachedCurrency = leadingCurrency || trailingCurrency;
+  }
+
+  if (!working) {
+    return {
+      raw: rawToken,
+      exactAmount: null,
+      attachedCurrency,
+      hasMultiplier: false,
+      hasConflict: true,
+    };
+  }
+
+  // 3. Dot-thousands standard Vietnamese formatted number e.g. "85.000", "120.000", "1.000.000"
+  const dotThousandsMatch = working.match(/^(\d{1,3}(?:\.\d{3})+)$/);
+  if (dotThousandsMatch) {
+    const intStr = dotThousandsMatch[1].replace(/\./g, '');
+    const exactAmount = formatExactMoneyDecimal(intStr, '');
+    return {
+      raw: rawToken,
+      exactAmount,
+      attachedCurrency,
+      hasMultiplier: false,
+      hasConflict,
+    };
+  }
+
+  // 4. Comma-thousands standard Western formatted number e.g. "1,000" or "1,000.50"
+  const commaThousandsMatch = working.match(/^(\d{1,3}(?:,\d{3})+)(?:\.(\d+))?$/);
   if (commaThousandsMatch) {
     const intStr = commaThousandsMatch[1].replace(/,/g, '');
     const fracStr = commaThousandsMatch[2] || '';
-    return formatExactMoneyDecimal(intStr, fracStr);
+    const exactAmount = formatExactMoneyDecimal(intStr, fracStr);
+    return {
+      raw: rawToken,
+      exactAmount,
+      attachedCurrency,
+      hasMultiplier: false,
+      hasConflict,
+    };
   }
 
-  // 3. Pattern: <digits_with_dot_or_comma><optional_space><multiplier>
-  const match = cleaned.match(
+  // 5. Multiplier pattern: <digits_with_dot_or_comma><optional_space><multiplier>
+  const match = working.match(
     /^(\d+(?:[.,]\d+)?)\s*(k|nghin|ngan|nghìn|ngàn|tr|triệu|trieu|m|ty|tỷ|b)?$/iu
   );
 
   if (!match) {
-    return null;
+    return {
+      raw: rawToken,
+      exactAmount: null,
+      attachedCurrency,
+      hasMultiplier: false,
+      hasConflict: true,
+    };
   }
 
   const numberPart = match[1].replace(',', '.');
   const multiplierPart = (match[2] || '').toLowerCase();
 
+  let hasMultiplier = false;
   let zerosToAdd = 0;
   if (
     multiplierPart === 'k' ||
@@ -159,6 +257,7 @@ export function parseFastPathAmount(rawAmountStr: string): string | null {
     multiplierPart === 'nghìn' ||
     multiplierPart === 'ngàn'
   ) {
+    hasMultiplier = true;
     zerosToAdd = 3;
   } else if (
     multiplierPart === 'tr' ||
@@ -166,9 +265,17 @@ export function parseFastPathAmount(rawAmountStr: string): string | null {
     multiplierPart === 'trieu' ||
     multiplierPart === 'm'
   ) {
+    hasMultiplier = true;
     zerosToAdd = 6;
   } else if (multiplierPart === 'ty' || multiplierPart === 'tỷ' || multiplierPart === 'b') {
+    hasMultiplier = true;
     zerosToAdd = 9;
+  }
+
+  // VND_MULTIPLIER_ATTACHED_FOREIGN_CURRENCY_CONFLICT:
+  // Vietnamese multiplier (k, tr, triệu, ...) attached to foreign currency (USD, EUR, $, etc.) is a conflict
+  if (hasMultiplier && attachedCurrency && attachedCurrency !== 'VND') {
+    hasConflict = true;
   }
 
   const parts = numberPart.split('.');
@@ -201,11 +308,30 @@ export function parseFastPathAmount(rawAmountStr: string): string | null {
     resultFrac = fracPartRaw;
   }
 
-  return formatExactMoneyDecimal(resultInt, resultFrac);
+  const exactAmount = formatExactMoneyDecimal(resultInt, resultFrac);
+
+  return {
+    raw: rawToken,
+    exactAmount,
+    attachedCurrency,
+    hasMultiplier,
+    hasConflict,
+  };
 }
 
 /**
- * Detect explicit currencies mentioned in text.
+ * Backward compatible wrapper for parseFastPathAmount.
+ */
+export function parseFastPathAmount(rawAmountStr: string): string | null {
+  const token = parseAtomicMonetaryToken(rawAmountStr);
+  if (token.hasConflict) {
+    return null;
+  }
+  return token.exactAmount;
+}
+
+/**
+ * Detect explicit currencies mentioned standalone in text.
  */
 export function detectExplicitCurrencies(text: string): readonly string[] {
   const currencies = new Set<string>();
@@ -213,7 +339,7 @@ export function detectExplicitCurrencies(text: string): readonly string[] {
 
   // Check 3-letter codes
   for (const code of SUPPORTED_CURRENCY_CODES) {
-    const regex = new RegExp(`(?:^|[\\s,;!?()[\\]{}])${code}(?=$|[\\s,;!?()[\\]{}])`, 'i');
+    const regex = new RegExp(`(?:^|[\\s,;!?()\\[\\]{}])${code}(?=$|[\\s,;!?()\\[\\]{}])`, 'i');
     if (regex.test(upper)) {
       currencies.add(code);
     }
@@ -254,9 +380,16 @@ export function hasVietnameseMultiplier(text: string): boolean {
   );
 }
 
+interface DateClaim {
+  readonly iso: string;
+  readonly start: number;
+  readonly end: number;
+}
+
 /**
- * Scan text for date patterns, validate them, and mask date spans out of text
- * so date components are never interpreted as monetary amounts.
+ * Scan text for all date claims, check for conflicts, validate calendar dates,
+ * reject unsupported partial dates, and mask date spans out of text.
+ * MULTIPLE_DATE_CLAIMS_FAILSAFE, CONFLICTING_DATE_CLAIMS_FAILSAFE, PARTIAL_DATE_DOES_NOT_DEFAULT_TODAY
  */
 export function maskDateSpansAndExtractDate(
   text: string,
@@ -266,76 +399,116 @@ export function maskDateSpansAndExtractDate(
   readonly maskedText: string;
   readonly detectedDate: string | null;
   readonly hasInvalidDate: boolean;
+  readonly hasPartialDate: boolean;
+  readonly hasDateConflict: boolean;
 } {
   let workingText = text;
-  let detectedDate: string | null = null;
+  const dateClaims: DateClaim[] = [];
   let hasInvalidDate = false;
+  let hasPartialDate = false;
 
-  // 1. Check relative date keywords first
   const normalized = removeVietnameseAccents(text.toLowerCase());
-  if (/(?:^|[\s,;!?()[\]{}])(hom kia)(?=$|[\s,;!?()[\]{}])/.test(normalized)) {
-    detectedDate = getIsoDateWithOffset(now, timezone, -2);
-    workingText = workingText.replace(/\bhom\s+kia\b/gi, '        ').replace(/\bhôm\s+kia\b/gi, '        ');
-  } else if (/(?:^|[\s,;!?()[\]{}])(hom qua|yesterday)(?=$|[\s,;!?()[\]{}])/.test(normalized)) {
-    detectedDate = getIsoDateWithOffset(now, timezone, -1);
-    workingText = workingText
-      .replace(/\bhom\s+qua\b/gi, '        ')
-      .replace(/\bhôm\s+qua\b/gi, '        ')
-      .replace(/\byesterday\b/gi, '         ');
-  } else if (/(?:^|[\s,;!?()[\]{}])(hom nay|today)(?=$|[\s,;!?()[\]{}])/.test(normalized)) {
-    detectedDate = getIsoDateWithOffset(now, timezone, 0);
-    workingText = workingText
-      .replace(/\bhom\s+nay\b/gi, '        ')
-      .replace(/\bhôm\s+nay\b/gi, '        ')
-      .replace(/\btoday\b/gi, '     ');
+
+  // PARTIAL_DATE_DOES_NOT_DEFAULT_TODAY:
+  // Detect incomplete/partial date claims (e.g. "ngày 4", "ngày 4 tháng 9", "tháng 9")
+  // that do not contain a complete, unambiguous calendar date.
+  const partialDayPattern =
+    /(?:^|[\s,;!?()[\]{}])(?:ngày|ngay)\s+(?:0?[1-9]|[12]\d|3[01])(?!\s*(?:tháng|thang)\s*(?:0?[1-9]|1[0-2])\s*(?:năm|nam)\s*\d{4}|\/\d{1,2}\/\d{4}|-\d{1,2}-\d{4})(?=$|[\s,;!?()[\]{}])/iu;
+  const partialDayMonthPattern =
+    /(?:^|[\s,;!?()[\]{}])(?:ngày|ngay)\s+(?:0?[1-9]|[12]\d|3[01])\s+(?:tháng|thang)\s+(?:0?[1-9]|1[0-2])(?!\s+(?:năm|nam)\s+\d{4})(?=$|[\s,;!?()[\]{}])/iu;
+  const partialMonthPattern =
+    /(?:^|[\s,;!?()[\]{}])(?:tháng|thang)\s+(?:0?[1-9]|1[0-2])(?!\s*(?:năm|nam)\s*\d{4}|\s*(?:k|nghìn|ngàn|nghin|ngan|tr|triệu|trieu|m|ty|tỷ|b|vnd|usd|eur|jpy|cny|krw|dong|đồng|đ|d|\$|€|¥|\.|\d))(?=$|[\s,;!?()[\]{}])/iu;
+
+  if (
+    partialDayPattern.test(text) ||
+    partialDayMonthPattern.test(text) ||
+    partialMonthPattern.test(text)
+  ) {
+    hasPartialDate = true;
   }
 
-  // 2. Check ISO Date: YYYY-MM-DD
-  const isoMatches = Array.from(workingText.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g));
-  for (const match of isoMatches) {
-    const rawMatch = match[0];
+  // 1. Relative date keywords
+  const relativeMatches: Array<{ pattern: RegExp; offset: number }> = [
+    { pattern: /\bhom\s+kia\b/gi, offset: -2 },
+    { pattern: /\bhom\s+qua\b|\byesterday\b/gi, offset: -1 },
+    { pattern: /\bhom\s+nay\b|\btoday\b/gi, offset: 0 },
+    { pattern: /\bngay\s+mai\b|\btomorrow\b/gi, offset: 1 },
+  ];
+
+  for (const rel of relativeMatches) {
+    const matches = Array.from(normalized.matchAll(rel.pattern));
+    for (const m of matches) {
+      const start = m.index ?? 0;
+      const end = start + m[0].length;
+      const iso = getIsoDateWithOffset(now, timezone, rel.offset);
+      dateClaims.push({ iso, start, end });
+    }
+  }
+
+  // 2. Explicit Vietnamese Date format: ngày DD tháng MM năm YYYY
+  const vnFullDateMatches = Array.from(
+    text.matchAll(/(?:ngày|ngay)\s+(\d{1,2})\s+(?:tháng|thang)\s+(\d{1,2})\s+(?:năm|nam)\s+(\d{4})/gi)
+  );
+  for (const m of vnFullDateMatches) {
+    const day = m[1].padStart(2, '0');
+    const month = m[2].padStart(2, '0');
+    const year = m[3];
+    const candidateIso = `${year}-${month}-${day}`;
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
+    if (isValidCalendarDate(candidateIso)) {
+      dateClaims.push({ iso: candidateIso, start, end });
+    } else {
+      hasInvalidDate = true;
+    }
+  }
+
+  // 3. ISO Date: YYYY-MM-DD
+  const isoMatches = Array.from(text.matchAll(/(?:ngày\s+|ngay\s+)?\b(\d{4})-(\d{2})-(\d{2})\b/gi));
+  for (const m of isoMatches) {
+    const rawMatch = `${m[1]}-${m[2]}-${m[3]}`;
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
     if (isValidCalendarDate(rawMatch)) {
-      if (!detectedDate) {
-        detectedDate = rawMatch;
-      }
+      dateClaims.push({ iso: rawMatch, start, end });
     } else {
       hasInvalidDate = true;
     }
   }
 
-  // 3. Check Slash Date: DD/MM/YYYY
-  const slashMatches = Array.from(workingText.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g));
-  for (const match of slashMatches) {
-    const day = match[1].padStart(2, '0');
-    const month = match[2].padStart(2, '0');
-    const year = match[3];
+  // 4. Slash Date: DD/MM/YYYY
+  const slashMatches = Array.from(text.matchAll(/(?:ngày\s+|ngay\s+)?\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/gi));
+  for (const m of slashMatches) {
+    const day = m[1].padStart(2, '0');
+    const month = m[2].padStart(2, '0');
+    const year = m[3];
     const candidateIso = `${year}-${month}-${day}`;
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
     if (isValidCalendarDate(candidateIso)) {
-      if (!detectedDate) {
-        detectedDate = candidateIso;
-      }
+      dateClaims.push({ iso: candidateIso, start, end });
     } else {
       hasInvalidDate = true;
     }
   }
 
-  // 4. Check Dash Date: DD-MM-YYYY
-  const dashMatches = Array.from(workingText.matchAll(/\b(\d{1,2})-(\d{1,2})-(\d{4})\b/g));
-  for (const match of dashMatches) {
-    const day = match[1].padStart(2, '0');
-    const month = match[2].padStart(2, '0');
-    const year = match[3];
+  // 5. Dash Date: DD-MM-YYYY
+  const dashMatches = Array.from(text.matchAll(/(?:ngày\s+|ngay\s+)?\b(\d{1,2})-(\d{1,2})-(\d{4})\b/gi));
+  for (const m of dashMatches) {
+    const day = m[1].padStart(2, '0');
+    const month = m[2].padStart(2, '0');
+    const year = m[3];
     const candidateIso = `${year}-${month}-${day}`;
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
     if (isValidCalendarDate(candidateIso)) {
-      if (!detectedDate) {
-        detectedDate = candidateIso;
-      }
+      dateClaims.push({ iso: candidateIso, start, end });
     } else {
       hasInvalidDate = true;
     }
   }
 
-  // Mask all date patterns from workingText to avoid numbers inside dates becoming amounts
+  // Mask all identified date patterns from workingText to avoid numbers inside dates becoming amounts
   workingText = workingText.replace(
     /(?:ngày\s+|ngay\s+)?\b\d{4}-\d{2}-\d{2}\b/gi,
     (m) => ' '.repeat(m.length)
@@ -348,22 +521,40 @@ export function maskDateSpansAndExtractDate(
     /(?:ngày\s+|ngay\s+)?\b\d{1,2}-\d{1,2}-\d{4}\b/gi,
     (m) => ' '.repeat(m.length)
   );
-
-  // Mask bare day-in-date context e.g. "ngày 4", "ngày 15", "ngay 20"
   workingText = workingText.replace(
-    /(?:ngày|ngay)\s+\d{1,2}(?:\s*(?:tháng|thang)\s*\d{1,2})?(?:\s*(?:năm|nam)\s*\d{4})?/gi,
+    /(?:ngày|ngay)\s+\d{1,2}\s+(?:tháng|thang)\s+\d{1,2}\s+(?:năm|nam)\s+\d{4}/gi,
+    (m) => ' '.repeat(m.length)
+  );
+  workingText = workingText.replace(
+    /\b(?:hôm\s+kia|hom\s+kia|hôm\s+qua|hom\s+qua|yesterday|hôm\s+nay|hom\s+nay|today|ngày\s+mai|ngay\s+mai|tomorrow)\b/gi,
     (m) => ' '.repeat(m.length)
   );
 
-  // If no date was found, default to trusted server today
-  if (!detectedDate && !hasInvalidDate) {
+  // MULTIPLE_DATE_CLAIMS_FAILSAFE & CONFLICTING_DATE_CLAIMS_FAILSAFE evaluation:
+  const distinctDates = Array.from(new Set(dateClaims.map((c) => c.iso)));
+  let hasDateConflict = false;
+  let detectedDate: string | null = null;
+
+  if (hasInvalidDate || hasPartialDate) {
+    detectedDate = null;
+  } else if (dateClaims.length === 0) {
+    // No date claim -> trusted server today
     detectedDate = getIsoDateWithOffset(now, timezone, 0);
+  } else if (distinctDates.length === 1) {
+    // Exactly one resolved date (even if claimed multiple times, e.g. "hôm nay" + "ngày 2026-09-04")
+    detectedDate = distinctDates[0];
+  } else {
+    // Multiple claims resolving to different dates -> conflict!
+    hasDateConflict = true;
+    detectedDate = null;
   }
 
   return {
     maskedText: workingText,
     detectedDate,
     hasInvalidDate,
+    hasPartialDate,
+    hasDateConflict,
   };
 }
 
@@ -373,10 +564,12 @@ export function maskDateSpansAndExtractDate(
  */
 export function extractPotentialAmounts(text: string): {
   readonly amounts: readonly string[];
+  readonly parsedTokens: readonly ParsedMonetaryToken[];
   readonly hasRange: boolean;
   readonly hasCorrection: boolean;
   readonly hasMultiTransaction: boolean;
   readonly hasUnconsumedToken: boolean;
+  readonly hasTokenCurrencyConflict: boolean;
 } {
   const normalized = removeVietnameseAccents(text.toLowerCase());
 
@@ -399,23 +592,30 @@ export function extractPotentialAmounts(text: string): {
     /\d+\s*(?:k|tr|trieu|nghin|ngan|vnd|usd|eur|jpy|cny|krw|d|đ)\s+roi\s+\d+/i.test(normalized);
 
   // Unicode-safe Regex for compound monetary expressions
-  // Matches expressions like "25 trieu", "85 nghin", "1.5 tr", "2 tỷ", "85k", "85.000", "120.000d", "120.000 VND", "4.50 USD", "$4.50", "€100"
+  // Matches expressions like "25 trieu", "85 nghin", "1.5 tr", "2 tỷ", "85k", "85.000", "120.000d", "120.000 VND", "4.50USD", "4.50 EUR", "$4.50", "€100", "85kUSD", "85k$"
   const compoundAmountRegex =
-    /(?:^|(?<=[\s,;!?()[\]{}]))(?:[\$€¥]\s*)?(?:\d{1,3}(?:\.\d{3})+|\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)(?:\s*(?:k|nghin|ngan|nghìn|ngàn|tr|triệu|trieu|m|ty|tỷ|b))?(?:\s*(?:vnd|usd|eur|jpy|cny|krw|dong|đồng|đ|d|\$|€|¥))?(?=$|[\s,;!?()[\]{}])/giu;
+    /(?:^|(?<=[\s,;!?()[\]{}]))(?:[\$€¥]\s*)?(?:\d{1,3}(?:\.\d{3})+|\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)(?:\s*(?:k|nghin|ngan|nghìn|ngàn|tr|triệu|trieu|m|ty|tỷ|b))?(?:\s*(?:vnd|usd|eur|jpy|cny|krw|dong|đồng|đ|d|dollar|dollars|euro|euros|yen|yuan|tệ|won|\$|€|¥))?(?=$|[\s,;!?()[\]{}])/giu;
 
   const foundAmounts: string[] = [];
+  const parsedTokens: ParsedMonetaryToken[] = [];
   const matchedSpans: Array<{ start: number; end: number; raw: string }> = [];
+  let hasTokenCurrencyConflict = false;
 
   const matches = Array.from(text.matchAll(compoundAmountRegex));
   for (const m of matches) {
     const rawMatch = m[0].trim();
     if (!/\d/.test(rawMatch)) continue;
 
-    const parsed = parseFastPathAmount(rawMatch);
-    if (parsed) {
-      foundAmounts.push(parsed);
+    const token = parseAtomicMonetaryToken(rawMatch);
+    parsedTokens.push(token);
+
+    if (token.hasConflict) {
+      hasTokenCurrencyConflict = true;
+    }
+
+    if (token.exactAmount) {
+      foundAmounts.push(token.exactAmount);
       const matchIndex = m.index ?? 0;
-      // account for leading boundary offset if any
       const actualStart = text.indexOf(rawMatch, matchIndex);
       matchedSpans.push({
         start: actualStart >= 0 ? actualStart : matchIndex,
@@ -457,10 +657,12 @@ export function extractPotentialAmounts(text: string): {
 
   return {
     amounts: foundAmounts,
+    parsedTokens,
     hasRange,
     hasCorrection,
     hasMultiTransaction,
     hasUnconsumedToken,
+    hasTokenCurrencyConflict,
   };
 }
 
@@ -528,15 +730,37 @@ export function detectFastPathType(text: string): 'INCOME' | 'EXPENSE' | null {
 }
 
 /**
- * Detect currency and check for currency conflicts.
+ * Detect currency and check for currency conflicts across text and parsed tokens.
  * Returns currency string or null if currency conflict / unsupported currency detected.
  */
 export function resolveFastPathCurrency(
   text: string,
-  baseCurrency: string
+  baseCurrency: string,
+  parsedTokens: readonly ParsedMonetaryToken[] = []
 ): { readonly currencyCode: string | null; readonly hasConflict: boolean } {
-  const explicit = detectExplicitCurrencies(text);
-  const hasMultiplier = hasVietnameseMultiplier(text);
+  const explicitSet = new Set<string>();
+
+  // Add explicit currencies detected across text
+  for (const c of detectExplicitCurrencies(text)) {
+    explicitSet.add(c);
+  }
+
+  // Add attached currencies directly bound to amount tokens
+  let hasTokenMultiplier = false;
+  for (const t of parsedTokens) {
+    if (t.hasConflict) {
+      return { currencyCode: null, hasConflict: true };
+    }
+    if (t.attachedCurrency) {
+      explicitSet.add(t.attachedCurrency);
+    }
+    if (t.hasMultiplier) {
+      hasTokenMultiplier = true;
+    }
+  }
+
+  const explicit = Array.from(explicitSet);
+  const hasMultiplier = hasTokenMultiplier || hasVietnameseMultiplier(text);
 
   // Multiple distinct explicit currencies -> conflict!
   if (explicit.length > 1) {
@@ -748,7 +972,12 @@ export function tryDeterministicFastPath(params: FastPathParams): FastPathResult
 
   // 1. Date scanning, calendar validation & date span masking
   const dateScan = maskDateSpansAndExtractDate(trimmed, timezone, now);
-  if (dateScan.hasInvalidDate || !dateScan.detectedDate) {
+  if (
+    dateScan.hasInvalidDate ||
+    dateScan.hasPartialDate ||
+    dateScan.hasDateConflict ||
+    !dateScan.detectedDate
+  ) {
     return { eligible: false, output: null };
   }
 
@@ -759,6 +988,7 @@ export function tryDeterministicFastPath(params: FastPathParams): FastPathResult
     amountAnalysis.hasCorrection ||
     amountAnalysis.hasMultiTransaction ||
     amountAnalysis.hasUnconsumedToken ||
+    amountAnalysis.hasTokenCurrencyConflict ||
     amountAnalysis.amounts.length !== 1
   ) {
     return { eligible: false, output: null };
@@ -772,8 +1002,12 @@ export function tryDeterministicFastPath(params: FastPathParams): FastPathResult
     return { eligible: false, output: null };
   }
 
-  // 4. Resolve currency and check for currency conflicts (e.g. 85k USD, multiple currencies)
-  const currencyResolution = resolveFastPathCurrency(trimmed, baseCurrency);
+  // 4. Resolve currency and check for currency conflicts (e.g. 85k USD, 85k$, 1trEUR, multiple currencies)
+  const currencyResolution = resolveFastPathCurrency(
+    trimmed,
+    baseCurrency,
+    amountAnalysis.parsedTokens
+  );
   if (currencyResolution.hasConflict || !currencyResolution.currencyCode) {
     return { eligible: false, output: null };
   }
@@ -852,3 +1086,4 @@ export function tryDeterministicFastPath(params: FastPathParams): FastPathResult
     output,
   };
 }
+
