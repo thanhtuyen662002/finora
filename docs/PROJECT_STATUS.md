@@ -5,8 +5,11 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion (CLOSED / PASS) | Phase 12B — Receipt Vision (CONTRACT_DISCOVERY_AUTHORIZED)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12 Overall: PARTIAL
+- **Current phase:** Phase 12B — Receipt Vision Contract Discovery
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_DISCOVERY_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+- **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
+- **Phase 12B implementation:** NOT AUTHORIZED
+- **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1112,5 +1115,28 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - **Phase 12A Overall:** PASS (CLOSED)
 
 ### Next Recommended Step
-- Proceed to Phase 12B — Receipt Vision (CONTRACT_DISCOVERY_AUTHORIZED=true, IMPLEMENTATION_AUTHORIZED=false).
+- Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
+
+## Phase 12B — Receipt Vision (Contract Discovery)
+
+### Status: CONTRACT_DISCOVERY_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+
+- **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
+- **Phase 12B Implementation:** NOT AUTHORIZED
+- **Phase 12C Implementation:** NOT AUTHORIZED
+
+- **Contract Invariants & Specifications Established:**
+  1. **One Image -> One Purchase-Transaction Draft:** Gated to `PURCHASE_RECEIPT` only; `INVOICE`, `CREDIT_NOTE`, and `OTHER` do not produce applicable expense drafts.
+  2. **Single-Provider-Call Bound:** Exactly 1 structured multimodal vision call per explicit Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`).
+  3. **Zero Financial Mutation Authority:** Analyze, Preview, and Apply actions perform 0 financial database mutations. Persistence is strictly gated to the existing user-initiated `addTransactionAction` explicit save path.
+  4. **Ephemeral Image Lifecycle & Privacy:** `RECEIPT_IMAGE_PERSISTENCE = false`. Zero Supabase Storage uploads, zero database blobs, zero image archiving, and zero EXIF/GPS metadata passed to provider.
+  5. **Exact Money & Type Safety:** Amounts are strictly positive canonical 4-decimal strings (`numeric(20,4)`). Floating-point conversions are strictly forbidden.
+  6. **Account Inference:** Always `null` in V1; user manually selects account before saving.
+  7. **Line-Item Policy:** `LINE_ITEM_SPLITTING = false` in V1.
+  8. **SSRF Prevention:** Accepts browser-uploaded `File` byte streams only. Remote URLs (`http://`, `https://`) are strictly rejected.
+  9. **Phase 10 / Phase 11 Integration:** Reuses centralized `receipt_vision` operation in `src/lib/ai/config.ts` and Phase 11 priority credential provider (`PERSONAL > ADMIN_ASSIGNED > SYSTEM`).
+
+### Next Recommended Step
+- Independent architectural audit of `docs/PHASE_12B_CONTRACT_DISCOVERY.md` prior to authorization of Pass 12B-1 implementation.
+
 
