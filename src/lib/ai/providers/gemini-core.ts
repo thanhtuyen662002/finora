@@ -196,6 +196,15 @@ export class GeminiProviderCore implements AiProvider {
             attempts: 1,
           },
         };
+
+        // Receipt Vision operation MUST fail closed if media is missing, invalid, or empty
+        if (!request.media || request.media.length !== 1) {
+          throw new AiError({
+            code: 'AI_INVALID_REQUEST',
+            message: 'Receipt vision requires exactly one media item.',
+            providerId: this.id,
+          });
+        }
       }
 
       // Map contents: text-only vs multimodal inline image
@@ -209,6 +218,26 @@ export class GeminiProviderCore implements AiProvider {
           });
         }
         const mediaPart = request.media[0];
+
+        // Runtime MIME validation against allowlist
+        const ALLOWED_MIMES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!ALLOWED_MIMES.includes(mediaPart.mimeType)) {
+          throw new AiError({
+            code: 'AI_INVALID_REQUEST',
+            message: `Unsupported media MIME type: ${String(mediaPart.mimeType)}`,
+            providerId: this.id,
+          });
+        }
+
+        // Runtime empty bytes check
+        if (!mediaPart.bytes || mediaPart.bytes.length === 0) {
+          throw new AiError({
+            code: 'AI_INVALID_REQUEST',
+            message: 'Media byte array cannot be empty.',
+            providerId: this.id,
+          });
+        }
+
         const base64Data = Buffer.from(mediaPart.bytes).toString('base64');
         contents = [
           {

@@ -123,7 +123,7 @@ export async function executeReceiptVisionCore(
     return {
       ok: false,
       error: {
-        code: 'RECEIPT_IMAGE_CORRUPTED',
+        code: 'RECEIPT_IMAGE_DECODE_FAILED',
         message: 'Lỗi không xác định khi xử lý ảnh hóa đơn.',
       },
     };

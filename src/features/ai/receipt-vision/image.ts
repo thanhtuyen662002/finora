@@ -10,13 +10,22 @@ import 'server-only';
 
 import sharp, { type Sharp, type Metadata } from 'sharp';
 import type { AiInlineMediaMimeType } from '@/lib/ai/types';
+import {
+  PHASE_12B_MAX_RECEIPT_FILE_BYTES,
+  PHASE_12B_MAX_DECODED_PIXELS,
+  PHASE_12B_MAX_DIMENSION,
+  PHASE_12B_NORMALIZED_MAX_LONG_EDGE_PX,
+  PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES,
+} from './constants';
 import type { ReceiptVisionErrorCode } from './types';
 
-export const PHASE_12B_MAX_RECEIPT_FILE_BYTES = 4194304; // 4 MiB
-export const PHASE_12B_MAX_DECODED_PIXELS = 20000000; // 20 MP
-export const PHASE_12B_MAX_DIMENSION = 8192; // 8192px max width/height
-export const PHASE_12B_NORMALIZED_MAX_LONG_EDGE_PX = 2048;
-export const PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES = 4194304;
+export {
+  PHASE_12B_MAX_RECEIPT_FILE_BYTES,
+  PHASE_12B_MAX_DECODED_PIXELS,
+  PHASE_12B_MAX_DIMENSION,
+  PHASE_12B_NORMALIZED_MAX_LONG_EDGE_PX,
+  PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES,
+};
 
 export class ReceiptImageError extends Error {
   readonly code: ReceiptVisionErrorCode;
@@ -102,12 +111,12 @@ export async function normalizeReceiptImage(
 
   // 1. Check input byte size
   if (bytes.length === 0) {
-    throw new ReceiptImageError('RECEIPT_IMAGE_REQUIRED', 'Tệp ảnh hóa đơn không được để trống.');
+    throw new ReceiptImageError('RECEIPT_FILE_REQUIRED', 'Tệp ảnh hóa đơn không được để trống.');
   }
 
   if (bytes.length > PHASE_12B_MAX_RECEIPT_FILE_BYTES) {
     throw new ReceiptImageError(
-      'RECEIPT_IMAGE_TOO_LARGE',
+      'RECEIPT_FILE_TOO_LARGE',
       `Kích thước ảnh vượt quá giới hạn cho phép (${(PHASE_12B_MAX_RECEIPT_FILE_BYTES / (1024 * 1024)).toFixed(0)}MB).`
     );
   }
@@ -116,8 +125,25 @@ export async function normalizeReceiptImage(
   const detectedMime = detectImageSignature(bytes);
   if (!detectedMime) {
     throw new ReceiptImageError(
-      'RECEIPT_IMAGE_INVALID_TYPE',
+      'RECEIPT_FILE_TYPE_UNSUPPORTED',
       'Định dạng ảnh không được hỗ trợ. Chỉ chấp nhận JPEG, PNG hoặc WebP.'
+    );
+  }
+
+  // Pre-decode binary check: Animated WebP (VP8X with animation flag bit)
+  const isAnimatedWebpHeader =
+    detectedMime === 'image/webp' &&
+    bytes.length >= 21 &&
+    bytes[12] === 0x56 &&
+    bytes[13] === 0x50 &&
+    bytes[14] === 0x38 &&
+    bytes[15] === 0x58 && // 'VP8X'
+    (bytes[20] & 0x02) !== 0; // Animation flag bit
+
+  if (isAnimatedWebpHeader) {
+    throw new ReceiptImageError(
+      'RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED',
+      'Ảnh động hoặc tệp nhiều trang không được hỗ trợ.'
     );
   }
 
@@ -127,7 +153,7 @@ export async function normalizeReceiptImage(
     const allowedClientMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!allowedClientMimes.includes(clientMime)) {
       throw new ReceiptImageError(
-        'RECEIPT_IMAGE_INVALID_TYPE',
+        'RECEIPT_FILE_TYPE_UNSUPPORTED',
         `MIME type '${fileMeta.type}' không hợp lệ.`
       );
     }
@@ -138,7 +164,7 @@ export async function normalizeReceiptImage(
       (detectedMime === 'image/webp' && clientMime !== 'image/webp')
     ) {
       throw new ReceiptImageError(
-        'RECEIPT_IMAGE_INVALID_TYPE',
+        'RECEIPT_FILE_TYPE_UNSUPPORTED',
         `Định dạng tệp không khớp với phần mở rộng hoặc MIME type được cung cấp.`
       );
     }
@@ -159,12 +185,12 @@ export async function normalizeReceiptImage(
     const message = err instanceof Error ? err.message : String(err);
     if (message.toLowerCase().includes('pixel limit') || message.toLowerCase().includes('input image exceeds')) {
       throw new ReceiptImageError(
-        'RECEIPT_IMAGE_DIMENSIONS_EXCEEDED',
+        'RECEIPT_IMAGE_TOO_LARGE',
         'Kích thước điểm ảnh vượt quá giới hạn tối đa 20 megapixel.'
       );
     }
     throw new ReceiptImageError(
-      'RECEIPT_IMAGE_CORRUPTED',
+      'RECEIPT_IMAGE_DECODE_FAILED',
       'Không thể đọc dữ liệu ảnh hoặc tệp ảnh bị lỗi.'
     );
   }
@@ -181,19 +207,19 @@ export async function normalizeReceiptImage(
     width <= 0 ||
     height <= 0
   ) {
-    throw new ReceiptImageError('RECEIPT_IMAGE_CORRUPTED', 'Không xác định được kích thước ảnh.');
+    throw new ReceiptImageError('RECEIPT_IMAGE_DECODE_FAILED', 'Không xác định được kích thước ảnh.');
   }
 
   if (width > PHASE_12B_MAX_DIMENSION || height > PHASE_12B_MAX_DIMENSION) {
     throw new ReceiptImageError(
-      'RECEIPT_IMAGE_DIMENSIONS_EXCEEDED',
+      'RECEIPT_IMAGE_TOO_LARGE',
       `Kích thước chiều rộng hoặc chiều cao ảnh (${width}x${height}) vượt quá giới hạn ${PHASE_12B_MAX_DIMENSION}px.`
     );
   }
 
   if (width * height > PHASE_12B_MAX_DECODED_PIXELS) {
     throw new ReceiptImageError(
-      'RECEIPT_IMAGE_DIMENSIONS_EXCEEDED',
+      'RECEIPT_IMAGE_TOO_LARGE',
       'Tổng số điểm ảnh vượt quá giới hạn tối đa 20 megapixel.'
     );
   }
@@ -201,7 +227,23 @@ export async function normalizeReceiptImage(
   // 6. Single-frame enforcement (effectivePages === 1, no multi-frame animation)
   const effectivePages = metadata.pages ?? 1;
   const hasMultiplePages = effectivePages > 1 || (typeof metadata.pageHeight === 'number' && metadata.pageHeight < height);
-  if (hasMultiplePages) {
+  const isAnimatedWebp =
+    bytes.length >= 21 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 && // RIFF
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50 && // WEBP
+    bytes[12] === 0x56 &&
+    bytes[13] === 0x50 &&
+    bytes[14] === 0x38 &&
+    bytes[15] === 0x58 && // VP8X
+    (bytes[20] & 0x02) !== 0; // Animation flag bit
+
+  if (hasMultiplePages || isAnimatedWebp) {
     throw new ReceiptImageError(
       'RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED',
       'Ảnh động hoặc tệp nhiều trang không được hỗ trợ.'
@@ -255,7 +297,7 @@ export async function normalizeReceiptImage(
       throw err;
     }
     throw new ReceiptImageError(
-      'RECEIPT_IMAGE_CORRUPTED',
+      'RECEIPT_IMAGE_DECODE_FAILED',
       'Lỗi trong quá trình chuẩn hóa ảnh hóa đơn.'
     );
   }

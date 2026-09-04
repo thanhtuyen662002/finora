@@ -10,7 +10,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Image as ImageIcon, AlertCircle, X, Loader2, Sparkles } from 'lucide-react';
-import { PHASE_12B_MAX_RECEIPT_FILE_BYTES } from '../image';
+import { PHASE_12B_MAX_RECEIPT_FILE_BYTES } from '../constants';
 
 export interface ReceiptPickerProps {
   readonly onAnalyze?: (file: File) => Promise<void>;
@@ -103,9 +103,8 @@ export function ReceiptPicker({
     setLocalError(null);
     try {
       await onAnalyze(selectedFile);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Lỗi khi gửi yêu cầu phân tích ảnh.';
-      setLocalError(msg);
+    } catch {
+      setLocalError('Không thể gửi yêu cầu phân tích hóa đơn. Vui lòng thử lại.');
     }
   }, [selectedFile, isAnalyzing, onAnalyze]);
 
