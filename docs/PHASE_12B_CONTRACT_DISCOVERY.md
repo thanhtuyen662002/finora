@@ -15,13 +15,17 @@ Phase 12B establishes the architectural contract for **Ephemeral Receipt Vision 
 ```text
 User Selects Image (Camera / File)
        ↓
+[Client Preflight Check] (Reject if file.size > 4 MiB with RECEIPT_FILE_TOO_LARGE)
+       ↓
 Browser Local Preview (Object URL)
        ↓
 User Explicit Click: "Phân tích hóa đơn"
        ↓
 [Authenticated Server Action Gate] (auth.getUser() session check; fails closed before resource consumption)
        ↓
-[Server-Side Image Normalization & Validation] (Magic bytes, decode check, bounds check, EXIF stripped, ephemerally buffered)
+[Server-Side Size & Signature Validation] (file.size <= 4 MiB; magic bytes check for JPEG/PNG/WebP; rejects SVG/GIF/HEIC/PDF)
+       ↓
+[Sharp In-Memory Normalization Pipeline] (Decode check, format consistency, bounds check <=8192px / <=20MP, EXIF stripped, auto-orient)
        ↓
 [RLS Candidate Reads] (Query active categories with bounded limit via caller's authenticated RLS client)
        ↓
@@ -56,21 +60,23 @@ User Explicit Click: "Phân tích hóa đơn"
 - **Supported User Flow:**
   1. User opens the **Add Transaction** modal (`AddTransactionModal`).
   2. User selects **"Quét hóa đơn"** and chooses a receipt image or captures a photo via mobile camera.
-  3. Finora displays a client-side local image preview.
-  4. User explicitly clicks **"Phân tích hóa đơn"** (Analyze).
-  5. The authenticated Server Action validates file signature, size, dimensions, and image integrity.
-  6. The server normalizes the image (EXIF stripping, orientation, bounded dimension check).
-  7. The existing Phase 10 `AiRouter` executes the `receipt_vision` logical operation with provider-neutral media.
-  8. The existing Phase 11 `AiCredentialProvider` resolves the appropriate active credential.
-  9. The structured output is strictly validated by `AiOutputValidator<ReceiptVisionParseOutput>`.
-  10. Server exact-money canonicalizer converts lexical amount to canonical `numeric(20,4)` string.
-  11. The server performs domain semantic validation, classifies document kind, and computes `can_apply`.
-  12. Active candidate categories are revalidated under authenticated RLS.
-  13. The browser receives a non-persisted `ReceiptTransactionDraft` DTO.
-  14. User inspects, reviews, and edits the parsed fields in receipt preview.
-  15. User clicks **"Áp dụng"** (Apply) to populate the normal transaction form (with no silent default leakage).
-  16. User reviews the populated form and clicks **"Lưu giao dịch"** (Save) to commit.
-  17. The existing standard transaction mutation engine (`addTransactionAction`) persists the record.
+  3. Client preflight checks `file.size <= 4 MiB` (4,194,304 bytes). If oversized, client displays `RECEIPT_FILE_TOO_LARGE` immediately.
+  4. Finora displays a client-side local image preview.
+  5. User explicitly clicks **"Phân tích hóa đơn"** (Analyze).
+  6. The authenticated Server Action enforces `auth.getUser()` and re-verifies `file.size <= 4 MiB`.
+  7. Server verifies binary magic bytes, rejecting unsupported MIME types before image decoding.
+  8. Server invokes `sharp` to decode, inspect dimensions (<= 8192px) and pixel count (<= 20MP), auto-orient, strip metadata, and normalize the raster buffer in memory.
+  9. The existing Phase 10 `AiRouter` executes the `receipt_vision` logical operation with provider-neutral media.
+  10. The existing Phase 11 `AiCredentialProvider` resolves the appropriate active credential.
+  11. The structured output is strictly validated by `AiOutputValidator<ReceiptVisionParseOutput>`.
+  12. Server exact-money canonicalizer converts lexical amount to canonical `numeric(20,4)` string.
+  13. The server performs domain semantic validation, classifies document kind, and computes `can_apply`.
+  14. Active candidate categories are revalidated under authenticated RLS.
+  15. The browser receives a non-persisted `ReceiptTransactionDraft` DTO.
+  16. User inspects, reviews, and edits the parsed fields in receipt preview.
+  17. User clicks **"Áp dụng"** (Apply) to populate the normal transaction form (with no silent default leakage).
+  18. User reviews the populated form and clicks **"Lưu giao dịch"** (Save) to commit.
+  19. The existing standard transaction mutation engine (`addTransactionAction`) persists the record.
 
 **CRITICAL INVARIANT:** Direct receipt-to-database persistence is strictly prohibited. Parse, Preview, and Apply actions perform exactly 0 database writes.
 
@@ -104,10 +110,33 @@ export type ReceiptDocumentKind =
 
 ---
 
-## 4. Input Contract & Conservative Resource Limits
+## 4. Production Upload Limit, Next.js Config & Sharp Processing Policy
 
-### 4.1 Allowed Formats & Strict Exclusion Policy
-- **Accepted MIME Types:**
+### 4.1 Production Payload Architecture & Upload Limits
+Authoritative production deployment is Vercel. Platform constraints:
+- **Vercel Function Request Payload Limit:** `4.5 MB`
+- **Next.js Server Action Default Limit:** `1 MB`
+- **Application File Size Limit:** `4 MiB` (`4,194,304 bytes`, `PHASE_12B_MAX_RECEIPT_FILE_BYTES = 4194304`)
+
+To guarantee reliable operation without exceeding platform limits, the architecture enforces:
+```text
+APPLICATION_FILE_LIMIT (4 MiB) < NEXT_SERVER_ACTION_BODY_LIMIT (4.25mb) < VERCEL_FUNCTION_PAYLOAD_LIMIT (4.5 MB)
+```
+
+1. **Application Cap:** `file.size <= 4 MiB` (4,194,304 bytes). The 4 MiB file cap intentionally leaves headroom below Vercel's 4.5 MB whole-request payload limit for multipart/Server Action metadata.
+2. **Next.js Framework Config:** Pass 12B-1 will configure `next.config.ts`:
+   ```typescript
+   experimental: {
+     serverActions: {
+       bodySizeLimit: '4.25mb',
+     },
+   },
+   ```
+   *Note:* This framework setting acts as a request-body ceiling and does not replace application validation. Next.js config cannot override the Vercel platform ceiling.
+3. **Client Preflight:** Client rejects selected files > 4 MiB before Analyze with UI error `RECEIPT_FILE_TOO_LARGE`. The server remains authoritative and repeats size validation before processing.
+
+### 4.2 Allowed Formats & Strict Exclusion Policy
+- **Accepted Formats:**
   - `image/jpeg` (`.jpg`, `.jpeg`)
   - `image/png` (`.png`)
   - `image/webp` (`.webp`)
@@ -119,33 +148,58 @@ export type ReceiptDocumentKind =
   - `image/tiff` (TIFF — uncompressed/multi-layer complexity)
   - Remote URLs / Web Links (SSRF prevention)
 
-### 4.2 Application Resource Limits
-These limits protect server resources, memory, and provider quotas:
-- **Max Input Bytes:** `8 MiB` (8,388,608 bytes).
-- **Max Decoded Dimensions:** `8,192 px` on either width or height.
-- **Max Decoded Pixels:** `20 Megapixels` (20,000,000 pixels).
-- **Single Image Rule:** Exactly 1 image per analyze request.
+### 4.3 Image Processing Dependency & Sharp Security Contract
+Current `package.json` has no direct image decode/normalization dependency. Pass 12B-1 is authorized to add exactly one new production dependency:
+- **Dependency:** `sharp`
+- **Scope:** `PHASE_12B_IMPLEMENTATION_PACKAGE_CHANGE_ALLOWED = true`, `PHASE_12B_ALLOWED_NEW_PRODUCTION_DEPENDENCIES = sharp`, `OTHER_NEW_DEPENDENCIES = false`.
+- **Purpose:**
+  - Decode JPEG/PNG/WebP raster buffers in-memory;
+  - Inspect actual dimensions and pixel count;
+  - Validate decoded raster integrity;
+  - Auto-orient based on EXIF orientation tags;
+  - Normalize raster representation;
+  - Resize/downscale within bounded working dimensions;
+  - Strip all metadata by re-encoding;
+  - Output normalized JPEG/PNG/WebP buffer.
+- **Prohibited:** No hand-written image codecs, no ImageMagick shell execution, no external image processing web services.
 
-*Note:* Downscaling to an OCR working bound (e.g. max 2048px on longest edge) is an implementation policy candidate for server efficiency and OCR performance, not an immutable provider constraint.
+#### Sharp Security Pipeline Sequence:
+```text
+Authenticated user (auth.getUser())
+       ↓
+File required & count == 1
+       ↓
+Size <= 4 MiB (4,194,304 bytes)
+       ↓
+Magic-byte signature detection (JPEG: FF D8 FF, PNG: 89 50 4E 47, WebP: 52 49 46 46...57 45 42 50)
+       ↓
+Signature must be JPEG, PNG, or WebP (SVG/GIF/TIFF/HEIC/PDF rejected before sharp)
+       ↓
+Sharp metadata / decode validation (reject if malformed: RECEIPT_IMAGE_DECODE_FAILED)
+       ↓
+Decoded format must agree with allowed MIME format
+       ↓
+Dimension <= 8192px on each axis & Pixels <= 20,000,000 (RECEIPT_IMAGE_TOO_LARGE)
+       ↓
+Sharp auto-orient & re-encode (metadata completely stripped)
+       ↓
+Provider-neutral AiInlineMediaPart (Uint8Array buffer in memory)
+```
 
-### 4.3 Validation Pipeline
-File validation must never rely solely on client-supplied `Content-Type` headers or filename extensions:
-1. **Size check:** Reject if buffer length exceeds 8 MiB (`RECEIPT_FILE_TOO_LARGE`).
-2. **Magic-byte verification:** Verify binary signatures (e.g. JPEG `FF D8 FF`, PNG `89 50 4E 47`, WebP `52 49 46 46 ... 57 45 42 50`).
-3. **Decoded raster validation:** Validate header dimensions and raster decode integrity (`RECEIPT_IMAGE_DECODE_FAILED`).
-4. **Dimension & pixel limits:** Reject if dimensions exceed 8192px or pixel count exceeds 20MP (`RECEIPT_IMAGE_TOO_LARGE`).
+- Use `Buffer` / `Uint8Array` in memory only; zero filesystem writes, zero temp files.
 
 ---
 
 ## 5. Image Normalization, Privacy & Ephemeral Lifecycle
 
 ### 5.1 Preprocessing Pipeline
-Before sending the image to the multimodal provider adapter, server-side preprocessing must:
-- Auto-orient the image using EXIF orientation metadata;
-- Normalize the raster representation to standard RGB;
-- Downscale proportionally only if dimensions exceed optimal OCR bounds while preserving high text legibility;
-- **Strip all EXIF, GPS, device, timestamp, and camera metadata** from the buffer sent to the AI provider;
-- Reject animated or malformed chunks.
+Before sending the image to the multimodal provider adapter, server-side preprocessing via `sharp`:
+- Auto-orients the image using EXIF orientation metadata;
+- Normalizes the raster representation to standard RGB;
+- Downscales proportionally only if dimensions exceed optimal OCR bounds while preserving high text legibility;
+- **Strips all EXIF, GPS, device, timestamp, and camera metadata** from the buffer sent to the AI provider;
+- **Does not use EXIF date** as the transaction date (the transaction date must be extracted from the visible receipt text);
+- Rejects animated or malformed chunks.
 
 ### 5.2 Storage & Persistence Policy
 - **Policy:** `RECEIPT_IMAGE_PERSISTENCE = false`.
@@ -459,6 +513,8 @@ export interface ReceiptTransactionDraft {
 ```text
 [NO_IMAGE]
     ↓ (User selects file / camera)
+[CLIENT_PREFLIGHT] (Check file.size <= 4 MiB; if oversized, display RECEIPT_FILE_TOO_LARGE)
+    ↓
 [IMAGE_SELECTED] (Local preview displayed, Analyze button enabled)
     ↓ (User clicks "Phân tích hóa đơn")
 [ANALYZING] (Loading indicator, button disabled, cancel enabled)
@@ -482,10 +538,10 @@ export interface ReceiptTransactionDraft {
 ### 16.1 Error Taxonomy
 - **Input Validation Errors:**
   - `RECEIPT_FILE_REQUIRED`
-  - `RECEIPT_FILE_TOO_LARGE`
+  - `RECEIPT_FILE_TOO_LARGE` (triggered if file > 4 MiB / 4,194,304 bytes)
   - `RECEIPT_FILE_TYPE_UNSUPPORTED`
   - `RECEIPT_FILE_INVALID`
-  - `RECEIPT_IMAGE_TOO_LARGE`
+  - `RECEIPT_IMAGE_TOO_LARGE` (triggered if dimensions > 8192px or pixels > 20MP)
   - `RECEIPT_IMAGE_DECODE_FAILED`
 - **AI Execution Errors:** Reuses Phase 10 `AiErrorCode` (13 codes: `AI_NOT_CONFIGURED`, `AI_PROVIDER_UNAVAILABLE`, `AI_AUTH_FAILED`, `AI_RATE_LIMITED`, `AI_TIMEOUT`, `AI_ABORTED`, `AI_INVALID_REQUEST`, `AI_INVALID_RESPONSE`, `AI_STRUCTURED_OUTPUT_INVALID`, `AI_PROVIDER_ERROR`, `AI_CREDENTIAL_CORRUPTED`, `AI_CREDENTIAL_KEY_UNAVAILABLE`, `AI_CREDENTIAL_RESOLUTION_FAILED`).
 - **Session Errors:** `AUTH_REQUIRED`.
@@ -496,7 +552,7 @@ Telemetry emitted under `FINORA_RECEIPT_VISION_TIMING` must strictly contain saf
   - `operation = 'receipt_vision'`
   - `success: boolean`
   - `input_format: 'jpeg' | 'png' | 'webp'`
-  - `input_bytes_bucket: string` (e.g. `'<1MB'`, `'1-4MB'`, `'4-8MB'`)
+  - `input_bytes_bucket: string` (e.g. `'<1MB'`, `'1-2MB'`, `'2-4MB'`)
   - `image_width_bucket: string`
   - `image_height_bucket: string`
   - `preprocess_ms: number`
@@ -527,7 +583,30 @@ Telemetry emitted under `FINORA_RECEIPT_VISION_TIMING` must strictly contain saf
 ## 18. Implementation Test Matrix & Verification Gates
 
 ### 18.1 Test Matrix for Phase 12B Implementation
-1. **Multimodal Foundation & Media Pipeline:**
+1. **Platform Upload Limit & Server Action Config:**
+   - Application file limit exact 4 MiB (`PHASE_12B_MAX_RECEIPT_FILE_BYTES = 4194304`).
+   - File > 4 MiB rejected with `RECEIPT_FILE_TOO_LARGE`.
+   - Client preflight rejects > 4 MiB before network request.
+   - Server repeats > 4 MiB rejection fail-closed.
+   - `next.config.ts` `serverActions.bodySizeLimit` configured to `'4.25mb'`.
+   - Configured body limit > 4 MiB application cap.
+   - Configured body limit remains below 4.5 MB Vercel platform budget.
+2. **Sharp Image Processing & Security:**
+   - Only `sharp` is authorized and added as a direct new production dependency.
+   - Valid JPEG decoded and normalized.
+   - Valid PNG decoded and normalized.
+   - Valid WebP decoded and normalized.
+   - GIF rejected before normalization.
+   - SVG rejected before normalization.
+   - TIFF/HEIC/PDF rejected before normalization.
+   - Corrupted/malformed raster rejected with `RECEIPT_IMAGE_DECODE_FAILED`.
+   - Magic byte / decoded format disagreement rejected.
+   - Dimension > 8192px rejected with `RECEIPT_IMAGE_TOO_LARGE`.
+   - Pixels > 20,000,000 rejected with `RECEIPT_IMAGE_TOO_LARGE`.
+   - EXIF orientation normalized in raster.
+   - All EXIF/GPS/device metadata stripped from normalized output.
+   - Original EXIF date does not enter transaction draft.
+3. **Multimodal Foundation & Media Pipeline:**
    - Provider-neutral inline image type definition and serialization.
    - `AiRouter` transparent pass-through of `media` payload.
    - Gemini provider adapter mapping to `inlineData` parts.
@@ -535,18 +614,7 @@ Telemetry emitted under `FINORA_RECEIPT_VISION_TIMING` must strictly contain saf
    - Exactly one media part enforced; requests with 0 or >1 media parts rejected for `receipt_vision`.
    - Unsupported media MIME types rejected.
    - No binary or base64 data emitted in logs or error objects.
-2. **Input Validation & Security:**
-   - Missing file rejection (`RECEIPT_FILE_REQUIRED`).
-   - Valid JPEG, PNG, WebP acceptance.
-   - Fake MIME extension with invalid header bytes rejection.
-   - SVG, GIF, PDF, HEIC rejection (`RECEIPT_FILE_TYPE_UNSUPPORTED`).
-   - Oversized buffer rejection (> 8 MiB).
-   - Oversized pixel count (> 20 MP) and dimensions (> 8192px) rejection.
-   - Malformed/corrupted image buffer rejection.
-   - Anonymous caller blocked with `AUTH_REQUIRED` before decoding or credential resolution.
-   - Zero remote URL fetches (SSRF prevention).
-   - EXIF/GPS metadata stripped before provider payload construction.
-3. **Exact Money & Canonicalization:**
+4. **Exact Money & Canonicalization:**
    - `"85000"` parsed and canonicalized to `"85000.0000"`.
    - `"4.50"` parsed and canonicalized to `"4.5000"`.
    - Numeric `4.5` rejected at schema validator.
@@ -555,7 +623,7 @@ Telemetry emitted under `FINORA_RECEIPT_VISION_TIMING` must strictly contain saf
    - Excess scale beyond 4 decimal places (`"4.12345"`) rejected.
    - Zero amount (`"0"`, `"0.00"`) rejected.
    - Zero floating-point arithmetic used across all conversion steps.
-4. **Structured Output & Domain Semantics:**
+5. **Structured Output & Domain Semantics:**
    - Valid `PURCHASE_RECEIPT` output passes validation.
    - Extra keys cause schema validation failure.
    - Unsupported currency causes validation failure.
@@ -564,7 +632,7 @@ Telemetry emitted under `FINORA_RECEIPT_VISION_TIMING` must strictly contain saf
    - Ambiguous totals generate `TOTAL_AMBIGUOUS`.
    - Opaque category tokens mapped to UUIDs under RLS.
    - `account_id` is always `null`.
-5. **Apply Safety & Default Leakage:**
+6. **Apply Safety & Default Leakage:**
    - Missing date -> `DATE_MISSING`, `can_apply = false`.
    - Ambiguous date -> `DATE_AMBIGUOUS`, `can_apply = false`.
    - Missing currency -> `CURRENCY_MISSING`, `can_apply = false`.
@@ -575,21 +643,23 @@ Telemetry emitted under `FINORA_RECEIPT_VISION_TIMING` must strictly contain saf
    - `category_id = null` clears any stale/default category in form state.
    - Account remains unselected / user-controlled.
    - Save action still requires full standard form validation.
-6. **Zero Mutation Authority:**
+7. **Zero Mutation Authority & Ephemeral Privacy:**
    - Analyze action causes 0 financial mutations.
    - Apply action causes 0 financial mutations.
    - Standard Save action causes exactly 1 transaction mutation.
-7. **Provider Call Budget:**
+   - No original or normalized image persisted to disk or Supabase Storage.
+   - No buffer, base64, or filename telemetry emitted.
+8. **Provider Call Budget:**
    - Exactly 1 provider call on Analyze.
    - 0 provider calls on invalid input, anonymous request, or local preview.
-8. **Regression Matrix:**
+9. **Regression Matrix:**
    - Phase 10 AI Foundation tests: 50/50 PASS.
    - Phase 11 AI Credentials tests: 79/79 PASS.
    - Phase 12A Transaction Draft tests: 36/36 PASS.
 
 ### 18.2 Source Verifier Gates (`scripts/verify-phase12b-source.mjs`)
 When implemented, the verifier will validate:
-`RECEIPT_SERVER_ONLY`, `NO_CLIENT_GEMINI`, `NO_DIRECT_GEMINI_SDK_IN_FEATURE`, `USES_AI_ROUTER`, `USES_RECEIPT_VISION_OPERATION`, `USES_PHASE11_CREDENTIAL_PROVIDER`, `RECEIPT_MODEL_FROM_CENTRAL_CONFIG`, `NO_MODEL_LITERAL_IN_RECEIPT_FEATURE`, `PROVIDER_NEUTRAL_MEDIA_TYPE`, `ROUTER_MEDIA_PASSTHROUGH`, `GEMINI_MEDIA_MAPPING_PROVIDER_ONLY`, `TEXT_AI_OPERATIONS_NON_REGRESSION`, `AUTH_BEFORE_PRIVILEGED_FACTORY`, `ONE_IMAGE_ONLY`, `ONE_MEDIA_PART_FOR_RECEIPT`, `NO_REMOTE_URL_INPUT`, `MAGIC_BYTE_VALIDATION`, `MIME_NOT_SOLE_AUTHORITY`, `SIZE_LIMIT`, `PIXEL_LIMIT`, `METADATA_STRIPPING`, `NO_RECEIPT_STORAGE`, `NO_IMAGE_DATABASE_PERSISTENCE`, `NO_IMAGE_LOGGING`, `NO_MEDIA_BYTES_IN_LOGS`, `NO_MEDIA_BASE64_IN_LOGS`, `OUTPUT_EXACT_KEYSET`, `OUTPUT_EXACT_MONEY_STRING`, `NO_NUMERIC_AMOUNT`, `NO_RAW_UUID_PROVIDER_OUTPUT`, `OPAQUE_CATEGORY_TOKEN`, `PROVIDER_AMOUNT_LEXICAL_VALIDATION`, `APPLICATION_AMOUNT_CANONICAL_20_4`, `NO_FLOAT_MONEY_CANONICALIZATION`, `SHARED_RUNTIME_VALIDATOR`, `POST_PARSE_RLS_REVALIDATION`, `PURCHASE_RECEIPT_ONLY_APPLICABLE`, `INVOICE_NOT_AUTO_EXPENSE`, `CREDIT_NOTE_NOT_AUTO_EXPENSE`, `CAN_APPLY_REQUIRES_AMOUNT`, `CAN_APPLY_REQUIRES_CURRENCY`, `CAN_APPLY_REQUIRES_DATE`, `CAN_APPLY_PURCHASE_RECEIPT_ONLY`, `NO_RECEIPT_DATE_DEFAULT_TODAY`, `NO_RECEIPT_CURRENCY_DEFAULT_BASE`, `NULL_CATEGORY_CLEARS_STALE_FORM_STATE`, `ACCOUNT_ALWAYS_USER_SELECTED`, `MAX_PROVIDER_CALLS_ONE`, `NO_AUTO_RETRY`, `ANALYZE_ZERO_MUTATION`, `PREVIEW_ZERO_MUTATION`, `APPLY_ZERO_MUTATION`, `EXPLICIT_SAVE_ONLY`, `PROMPT_INJECTION_BOUNDARY`, `NO_URL_FETCH_FROM_RECEIPT`, `PHASE12A_NON_REGRESSION`.
+`RECEIPT_SERVER_ONLY`, `NO_CLIENT_GEMINI`, `NO_DIRECT_GEMINI_SDK_IN_FEATURE`, `USES_AI_ROUTER`, `USES_RECEIPT_VISION_OPERATION`, `USES_PHASE11_CREDENTIAL_PROVIDER`, `RECEIPT_MODEL_FROM_CENTRAL_CONFIG`, `NO_MODEL_LITERAL_IN_RECEIPT_FEATURE`, `PROVIDER_NEUTRAL_MEDIA_TYPE`, `ROUTER_MEDIA_PASSTHROUGH`, `GEMINI_MEDIA_MAPPING_PROVIDER_ONLY`, `TEXT_AI_OPERATIONS_NON_REGRESSION`, `AUTH_BEFORE_PRIVILEGED_FACTORY`, `ONE_IMAGE_ONLY`, `ONE_MEDIA_PART_FOR_RECEIPT`, `MAX_RECEIPT_FILE_BYTES_4_MIB`, `NEXT_SERVER_ACTION_BODY_LIMIT_CONFIGURED`, `NEXT_BODY_LIMIT_ABOVE_APP_FILE_LIMIT`, `NEXT_BODY_LIMIT_BELOW_PLATFORM_BUDGET`, `SHARP_DIRECT_DEPENDENCY`, `NO_OTHER_NEW_IMAGE_DEPENDENCY`, `ALLOWED_FORMATS_JPEG_PNG_WEBP_ONLY`, `UNSUPPORTED_FORMAT_REJECTED_BEFORE_SHARP_PIPELINE`, `SHARP_METADATA_STRIPPING`, `SHARP_AUTO_ORIENT`, `SHARP_PIXEL_LIMIT`, `NO_IMAGE_FILESYSTEM_WRITE`, `NO_IMAGE_STORAGE_UPLOAD`, `NO_REMOTE_IMAGE_FETCH`, `MAGIC_BYTE_VALIDATION`, `MIME_NOT_SOLE_AUTHORITY`, `OUTPUT_EXACT_KEYSET`, `OUTPUT_EXACT_MONEY_STRING`, `NO_NUMERIC_AMOUNT`, `NO_RAW_UUID_PROVIDER_OUTPUT`, `OPAQUE_CATEGORY_TOKEN`, `PROVIDER_AMOUNT_LEXICAL_VALIDATION`, `APPLICATION_AMOUNT_CANONICAL_20_4`, `NO_FLOAT_MONEY_CANONICALIZATION`, `SHARED_RUNTIME_VALIDATOR`, `POST_PARSE_RLS_REVALIDATION`, `PURCHASE_RECEIPT_ONLY_APPLICABLE`, `INVOICE_NOT_AUTO_EXPENSE`, `CREDIT_NOTE_NOT_AUTO_EXPENSE`, `CAN_APPLY_REQUIRES_AMOUNT`, `CAN_APPLY_REQUIRES_CURRENCY`, `CAN_APPLY_REQUIRES_DATE`, `CAN_APPLY_PURCHASE_RECEIPT_ONLY`, `NO_RECEIPT_DATE_DEFAULT_TODAY`, `NO_RECEIPT_CURRENCY_DEFAULT_BASE`, `NULL_CATEGORY_CLEARS_STALE_FORM_STATE`, `ACCOUNT_ALWAYS_USER_SELECTED`, `MAX_PROVIDER_CALLS_ONE`, `NO_AUTO_RETRY`, `ANALYZE_ZERO_MUTATION`, `PREVIEW_ZERO_MUTATION`, `APPLY_ZERO_MUTATION`, `EXPLICIT_SAVE_ONLY`, `PROMPT_INJECTION_BOUNDARY`, `NO_URL_FETCH_FROM_RECEIPT`, `PHASE12A_NON_REGRESSION`.
 
 ---
 
@@ -599,9 +669,10 @@ To minimize implementation risk, Phase 12B implementation will be broken into se
 
 1. **Pass 12B-1 — Multimodal Foundation Extension, Image Pipeline & Structured Vision Extraction:**
    - Additive `AiInlineMediaPart` multimodal extension in Phase 10 provider adapter while maintaining 100% text-operation compatibility.
-   - Server Action entrypoint, file signature verification, image metadata stripping/bounds checking.
+   - Pin and install `sharp` production dependency and update `next.config.ts` `serverActions.bodySizeLimit = '4.25mb'`.
+   - Server Action entrypoint, file signature verification, sharp metadata stripping, auto-orient, and bounds checking.
    - Provider schema, `AiOutputValidator`, prompt builder, exact-money canonicalizer.
-   - UI file picker, camera capture, local preview, and draft preview card.
+   - UI file picker, camera capture, local preview with client preflight check (<= 4 MiB), and draft preview card.
 2. **Pass 12B-2 — Candidate Integration, Domain Cross-Validation & Form Application:**
    - Category candidate query, opaque token mapping, post-parse RLS revalidation.
    - Warning generator, strict `can_apply` gating logic, modal form application without default leakage.
@@ -619,9 +690,17 @@ PHASE_12B_SCOPE=RECEIPT_VISION_PURCHASE_RECEIPT_TO_TRANSACTION_DRAFT
 
 PHASE_12B_CONTRACT=PENDING_INDEPENDENT_AUDIT
 
+PHASE_12B_MAX_RECEIPT_FILE_BYTES=4194304
+PHASE_12B_SERVER_ACTION_BODY_LIMIT=4.25mb
+
 PHASE_12B_DATABASE_CHANGE=NONE
 PHASE_12B_MIGRATION_REQUIRED=false
 PHASE_12B_RECEIPT_IMAGE_PERSISTENCE=false
+PHASE_12B_REMOTE_URL_INPUT=false
+
+PHASE_12B_IMAGE_PROCESSOR=sharp
+PHASE_12B_IMPLEMENTATION_PACKAGE_CHANGE_ALLOWED=true
+PHASE_12B_ALLOWED_NEW_PRODUCTION_DEPENDENCIES=sharp
 
 PHASE_12B_MAX_IMAGES_PER_ANALYZE=1
 PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE=1
@@ -652,6 +731,6 @@ PHASE_12C_IMPLEMENTATION_AUTHORIZED=false
 
 - **Phase 12 Overall Status:** `PARTIAL`
 - **Phase 12A Status:** `CLOSED / PASS`
-- **Phase 12B Status:** `CONTRACT_CORRECTIVE_1_COMPLETE / PENDING_INDEPENDENT_AUDIT`
+- **Phase 12B Status:** `CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT`
 - **Phase 12B Implementation:** `NOT AUTHORIZED`
 - **Phase 12C Implementation:** `NOT AUTHORIZED`

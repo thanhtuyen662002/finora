@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 1
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 2
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B implementation:** NOT AUTHORIZED
 - **Phase 12C implementation:** NOT AUTHORIZED
@@ -1117,26 +1117,29 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ### Next Recommended Step
 - Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
 
-## Phase 12B — Receipt Vision (Contract Discovery & Corrective Pass 1)
+## Phase 12B — Receipt Vision (Contract Discovery & Corrective Pass 2)
 
-### Status: CONTRACT_CORRECTIVE_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+### Status: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B Implementation:** NOT AUTHORIZED
 - **Phase 12C Implementation:** NOT AUTHORIZED
 
 - **Contract Invariants & Specifications Established:**
-  1. **Exact Observational Model Baseline:** `CURRENT_RECEIPT_VISION_MODEL = gemini-2.5-flash` centralized in `src/lib/ai/config.ts`. Feature modules strictly forbidden from hardcoding model IDs.
-  2. **Provider-Neutral Multimodal Contract:** Additive `AiInlineMediaPart` multimodal extension defined for `AiBaseRequest`. `AiRouter` passes media unchanged, feature modules never import `@google/genai`, SDK mapping restricted to provider adapter, zero media bytes/base64 logged. Text-only operations non-regression guaranteed.
-  3. **Exact Money Separation & Lexical Contract:** Provider lexical format `POSITIVE_PLAIN_DECIMAL_STRING_MAX_SCALE_4` (1..16 integer digits, 1..4 fractional digits, no commas, no currency symbols, no scientific notation, positive only). Server exact-money canonicalization converts string to `CANONICAL_NUMERIC_20_4_STRING` with zero floating-point arithmetic (`FLOAT_MONEY_CANONICALIZATION = false`).
-  4. **Apply Safety & Zero Default Leakage (`can_apply != save_ready`):** `can_apply = true` strictly requires `document_kind === 'PURCHASE_RECEIPT'`, amount non-null valid, currency non-null valid, and date non-null valid. Missing receipt date never defaults to today; missing currency never defaults to base currency; `category_id = null` clears stale form category; `account_id` remains user-selected.
-  5. **One Image -> One Purchase-Transaction Draft:** Gated to `PURCHASE_RECEIPT` only; `INVOICE`, `CREDIT_NOTE`, and `OTHER` do not produce applicable expense drafts.
-  6. **Single-Provider-Call Bound:** Exactly 1 structured multimodal vision call per explicit Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`). Zero auto-retries.
-  7. **Zero Financial Mutation Authority:** Analyze, Preview, and Apply actions perform 0 financial database mutations. Persistence is strictly gated to the existing user-initiated `addTransactionAction` explicit save path.
-  8. **Ephemeral Image Lifecycle & Privacy:** `RECEIPT_IMAGE_PERSISTENCE = false`. Zero Supabase Storage uploads, zero database blobs, zero image archiving, and zero EXIF/GPS metadata passed to provider.
-  9. **Line-Item Policy:** `LINE_ITEM_SPLITTING = false` in V1.
-  10. **SSRF Prevention:** Accepts browser-uploaded `File` byte streams only. Remote URLs (`http://`, `https://`) are strictly rejected.
-  11. **Phase 10 / Phase 11 Integration:** Reuses centralized `receipt_vision` operation in `src/lib/ai/config.ts` and Phase 11 priority credential provider (`PERSONAL > ADMIN_ASSIGNED > SYSTEM`).
+  1. **Production Upload Limit & Next.js Server Action Config:** Application file limit is exact 4 MiB (`4194304` bytes, `PHASE_12B_MAX_RECEIPT_FILE_BYTES = 4194304`). Next.js Server Action body limit configured in `next.config.ts` to `bodySizeLimit: '4.25mb'` (`PHASE_12B_SERVER_ACTION_BODY_LIMIT = 4.25mb`). Invariant enforced: `APPLICATION_FILE_LIMIT (4 MiB) < NEXT_SERVER_ACTION_BODY_LIMIT (4.25mb) < VERCEL_FUNCTION_PAYLOAD_LIMIT (4.5 MB)`. Client performs UX preflight check rejecting files > 4 MiB; server repeats validation fail-closed.
+  2. **Image Processing Dependency Policy (`sharp`):** Exactly one new production dependency (`sharp`) authorized for Pass 12B-1 (`PHASE_12B_IMPLEMENTATION_PACKAGE_CHANGE_ALLOWED = true`, `PHASE_12B_ALLOWED_NEW_PRODUCTION_DEPENDENCIES = sharp`). Purpose strictly limited to raster decode, dimension/pixel checks (<= 8192px / <= 20MP), auto-orient, metadata stripping, and normalized buffer re-encoding in memory. No external CLI / ImageMagick / remote image services.
+  3. **Sharp Security Contract:** Supported formats strictly restricted to `JPEG`, `PNG`, and `WebP`. Magic bytes verified before sharp invocation. SVG, GIF, TIFF, HEIC, and PDF rejected before normalization. EXIF metadata stripped; original EXIF timestamp never used as transaction date. Zero filesystem writes.
+  4. **Exact Observational Model Baseline:** `CURRENT_RECEIPT_VISION_MODEL = gemini-2.5-flash` centralized in `src/lib/ai/config.ts`. Feature modules strictly forbidden from hardcoding model IDs.
+  5. **Provider-Neutral Multimodal Contract:** Additive `AiInlineMediaPart` multimodal extension defined for `AiBaseRequest`. `AiRouter` passes media unchanged, feature modules never import `@google/genai`, SDK mapping restricted to provider adapter, zero media bytes/base64 logged. Text-only operations non-regression guaranteed.
+  6. **Exact Money Separation & Lexical Contract:** Provider lexical format `POSITIVE_PLAIN_DECIMAL_STRING_MAX_SCALE_4` (1..16 integer digits, 1..4 fractional digits, no commas, no currency symbols, no scientific notation, positive only). Server exact-money canonicalization converts string to `CANONICAL_NUMERIC_20_4_STRING` with zero floating-point arithmetic (`FLOAT_MONEY_CANONICALIZATION = false`).
+  7. **Apply Safety & Zero Default Leakage (`can_apply != save_ready`):** `can_apply = true` strictly requires `document_kind === 'PURCHASE_RECEIPT'`, amount non-null valid, currency non-null valid, and date non-null valid. Missing receipt date never defaults to today; missing currency never defaults to base currency; `category_id = null` clears stale form category; `account_id` remains user-selected.
+  8. **One Image -> One Purchase-Transaction Draft:** Gated to `PURCHASE_RECEIPT` only; `INVOICE`, `CREDIT_NOTE`, and `OTHER` do not produce applicable expense drafts.
+  9. **Single-Provider-Call Bound:** Exactly 1 structured multimodal vision call per explicit Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`). Zero auto-retries.
+  10. **Zero Financial Mutation Authority:** Analyze, Preview, and Apply actions perform 0 financial database mutations. Persistence is strictly gated to the existing user-initiated `addTransactionAction` explicit save path.
+  11. **Ephemeral Image Lifecycle & Privacy:** `RECEIPT_IMAGE_PERSISTENCE = false`. Zero Supabase Storage uploads, zero database blobs, zero image archiving, and zero EXIF/GPS metadata passed to provider.
+  12. **Line-Item Policy:** `LINE_ITEM_SPLITTING = false` in V1.
+  13. **SSRF Prevention:** Accepts browser-uploaded `File` byte streams only. Remote URLs (`http://`, `https://`) are strictly rejected.
+  14. **Phase 10 / Phase 11 Integration:** Reuses centralized `receipt_vision` operation in `src/lib/ai/config.ts` and Phase 11 priority credential provider (`PERSONAL > ADMIN_ASSIGNED > SYSTEM`).
 
 ### Next Recommended Step
 - Independent architectural audit of `docs/PHASE_12B_CONTRACT_DISCOVERY.md` prior to authorization of Pass 12B-1 implementation.
