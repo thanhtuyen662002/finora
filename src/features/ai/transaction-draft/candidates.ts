@@ -18,12 +18,14 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
-import type {
-  CandidateAccount,
-  CandidateCategory,
-  CandidateIncomeSource,
-  CandidateIncomeStream,
-  OpaqueCandidateContext,
+import type { CurrencyCode } from '@/types/finance';
+import {
+  isSupportedCurrencyCode,
+  type CandidateAccount,
+  type CandidateCategory,
+  type CandidateIncomeSource,
+  type CandidateIncomeStream,
+  type OpaqueCandidateContext,
 } from './types';
 
 export const CANDIDATE_LIMITS = {
@@ -84,13 +86,15 @@ export async function readCandidateContext(
   const accountsOmitted = rawAccounts.length > CANDIDATE_LIMITS.MAX_ACCOUNTS;
   const accounts: CandidateAccount[] = accountsOmitted
     ? []
-    : rawAccounts.map((acc, index) => ({
-        id: acc.id,
-        token: `ACC_${index + 1}`,
-        label: sanitizeCandidateLabel(acc.name),
-        currency_code: acc.currency_code,
-        is_archived: Boolean(acc.is_archived),
-      }));
+    : rawAccounts
+        .filter((acc) => isSupportedCurrencyCode(acc.currency_code))
+        .map((acc, index) => ({
+          id: acc.id,
+          token: `ACC_${index + 1}`,
+          label: sanitizeCandidateLabel(acc.name),
+          currency_code: acc.currency_code as CurrencyCode,
+          is_archived: Boolean(acc.is_archived),
+        }));
 
   // 2. Query Categories (bounded: CAP + 1, active only)
   const categoriesRes = await supabase

@@ -144,6 +144,13 @@ export function applyDraftToFormState(
     const labels: string[] = [];
     if (!accountMatchedByAi) labels.push('Tài khoản');
     if (!categoryMatchedByAi) labels.push('Danh mục');
+    if (targetType === 'INCOME') {
+      if (!incomeSourceMatchedByAi) {
+        labels.push('Nguồn thu');
+      } else if (!incomeStreamMatchedByAi && draft.income_source_id !== null) {
+        labels.push('Kênh thu');
+      }
+    }
     if (labels.length > 0) {
       reviewNotice = `Bản nháp AI đã được áp dụng. Lưu ý: ${labels.join(' và ')} chưa được AI nhận diện, vui lòng chọn thủ công.`;
     }

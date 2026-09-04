@@ -26,6 +26,7 @@ import {
   type TransactionDraftWarningCode,
 } from './types';
 import { isValidCalendarDate } from './validator';
+import { ContextLoadError } from './candidates';
 
 export interface CrossValidateParams {
   readonly rawOutput: AiTransactionParseOutput;
@@ -270,9 +271,19 @@ export async function revalidateResolvedCandidates(
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (accErr || !acc || acc.is_archived) {
+    if (accErr) {
+      throw new ContextLoadError(`Failed to revalidate account: ${accErr.message}`, accErr);
+    }
+
+    if (!acc || acc.is_archived) {
       resolvedAccountId = null;
       addWarning('ACCOUNT_NOT_MATCHED');
+    } else if (!isSupportedCurrencyCode(acc.currency_code)) {
+      resolvedAccountId = null;
+      addWarning('ACCOUNT_CURRENCY_CONFLICT');
+    } else if (draft.currency_code !== null && acc.currency_code !== draft.currency_code) {
+      resolvedAccountId = null;
+      addWarning('ACCOUNT_CURRENCY_CONFLICT');
     }
   }
 
@@ -285,7 +296,11 @@ export async function revalidateResolvedCandidates(
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (catErr || !cat || cat.is_archived) {
+    if (catErr) {
+      throw new ContextLoadError(`Failed to revalidate category: ${catErr.message}`, catErr);
+    }
+
+    if (!cat || cat.is_archived) {
       resolvedCategoryId = null;
       addWarning('CATEGORY_NOT_MATCHED');
     } else if (draft.type !== null && cat.type !== draft.type) {
@@ -303,7 +318,11 @@ export async function revalidateResolvedCandidates(
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (srcErr || !src || src.is_archived) {
+    if (srcErr) {
+      throw new ContextLoadError(`Failed to revalidate income source: ${srcErr.message}`, srcErr);
+    }
+
+    if (!src || src.is_archived) {
       resolvedSourceId = null;
       addWarning('INCOME_SOURCE_NOT_MATCHED');
     }
@@ -324,7 +343,11 @@ export async function revalidateResolvedCandidates(
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (strErr || !str || str.is_archived) {
+      if (strErr) {
+        throw new ContextLoadError(`Failed to revalidate income stream: ${strErr.message}`, strErr);
+      }
+
+      if (!str || str.is_archived) {
         resolvedStreamId = null;
         addWarning('INCOME_STREAM_NOT_MATCHED');
       } else if (str.income_source_id !== resolvedSourceId) {

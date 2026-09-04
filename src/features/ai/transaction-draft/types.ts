@@ -159,7 +159,7 @@ export interface CandidateAccount {
   readonly id: string;
   readonly token: string;
   readonly label: string;
-  readonly currency_code: string;
+  readonly currency_code: CurrencyCode;
   readonly is_archived: boolean;
 }
 

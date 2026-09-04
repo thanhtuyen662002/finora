@@ -238,15 +238,82 @@ export async function parseTransactionTextCore(
   });
 
   // 9. Post-AI Stale Revalidation (re-read resolved entities via authenticated RLS client)
-  const revalidatedDraft = await revalidateResolvedCandidates(
-    params.supabase,
-    params.userId,
-    draft
-  );
+  try {
+    const revalidatedDraft = await revalidateResolvedCandidates(
+      params.supabase,
+      params.userId,
+      draft
+    );
 
-  return {
-    ok: true,
-    draft: revalidatedDraft,
-    rawText: promptText,
-  };
+    return {
+      ok: true,
+      draft: revalidatedDraft,
+      rawText: promptText,
+    };
+  } catch (_err: unknown) {
+    return {
+      ok: false,
+      error: {
+        code: 'CONTEXT_LOAD_FAILED',
+        message: FEATURE_ERROR_MESSAGES.CONTEXT_LOAD_FAILED,
+      },
+    };
+  }
 }
+
+export interface ParseTransactionDraftActionDeps {
+  readonly getSupabaseClient?: () => Promise<any>;
+  readonly createAiCredentialRepository?: () => any;
+  readonly createAiCredentialResolver?: (options: { repository: any }) => any;
+  readonly createDefaultServerRouter?: () => any;
+}
+
+/**
+ * Non-client-callable internal helper for tests requiring dependency injection.
+ * Never exposed via 'use server' boundary.
+ */
+export async function runParseTransactionDraftAction(
+  prompt: string,
+  deps: ParseTransactionDraftActionDeps
+): Promise<ParseTransactionDraftResult> {
+  const getClient = deps.getSupabaseClient;
+  if (!getClient) {
+    throw new Error('getSupabaseClient is required for test execution');
+  }
+  const supabase = await getClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      error: {
+        code: 'AUTH_REQUIRED',
+        message: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      },
+    };
+  }
+
+  const repoFactory = deps.createAiCredentialRepository;
+  const resolverFactory = deps.createAiCredentialResolver;
+  const routerFactory = deps.createDefaultServerRouter;
+
+  if (!repoFactory || !resolverFactory || !routerFactory) {
+    throw new Error('All dependency factories must be provided for test execution');
+  }
+
+  const repository = repoFactory();
+  const credentialProvider = resolverFactory({ repository });
+  const router = routerFactory();
+
+  return parseTransactionTextCore({
+    prompt,
+    userId: user.id,
+    supabase,
+    router,
+    credentialProvider,
+  });
+}
+

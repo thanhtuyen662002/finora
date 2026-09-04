@@ -330,12 +330,46 @@ check(
 // 10. Central AI Operation Config Authority (Corrective 8)
 // =========================================================================
 
+function stripComments(code) {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*/g, '');
+}
+
+const cleanActionCore = stripComments(actionCoreContent);
+const routerCallMatch = /router\.execute(?:<[^>]*>)?\s*\(\s*\{([\s\S]*?)\}/.exec(cleanActionCore);
+const routerCallBody = routerCallMatch ? routerCallMatch[1] : '';
+
 check(
   'ACTION_CORE_REUSES_CENTRAL_CONFIG',
-  !actionCoreContent.includes('temperature: 0.1') &&
-    !actionCoreContent.includes('maxTokens: 500') &&
-    !actionCoreContent.includes('timeoutMs: 15000'),
-  'action-core.ts must not hardcode temperature, maxTokens, or timeoutMs overrides'
+  routerCallBody.includes("operation: 'transaction_parser'") &&
+    !routerCallBody.includes('temperature') &&
+    !routerCallBody.includes('maxTokens') &&
+    !routerCallBody.includes('timeoutMs') &&
+    !routerCallBody.includes('model'),
+  'action-core.ts router.execute call must strictly rely on central config and not pass temperature, maxTokens, timeoutMs, or model overrides'
+);
+
+check(
+  'CANDIDATE_ACCOUNTS_SUPPORTED_CURRENCY_GATE',
+  candidatesContent.includes('isSupportedCurrencyCode(acc.currency_code)') &&
+    candidatesContent.includes('currency_code: acc.currency_code as CurrencyCode'),
+  'candidates.ts must filter candidate accounts by isSupportedCurrencyCode'
+);
+
+check(
+  'POST_AI_ACCOUNT_CURRENCY_REVALIDATION',
+  domainContent.includes('ACCOUNT_CURRENCY_CONFLICT') &&
+    domainContent.includes('isSupportedCurrencyCode(acc.currency_code)') &&
+    domainContent.includes('acc.currency_code !== draft.currency_code'),
+  'domain.ts revalidateResolvedCandidates must check currency compatibility and emit ACCOUNT_CURRENCY_CONFLICT'
+);
+
+check(
+  'POST_AI_FAIL_CLOSED_ON_QUERY_ERROR',
+  domainContent.includes('throw new ContextLoadError') &&
+    actionCoreContent.includes('CONTEXT_LOAD_FAILED'),
+  'domain.ts and action-core.ts must fail closed on post-AI database read errors'
 );
 
 // =========================================================================
@@ -401,6 +435,13 @@ check(
 );
 
 check(
+  'INCOME_ATTRIBUTION_REVIEW_NOTICE',
+  formStateContent.includes("'Nguồn thu'") &&
+    formStateContent.includes("'Kênh thu'"),
+  'form-state.ts must include Nguồn thu and Kênh thu in reviewNotice for incomplete income attribution'
+);
+
+check(
   'MODAL_USES_APPLY_DRAFT_TO_FORM_STATE',
   modalContent.includes('applyDraftToFormState('),
   'AddTransactionModal must use applyDraftToFormState pure transformer'
@@ -417,12 +458,32 @@ check(
 // 13. Auth-Before-Privileged-Factory Sequencing (Corrective 11)
 // =========================================================================
 
+const cleanActions = stripComments(actionsContent);
+const fnBodyMatch = /export async function parseTransactionDraftAction\s*\(([^)]*)\)[\s\S]*?\{([\s\S]*)/.exec(cleanActions);
+const fnParams = fnBodyMatch ? fnBodyMatch[1].trim() : '';
+const fnBody = fnBodyMatch ? fnBodyMatch[2] : '';
+
+check(
+  'SERVER_ACTION_NO_DI_EXPOSURE',
+  !fnParams.includes('deps') && !fnParams.includes('Dependency') && !fnParams.includes(','),
+  'parseTransactionDraftAction must not expose dependency injection parameters to client'
+);
+
+const getUserIdx = fnBody.indexOf('getUser()');
+const repoIdx = fnBody.indexOf('createAiCredentialRepository');
+const resolverIdx = fnBody.indexOf('AiCredentialResolver');
+const routerIdx = fnBody.indexOf('createDefaultServerRouter');
+
 check(
   'AUTH_CHECK_PRECEDES_FACTORIES',
-  actionsContent.indexOf('getUser()') < actionsContent.indexOf('createAiCredentialRepository') &&
-    actionsContent.indexOf('getUser()') < actionsContent.indexOf('createAiCredentialResolver') &&
-    actionsContent.indexOf('getUser()') < actionsContent.indexOf('createDefaultServerRouter'),
-  'parseTransactionDraftAction must check user authentication BEFORE initializing credential repository, resolver, or router'
+  getUserIdx !== -1 &&
+    repoIdx !== -1 &&
+    resolverIdx !== -1 &&
+    routerIdx !== -1 &&
+    getUserIdx < repoIdx &&
+    getUserIdx < resolverIdx &&
+    getUserIdx < routerIdx,
+  'parseTransactionDraftAction function body must verify authentication via getUser() before initializing repository, resolver, or router'
 );
 
 // =========================================================================
@@ -454,6 +515,19 @@ check(
     !domainContent.includes('.delete(') &&
     !actionsContent.includes('.delete('),
   'AI feature module must NEVER execute .delete() on Supabase database'
+);
+
+const cleanClientInput = stripComments(clientInputContent);
+check(
+  'UI_ZERO_MUTATION_AUTHORITY',
+  !cleanClientInput.includes('createTransaction') &&
+    !cleanClientInput.includes('updateTransaction') &&
+    !cleanClientInput.includes('voidTransaction') &&
+    !cleanClientInput.includes('restoreTransaction') &&
+    !cleanClientInput.includes('.insert(') &&
+    !cleanClientInput.includes('.update(') &&
+    !cleanClientInput.includes('.delete('),
+  'AiTransactionDraftInput component must have ZERO financial mutation calls or imports'
 );
 
 // =========================================================================
