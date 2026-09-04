@@ -6,9 +6,10 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion
-- **Phase status:** CORRECTIVE_PASS_2_COMPLETE / UNDER_INDEPENDENT_AUDIT
+- **Phase status:** MODEL_POLICY_CORRECTIVE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
 - **Phase 12A test suite:** `tests/phase12a-transaction-draft.test.ts` (20/20 PASS)
-- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (73/73 PASS)
+- **Phase 12A source verifier:** `scripts/verify-phase12a-source.mjs` (75/75 PASS)
+- **Phase 12A parser model:** `gemini-3.5-flash-lite` (exact stable ID)
 - **Phase 11 migration status:** APPLIED (`supabase/migrations/20260903110000_phase_11_ai_credentials.sql`)
 - **Phase 11 remote database:** PASS
 - **Phase 11 structural gate:** PASS
@@ -1000,73 +1001,59 @@ FINORA_PHASE_11=PASS
 
 PHASE_12A_AUTHORIZED=true
 PHASE_12A_SCOPE=NATURAL_LANGUAGE_TRANSACTION_DRAFT_AND_SMART_CATEGORY
-PHASE_12A_STATUS=CORRECTIVE_PASS_2_COMPLETE_UNDER_INDEPENDENT_AUDIT
+PHASE_12A_STATUS=MODEL_POLICY_CORRECTIVE_PENDING_INDEPENDENT_AUDIT
 PHASE_12A_CORRECTIVE_PASS_1=PASS
 PHASE_12A_CORRECTIVE_PASS_2=PASS
+PHASE_12A_LIVE_SMOKE_ATTEMPT_1=AI_STRUCTURED_OUTPUT_INVALID
+PHASE_12A_LIVE_SMOKE_ATTEMPT_1_FINANCIAL_MUTATION=false
+PHASE_12A_TRANSACTION_PARSER_MODEL=gemini-3.5-flash-lite
+PHASE_12A_MODEL_POLICY_CORRECTIVE=PENDING_INDEPENDENT_AUDIT
+PHASE_12A_REAL_GEMINI_SMOKE=PENDING_RETRY
+PHASE_12A_OVERALL=PARTIAL
+PHASE_12B_IMPLEMENTATION_AUTHORIZED=false
+PHASE_12C_IMPLEMENTATION_AUTHORIZED=false
 PHASE_12A_TEST_SUITE=20_OF_20_PASS
-PHASE_12A_SOURCE_VERIFIER=73_OF_73_PASS
+PHASE_12A_SOURCE_VERIFIER=75_OF_75_PASS
 PHASE_12A_TYPESCRIPT=PASS
 PHASE_12A_LINT=PASS
 PHASE_12A_BUILD=PASS
 PHASE_12A_SCHEMA_MUTATION=NONE
 PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
-PHASE_12A_REAL_GEMINI_SMOKE=NOT_AUTHORIZED
 ```
 
-## Phase 12A — Natural-Language Transaction Draft & Smart Category Suggestion (Corrective Pass 2)
+## Phase 12A — Natural-Language Transaction Draft (Model Policy Corrective: Flash-Lite)
 
-### Status: CORRECTIVE_PASS_2_COMPLETE / UNDER_INDEPENDENT_AUDIT
+### Status: MODEL_POLICY_CORRECTIVE / PENDING_INDEPENDENT_AUDIT (Overall: PARTIAL)
 
-Phase 12A implements the first user-facing AI capability in Finora:
-- Natural-language transaction text input
-- Authenticated server-only AI parsing
-- Dual boundary architecture:
-  1. Model Boundary: Opaque tokens (ACC_n, CAT_n, SRC_n, STR_n), exact 11-key schema, zero UUIDs, string amount.
-  2. Application Boundary: Real UUID resolution, deterministic cross-validation, post-AI RLS candidate revalidation.
-- Action Core wrapping: Server Action is a zero-DI client boundary wrapper around testable `runParseTransactionDraftAction` / `parseTransactionTextCore`.
-- Auth-before-factory sequencing: Server action verifies authenticated user via `getUser()` before invoking any repository, resolver, or router factories.
-- Currency revalidation: Candidate accounts filtered by `isSupportedCurrencyCode`; post-AI candidate revalidation validates currency compatibility and emits `ACCOUNT_CURRENCY_CONFLICT` on mismatch or unsupported currency.
-- Income attribution review notices: Incomplete income attribution emits review notice specifying missing `Nguồn thu` / `Kênh thu`.
-- Central config authority: Router execution strictly uses central operation config (`transaction_parser`) without overrides.
-- Fail-closed error handling: Database read errors in candidate loading or revalidation fail closed with `ContextLoadError` / `CONTEXT_LOAD_FAILED`.
-- Safe preview with pure form state transformation (`applyDraftToFormState`).
-- No ambiguity masking: clear unmatched account/category fields and emit review notices.
-- Zero financial mutation authority: AI feature modules and client components possess ZERO financial mutation capability (no insert, update, or delete).
-- Zero database migrations (schema strictly unchanged).
-- Offline-only verification: NO real Gemini network calls made.
+- **Production Live Evidence Analysis:**
+  - In initial live smoke attempt 1, a real request reached the AI path and returned `AI_STRUCTURED_OUTPUT_INVALID`.
+  - Transaction count remained identical before and after (`PRE_PARSE_TRANSACTION_COUNT=14`, `POST_FAILED_PARSE_TRANSACTION_COUNT=14`).
+  - Strict invariant verified: `FAILED_PARSE_FINANCIAL_MUTATION=false` (zero financial mutation authority confirmed in production).
+- **Model Policy Corrective:**
+  - Switched Phase 12A `transaction_parser` operation from `gemini-2.5-flash` to exact stable ID `gemini-3.5-flash-lite`.
+  - Defined central constant `GEMINI_FLASH_LITE_MODEL = 'gemini-3.5-flash-lite'` in `src/lib/ai/config.ts`.
+  - Prohibited all floating aliases (`gemini-flash-latest`) and preview identifiers (`gemini-3.1-flash-lite-preview`).
+  - Future AI operations (`financial_assistant`, `receipt_vision`, `report_summary`) remain on `DEFAULT_GEMINI_MODEL`.
+  - Kept exact structured output contract: 11 required keys, string amount, opaque tokens, supported Finora currencies, strict calendar dates, zero coercion.
+  - Zero financial mutations, zero migrations, zero package changes, zero Vercel env changes.
+  - Verification is strictly offline; live Gemini retry pending independent audit.
 
-### Verification Results (Corrective Pass 2)
+### Verification Results (Model Policy Corrective)
 - **Phase 12A Test Suite (`tests/phase12a-transaction-draft.test.ts`)**: 20/20 PASS
-  1. Non-object, null, array, string rejected with AI_STRUCTURED_OUTPUT_INVALID
-  2. Exact 11-keyset strictly enforced
-  3. Zero coercion strictly enforced (numeric amount rejected, string amount accepted)
-  4. Supported currency gate strictly enforced (VND, USD, EUR, JPY, CNY, KRW)
-  5. Strict calendar date validator (Gregorian leap years, month boundaries)
-  6. Candidate tokens validated against regex (UUIDs rejected at model boundary)
-  7. Income stream database contract (`income_source_id`) and parent matching verified
-  8. Currency precedence strictly enforced (Explicit > Account > Base fallback)
-  9. Candidate overflow failsafe (bounded query CAP + 1, fail closed, clear array)
-  10. Candidate label sanitization (control characters, length bound)
-  11. Prompt construction (temporal context, zero UUIDs, adversarial defenses)
-  12. Action core input validation (length <= 300 chars, non-empty, auth check)
-  13. Action core fails closed on database/context load errors
-  14. Exact Phase 10 AiErrorCode taxonomy (all 13 codes mapped to Vietnamese messages)
-  15. Post-AI candidate revalidation, currency matching & candidate currency gate verified
-  16. Server Action signature & auth-before-privileged-factory verified
-  17. Real AiRouter negative matrix verified (A: malformed JSON, B: empty, C: missing key, D: extra key, E: type mismatch, F: valid)
-  18. Complete Phase 11 credential priority & no-fallback regression matrix verified (7 cases)
-  19. UI / Apply state transformer & Income Attribution review notices verified (Cases A-E)
-  20. Invariant verified: AI layer and client draft UI possess ZERO financial mutation capability
-- **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 73/73 PASS
+  - Verified real router execution targets exact model `gemini-3.5-flash-lite`.
+- **Phase 12A Source Verifier (`scripts/verify-phase12a-source.mjs`)**: 75/75 PASS
+  - Establishes `TRANSACTION_PARSER_MODEL_EXACT = gemini-3.5-flash-lite`.
+  - Asserts rejection of floating aliases and preview model identifiers.
+- **Phase 10 Test Suite (`tests/phase10-ai-foundation.test.ts`)**: 50/50 PASS
+- **Phase 10 Source Verifier (`scripts/verify-phase10-source.mjs`)**: 38/38 PASS
+- **Phase 11 Test Suite (`tests/phase11-ai-credentials.test.ts`)**: 79/79 PASS
+- **Phase 11 Action Core Test Suite (`tests/phase11-ai-credential-actions.test.ts`)**: 21/21 PASS
+- **Phase 11 Source Verifier (`scripts/verify-phase11-source.mjs`)**: 99/99 PASS
 - **TypeScript Check (`npm run typecheck`)**: PASS
 - **Lint Check (`npm run lint`)**: PASS
 - **Production Build (`compile_applet`)**: PASS
-- **Non-Regression Gates**:
-  - Phase 10 Test Suite (`tests/phase10-ai-foundation.test.ts`): 50/50 PASS
-  - Phase 11 Test Suite (`tests/phase11-ai-credentials.test.ts`): 79/79 PASS
-  - Phase 11 Action Core Test Suite (`tests/phase11-ai-credential-actions.test.ts`): 21/21 PASS
-- **Database Schema**: 0 migrations added, schema unchanged
+- **Database Schema**: 0 migrations added, schema strictly unchanged
 
 ### Next Recommended Step
-- Independent audit evaluation of Phase 12A source and test evidence.
+- Independent audit evaluation of the Phase 12A model policy corrective prior to authorized production live smoke retry.
 

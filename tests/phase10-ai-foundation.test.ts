@@ -23,6 +23,7 @@ import path from 'node:path';
 import {
   AI_OPERATION_CONFIG,
   DEFAULT_GEMINI_MODEL,
+  GEMINI_FLASH_LITE_MODEL,
   getOperationConfig,
 } from '../src/lib/ai/config';
 import { AiError, sanitizeErrorMessage } from '../src/lib/ai/errors';
@@ -173,9 +174,10 @@ async function runAllTests() {
   // --- 1. Configuration & Operations ---
   await it('1. Central configuration defines known operations and default models', () => {
     assert.strictEqual(DEFAULT_GEMINI_MODEL, 'gemini-2.5-flash');
+    assert.strictEqual(GEMINI_FLASH_LITE_MODEL, 'gemini-3.5-flash-lite');
     assert.ok(AI_OPERATION_CONFIG.transaction_parser);
     assert.strictEqual(AI_OPERATION_CONFIG.transaction_parser.providerId, 'gemini');
-    assert.strictEqual(AI_OPERATION_CONFIG.transaction_parser.model, 'gemini-2.5-flash');
+    assert.strictEqual(AI_OPERATION_CONFIG.transaction_parser.model, 'gemini-3.5-flash-lite');
     assert.strictEqual(AI_OPERATION_CONFIG.transaction_parser.timeoutMs, 15000);
     assert.strictEqual(AI_OPERATION_CONFIG.transaction_parser.temperature, 0.1);
     assert.strictEqual(AI_OPERATION_CONFIG.transaction_parser.maxOutputTokens, 1024);
@@ -186,7 +188,7 @@ async function runAllTests() {
     assert.ok(AI_OPERATION_CONFIG.report_summary);
 
     const retrieved = getOperationConfig('transaction_parser');
-    assert.strictEqual(retrieved?.model, 'gemini-2.5-flash');
+    assert.strictEqual(retrieved?.model, 'gemini-3.5-flash-lite');
   });
 
   await it('2. Central configuration returns undefined for unknown operations', () => {
@@ -265,7 +267,7 @@ async function runAllTests() {
     assert.strictEqual(res.ok, true);
     if (res.ok) {
       assert.strictEqual(res.provider, 'gemini');
-      assert.strictEqual(res.model, 'gemini-2.5-flash');
+      assert.strictEqual(res.model, 'gemini-3.5-flash-lite');
       assert.strictEqual(res.data, '{"parsed": true}');
       assert.strictEqual(res.usage?.inputTokens, 120);
       assert.strictEqual(res.usage?.outputTokens, 45);

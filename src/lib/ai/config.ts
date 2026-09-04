@@ -9,11 +9,12 @@
 import type { AiModelConfig, AiOperation } from './types';
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const GEMINI_FLASH_LITE_MODEL = 'gemini-3.5-flash-lite';
 
 export const AI_OPERATION_CONFIG: Record<string, AiModelConfig> = {
   transaction_parser: {
     providerId: 'gemini',
-    model: DEFAULT_GEMINI_MODEL,
+    model: GEMINI_FLASH_LITE_MODEL,
     timeoutMs: 15000,
     temperature: 0.1,
     maxOutputTokens: 1024,

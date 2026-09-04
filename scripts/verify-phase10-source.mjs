@@ -142,12 +142,12 @@ const aiModuleFiles = walkDir(path.join(ROOT, 'src/lib/ai'), (f) => f.endsWith('
 const nonConfigModelFiles = aiModuleFiles.filter((f) => {
   if (f.endsWith('src/lib/ai/config.ts')) return false;
   const content = fs.readFileSync(f, 'utf8');
-  return content.includes('gemini-2.5-flash');
+  return content.includes('gemini-2.5-flash') || content.includes('gemini-3.5-flash-lite');
 });
 check(
   'MODEL_IDENTIFIER_NON_CONFIG_COUNT',
   nonConfigModelFiles.length === 0,
-  `Model literal 'gemini-2.5-flash' must live exclusively in src/lib/ai/config.ts, found in: ${nonConfigModelFiles.join(', ')}`
+  `Model literals 'gemini-2.5-flash' and 'gemini-3.5-flash-lite' must live exclusively in src/lib/ai/config.ts, found in: ${nonConfigModelFiles.join(', ')}`
 );
 
 // 7. Unknown Operation Always Fails Closed & No Public Model Override

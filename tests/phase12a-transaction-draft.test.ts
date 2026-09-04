@@ -800,7 +800,7 @@ async function runAsyncTests() {
   }
   assert.ok(mockProvider.lastRequest, 'Provider must receive execution request');
   assert.strictEqual(mockProvider.lastRequest?.responseMode, 'structured');
-  assert.strictEqual(mockProvider.lastRequest?.model, 'gemini-2.5-flash');
+  assert.strictEqual(mockProvider.lastRequest?.model, 'gemini-3.5-flash-lite');
   console.log('  ✓ 17. Real AiRouter negative matrix verified (A: malformed JSON, B: empty, C: missing key, D: extra key, E: type mismatch, F: valid)');
 
   // =========================================================================

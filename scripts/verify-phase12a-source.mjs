@@ -531,6 +531,27 @@ check(
 );
 
 // =========================================================================
+// 14. Phase 12A Model Policy & Live Smoke Configuration
+// =========================================================================
+
+const aiConfigPath = path.join(ROOT, 'src/lib/ai/config.ts');
+const aiConfigContent = fs.readFileSync(aiConfigPath, 'utf8');
+
+check(
+  'TRANSACTION_PARSER_MODEL_EXACT',
+  aiConfigContent.includes("export const GEMINI_FLASH_LITE_MODEL = 'gemini-3.5-flash-lite'") &&
+    /transaction_parser:\s*\{[^}]*model:\s*GEMINI_FLASH_LITE_MODEL/.test(aiConfigContent),
+  'transaction_parser operation must configure exact stable model gemini-3.5-flash-lite'
+);
+
+check(
+  'REJECT_FLOATING_AND_PREVIEW_ALIASES',
+  !aiConfigContent.includes('gemini-flash-latest') &&
+    !aiConfigContent.includes('gemini-3.1-flash-lite-preview'),
+  'Central AI configuration must reject floating aliases and preview model identifiers'
+);
+
+// =========================================================================
 // Summary
 // =========================================================================
 
