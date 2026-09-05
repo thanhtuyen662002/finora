@@ -29,11 +29,6 @@ export interface GeminiClientLike {
         responseMimeType?: string;
         responseJsonSchema?: unknown;
         abortSignal?: AbortSignal;
-        httpOptions?: {
-          retryOptions?: {
-            attempts?: number;
-          };
-        };
       };
     }): Promise<{
       text?: string | null;
@@ -52,33 +47,15 @@ export interface GeminiCoreOptions {
   clientFactory: GeminiClientFactory;
 }
 
-export const RECEIPT_SAFE_ERROR_MESSAGES: Record<AiErrorCode, string> = {
-  AI_AUTH_FAILED: 'Gemini authentication failed during receipt vision analysis.',
-  AI_RATE_LIMITED: 'Gemini rate limit exceeded during receipt vision analysis.',
-  AI_TIMEOUT: 'Receipt vision analysis timed out.',
-  AI_ABORTED: 'Receipt vision analysis was aborted.',
-  AI_PROVIDER_UNAVAILABLE: 'Gemini service is currently unavailable for receipt vision.',
-  AI_INVALID_REQUEST: 'Invalid request payload sent to receipt vision provider.',
-  AI_INVALID_RESPONSE: 'Invalid response received from receipt vision provider.',
-  AI_STRUCTURED_OUTPUT_INVALID: 'Failed to validate structured receipt vision output.',
-  AI_NOT_CONFIGURED: 'AI credentials not configured for receipt vision.',
-  AI_PROVIDER_ERROR: 'An error occurred with the AI provider during receipt vision analysis.',
-  AI_CREDENTIAL_CORRUPTED: 'AI credential is corrupted.',
-  AI_CREDENTIAL_KEY_UNAVAILABLE: 'AI credential encryption key is unavailable.',
-  AI_CREDENTIAL_RESOLUTION_FAILED: 'Failed to resolve AI credential for receipt vision.',
-};
-
-/**
- * Pure classifier that inspects an unknown error to determine the corresponding AiErrorCode.
- * DOES NOT create an AiError, log, or return the raw external message.
- */
-export function classifyGeminiErrorCode(err: unknown): AiErrorCode {
+export function normalizeGeminiError(err: unknown): AiError {
   if (err instanceof AiError) {
-    return err.code;
+    return err;
   }
 
   const rawMessage = err instanceof Error ? err.message : String(err);
   const lowerMsg = rawMessage.toLowerCase();
+
+  let code: AiErrorCode = 'AI_PROVIDER_ERROR';
 
   if (
     lowerMsg.includes('api_key_invalid') ||
@@ -88,57 +65,36 @@ export function classifyGeminiErrorCode(err: unknown): AiErrorCode {
     lowerMsg.includes('403') ||
     lowerMsg.includes('permission_denied')
   ) {
-    return 'AI_AUTH_FAILED';
-  }
-
-  if (
+    code = 'AI_AUTH_FAILED';
+  } else if (
     lowerMsg.includes('resource_exhausted') ||
     lowerMsg.includes('429') ||
     lowerMsg.includes('quota') ||
     lowerMsg.includes('rate limit')
   ) {
-    return 'AI_RATE_LIMITED';
-  }
-
-  if (
+    code = 'AI_RATE_LIMITED';
+  } else if (
     lowerMsg.includes('deadline_exceeded') ||
     lowerMsg.includes('timeout') ||
     lowerMsg.includes('timed out')
   ) {
-    return 'AI_TIMEOUT';
-  }
-
-  if (
+    code = 'AI_TIMEOUT';
+  } else if (
     lowerMsg.includes('abort') ||
     lowerMsg.includes('cancelled') ||
     lowerMsg.includes('canceled')
   ) {
-    return 'AI_ABORTED';
-  }
-
-  if (
+    code = 'AI_ABORTED';
+  } else if (
     lowerMsg.includes('503') ||
     lowerMsg.includes('unavailable') ||
     lowerMsg.includes('overloaded') ||
     lowerMsg.includes('service unavailable')
   ) {
-    return 'AI_PROVIDER_UNAVAILABLE';
+    code = 'AI_PROVIDER_UNAVAILABLE';
+  } else if (lowerMsg.includes('invalid_argument') || lowerMsg.includes('400')) {
+    code = 'AI_INVALID_REQUEST';
   }
-
-  if (lowerMsg.includes('invalid_argument') || lowerMsg.includes('400')) {
-    return 'AI_INVALID_REQUEST';
-  }
-
-  return 'AI_PROVIDER_ERROR';
-}
-
-export function normalizeGeminiError(err: unknown): AiError {
-  if (err instanceof AiError) {
-    return err;
-  }
-
-  const code = classifyGeminiErrorCode(err);
-  const rawMessage = err instanceof Error ? err.message : String(err);
 
   return new AiError({
     code,
@@ -202,11 +158,6 @@ export class GeminiProviderCore implements AiProvider {
         responseMimeType?: string;
         responseJsonSchema?: unknown;
         abortSignal?: AbortSignal;
-        httpOptions?: {
-          retryOptions?: {
-            attempts?: number;
-          };
-        };
       } = {};
 
       if (request.systemInstruction) {
@@ -228,70 +179,9 @@ export class GeminiProviderCore implements AiProvider {
         config.responseJsonSchema = request.outputValidator.jsonSchema;
       }
 
-      // Receipt Vision specific single HTTP attempt policy
-      if (request.operation === 'receipt_vision') {
-        config.httpOptions = {
-          retryOptions: {
-            attempts: 1,
-          },
-        };
-
-        // Receipt Vision operation MUST fail closed if media is missing, invalid, or empty
-        if (!request.media || request.media.length !== 1) {
-          throw new AiError({
-            code: 'AI_INVALID_REQUEST',
-            message: 'Receipt vision requires exactly one media item.',
-            providerId: this.id,
-          });
-        }
-      }
-
-      // Map contents: text-only vs multimodal inline image
-      let contents: string | Array<unknown> = request.prompt;
-      if (request.media && request.media.length > 0) {
-        if (request.media.length !== 1 || request.media[0].kind !== 'inline_image') {
-          throw new AiError({
-            code: 'AI_INVALID_REQUEST',
-            message: 'Gemini provider currently supports exactly one inline image in multimodal requests.',
-            providerId: this.id,
-          });
-        }
-        const mediaPart = request.media[0];
-
-        // Runtime MIME validation against allowlist
-        const ALLOWED_MIMES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!ALLOWED_MIMES.includes(mediaPart.mimeType)) {
-          throw new AiError({
-            code: 'AI_INVALID_REQUEST',
-            message: `Unsupported media MIME type: ${String(mediaPart.mimeType)}`,
-            providerId: this.id,
-          });
-        }
-
-        // Runtime empty bytes check
-        if (!mediaPart.bytes || mediaPart.bytes.length === 0) {
-          throw new AiError({
-            code: 'AI_INVALID_REQUEST',
-            message: 'Media byte array cannot be empty.',
-            providerId: this.id,
-          });
-        }
-
-        const base64Data = Buffer.from(mediaPart.bytes).toString('base64');
-        contents = [
-          {
-            inlineData: {
-              mimeType: mediaPart.mimeType,
-              data: base64Data,
-            },
-          },
-          request.prompt,
-        ];
-      }
-
       const response = await client.models.generateContent({
         model: modelName,
-        contents,
+        contents: request.prompt,
         config: Object.keys(config).length > 0 ? config : undefined,
       });
 
@@ -318,14 +208,6 @@ export class GeminiProviderCore implements AiProvider {
           message: 'AI request was aborted by the caller signal.',
           providerId: this.id,
           cause: err,
-        });
-      }
-      if (request.operation === 'receipt_vision') {
-        const code = classifyGeminiErrorCode(err);
-        throw new AiError({
-          code,
-          message: RECEIPT_SAFE_ERROR_MESSAGES[code] ?? 'An error occurred during receipt vision analysis.',
-          providerId: this.id,
         });
       }
       throw normalizeGeminiError(err);

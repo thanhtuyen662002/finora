@@ -5,12 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 3 Completed)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: PASS 12B-1 CORRECTIVE 3 COMPLETE (Phase 12 Overall: IN_PROGRESS)
+- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 1
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B implementation:** PASS 12B-1 CORRECTIVE 3 COMPLETE (Zero-media AiError, Category scoping, RLS revalidation, Warning provenance, Form state engine, 246 Tests PASS)
-- **Pass 12B-2 implementation:** PENDING INDEPENDENT SOURCE AUDIT (NOT AUTHORIZED YET)
-- **Real Gemini remote calls:** NOT AUTHORIZED
+- **Phase 12B implementation:** NOT AUTHORIZED
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
@@ -1119,38 +1117,28 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ### Next Recommended Step
 - Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
 
-## Phase 12B — Receipt Vision (Pass 12B-1 Corrective Pass 3)
+## Phase 12B — Receipt Vision (Contract Discovery & Corrective Pass 1)
 
-### Status: PASS_12B_1_CORRECTIVE_3_COMPLETE / PENDING_AUDIT (Phase 12 Overall: PARTIAL)
+### Status: CONTRACT_CORRECTIVE_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B Implementation Phase:** `PASS 12B-1 CORRECTIVE 3 COMPLETE`
-- **Pass 12B-2 Implementation:** NOT AUTHORIZED
-- **Real Gemini Remote Calls:** NOT AUTHORIZED
+- **Phase 12B Implementation:** NOT AUTHORIZED
 - **Phase 12C Implementation:** NOT AUTHORIZED
-- **Live UI Integration:** Unmounted (Receipt Vision picker and actions remain decoupled from live transaction creation modal)
 
-- **Corrective Pass 3 Scope & Findings Addressed:**
-  1. **Post-Normalization AI / Credential Infrastructure Construction:** Refactored `executeAnalyzeReceiptAction` and `executeReceiptVisionCore` so that bounded image normalization completes strictly BEFORE `createDefaultServerRouter()`, `createAiCredentialRepository()`, `new AiCredentialResolver(...)`, credential resolution, and provider dispatch.
-  2. **Normalization Failure Gate (Zero AI Infrastructure):** Proved deterministically that when image normalization fails (e.g., corrupt image stream), zero AI Router, Credential Resolver, or provider instances are created or invoked (`routerCreated = 0`, `resolverCreated = 0`).
-  3. **Strict Orchestration Lifecycle Trace:** Integrated shared sequential event trace verifying exact execution order:
-     `AUTH < VALIDATE < ARRAY_BUFFER < NORMALIZE < CREATE_ROUTER < CREATE_CREDENTIAL_RESOLVER < RESOLVE_CREDENTIAL < PROVIDER`.
-  4. **Anonymous & Oversized Request Gating:** Verified that unauthenticated requests terminate at `AUTH` (0 subsequent steps) and oversized payloads terminate at `VALIDATE` (0 byte buffering or decoding steps).
-  5. **Metadata Stripping Fixture Proof:** Proved that the input fixture possesses `orientation: 6`, `exif` data, and `icc` color profile on input before proving their complete absence (`undefined`) on normalized output bytes.
-  6. **EXIF Date Independence Proof:** Verified via source code audit and runtime execution that EXIF `DateTime` is never inspected, extracted, or mapped to transaction date `occurred_on`. The visible receipt text returned by the model remains the sole transaction date source.
-  7. **Contract Document Synchronization:** Realigned `docs/PHASE_12B_CONTRACT_DISCOVERY.md` status to `PASS_12B_1_CORRECTIVE_3_COMPLETE`.
-
-### Verification Results (Pass 12B-1 Corrective Pass 3)
-- **Phase 12B Test Suite (`tests/phase12b-receipt-vision.test.ts`)**: 169/169 checks PASS
-- **All Previous Test Suites**: PASS (Phase 8 Math, Base Mode, Cross-Currency; Phase 9 Income Sources & UI; Phase 10 AI Foundation: 50/50; Phase 11 AI Credentials: 79/79; Phase 12A Transaction Draft: 36/36)
-- **TypeScript Check (`npm run typecheck`)**: PASS (0 errors)
-- **Lint Check (`npm run lint`)**: PASS (0 warnings/errors)
-- **Production Build (`compile_applet`)**: PASS
-- **Clean Package Installation (`npm ci`)**: PASS (493 packages audited, 0 vulnerabilities)
-- **Database Schema**: 0 migrations added, schema strictly unchanged
-- **Remote Network Calls**: 0 Gemini API calls, 0 Supabase remote calls
+- **Contract Invariants & Specifications Established:**
+  1. **Exact Observational Model Baseline:** `CURRENT_RECEIPT_VISION_MODEL = gemini-2.5-flash` centralized in `src/lib/ai/config.ts`. Feature modules strictly forbidden from hardcoding model IDs.
+  2. **Provider-Neutral Multimodal Contract:** Additive `AiInlineMediaPart` multimodal extension defined for `AiBaseRequest`. `AiRouter` passes media unchanged, feature modules never import `@google/genai`, SDK mapping restricted to provider adapter, zero media bytes/base64 logged. Text-only operations non-regression guaranteed.
+  3. **Exact Money Separation & Lexical Contract:** Provider lexical format `POSITIVE_PLAIN_DECIMAL_STRING_MAX_SCALE_4` (1..16 integer digits, 1..4 fractional digits, no commas, no currency symbols, no scientific notation, positive only). Server exact-money canonicalization converts string to `CANONICAL_NUMERIC_20_4_STRING` with zero floating-point arithmetic (`FLOAT_MONEY_CANONICALIZATION = false`).
+  4. **Apply Safety & Zero Default Leakage (`can_apply != save_ready`):** `can_apply = true` strictly requires `document_kind === 'PURCHASE_RECEIPT'`, amount non-null valid, currency non-null valid, and date non-null valid. Missing receipt date never defaults to today; missing currency never defaults to base currency; `category_id = null` clears stale form category; `account_id` remains user-selected.
+  5. **One Image -> One Purchase-Transaction Draft:** Gated to `PURCHASE_RECEIPT` only; `INVOICE`, `CREDIT_NOTE`, and `OTHER` do not produce applicable expense drafts.
+  6. **Single-Provider-Call Bound:** Exactly 1 structured multimodal vision call per explicit Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`). Zero auto-retries.
+  7. **Zero Financial Mutation Authority:** Analyze, Preview, and Apply actions perform 0 financial database mutations. Persistence is strictly gated to the existing user-initiated `addTransactionAction` explicit save path.
+  8. **Ephemeral Image Lifecycle & Privacy:** `RECEIPT_IMAGE_PERSISTENCE = false`. Zero Supabase Storage uploads, zero database blobs, zero image archiving, and zero EXIF/GPS metadata passed to provider.
+  9. **Line-Item Policy:** `LINE_ITEM_SPLITTING = false` in V1.
+  10. **SSRF Prevention:** Accepts browser-uploaded `File` byte streams only. Remote URLs (`http://`, `https://`) are strictly rejected.
+  11. **Phase 10 / Phase 11 Integration:** Reuses centralized `receipt_vision` operation in `src/lib/ai/config.ts` and Phase 11 priority credential provider (`PERSONAL > ADMIN_ASSIGNED > SYSTEM`).
 
 ### Next Recommended Step
-- Independent source audit of Pass 12B-1 Corrective Pass 3 prior to authorization of Pass 12B-2.
+- Independent architectural audit of `docs/PHASE_12B_CONTRACT_DISCOVERY.md` prior to authorization of Pass 12B-1 implementation.
 
 
