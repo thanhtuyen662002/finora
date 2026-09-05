@@ -33,12 +33,7 @@ export class GeminiProvider extends GeminiProviderCore {
       clientFactory:
         options?.clientFactory ??
         ((credential) => {
-          const ai = new GoogleGenAI({
-            apiKey: credential.value,
-            httpOptions: {
-              retryOptions: { attempts: 1 },
-            },
-          });
+          const ai = new GoogleGenAI({ apiKey: credential.value });
           return {
             models: {
               generateContent: (params: Parameters<GeminiClientLike['models']['generateContent']>[0]) =>
