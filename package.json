@@ -10,7 +10,8 @@
     "build": "NODE_ENV=production next build",
     "start": "next start -p 3000",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --require ./tests/mock-server-only.cjs --test tests/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "2.19.0",
@@ -32,6 +33,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
+    "sharp": "^0.35.4",
     "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {

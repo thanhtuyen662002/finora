@@ -36,8 +36,12 @@ import {
   applyDraftToFormState,
   TransactionFormState,
 } from '@/features/ai/transaction-draft/form-state';
+import { ReceiptPicker } from '@/features/ai/receipt-vision/components/ReceiptPicker';
+import { applyReceiptDraftToForm } from '@/features/ai/receipt-vision/form-state';
+import type { ReceiptTransactionDraft } from '@/features/ai/receipt-vision/types';
 
 interface AddTransactionModalProps {
+
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void | Promise<void>;
@@ -293,6 +297,39 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setDraftNotice(provenance.reviewNotice);
   };
 
+  const handleApplyReceiptDraft = (draft: ReceiptTransactionDraft) => {
+    const currentData: TransactionFormState = {
+      type,
+      amount,
+      currency,
+      accountId,
+      categoryId,
+      incomeSourceId,
+      incomeSourceStreamId,
+      merchant,
+      note,
+      occurredOn,
+    };
+    const nextData = applyReceiptDraftToForm(draft, currentData);
+    
+    setType(nextData.type);
+    setAmount(nextData.amount);
+    setCurrency(nextData.currency);
+    setAccountId(nextData.accountId);
+    setCategoryId(nextData.categoryId);
+    setIncomeSourceId(nextData.incomeSourceId);
+    setIncomeSourceStreamId(nextData.incomeSourceStreamId);
+    setMerchant(nextData.merchant);
+    setNote(nextData.note);
+    setOccurredOn(nextData.occurredOn);
+    
+    if (draft.warnings.includes('ACCOUNT_REQUIRED')) {
+      setDraftNotice('Vui lòng chọn tài khoản để lưu giao dịch.');
+    } else {
+      setDraftNotice('Đã điền thông tin từ hóa đơn. Vui lòng kiểm tra lại trước khi lưu.');
+    }
+  };
+
   const handleVoid = async () => {
     if (!initialData) return;
     try {
@@ -437,12 +474,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         )}
 
         {!initialData && (
-          <AiTransactionDraftInput
-            accounts={accounts}
-            categories={categories}
-            incomeSources={incomeSources}
-            onApplyDraft={handleApplyDraft}
-          />
+          <div className="space-y-3">
+            <ReceiptPicker onApplyDraft={handleApplyReceiptDraft} />
+            <AiTransactionDraftInput
+              accounts={accounts}
+              categories={categories}
+              incomeSources={incomeSources}
+              onApplyDraft={handleApplyDraft}
+            />
+          </div>
         )}
 
         {draftNotice && (

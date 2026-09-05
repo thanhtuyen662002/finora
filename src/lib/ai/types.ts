@@ -34,6 +34,17 @@ export interface AiOutputValidator<T> {
 
 export type AiResponseMode = 'text' | 'structured';
 
+export type AiInlineMediaMimeType =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp';
+
+export interface AiInlineMediaPart {
+  readonly kind: 'inline_image';
+  readonly mimeType: AiInlineMediaMimeType;
+  readonly bytes: Uint8Array;
+}
+
 export interface AiBaseRequest<TInput = unknown> {
   readonly operation: AiOperation;
   readonly input?: TInput;
@@ -43,6 +54,7 @@ export interface AiBaseRequest<TInput = unknown> {
   readonly maxTokens?: number;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
+  readonly media?: readonly AiInlineMediaPart[];
 }
 
 export interface AiTextRequest<TInput = unknown> extends AiBaseRequest<TInput> {
