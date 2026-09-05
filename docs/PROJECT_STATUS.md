@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 2
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 1
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B implementation:** NOT AUTHORIZED
 - **Phase 12C implementation:** NOT AUTHORIZED
@@ -1117,25 +1117,28 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ### Next Recommended Step
 - Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
 
-## Phase 12B — Receipt Vision (Contract Discovery & Corrective Pass 2)
+## Phase 12B — Receipt Vision (Contract Discovery & Corrective Pass 1)
 
-### Status: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+### Status: CONTRACT_CORRECTIVE_1_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B Implementation:** NOT AUTHORIZED
 - **Phase 12C Implementation:** NOT AUTHORIZED
 
-- **Contract Invariants & Specifications Established (Corrective Pass 2 Resolution):**
-  1. **Canonical 11-Key Keyset & Explicit Provenance States (F01):** Exact 11-key schema (`document_kind`, `merchant`, `occurred_on`, `occurred_on_state`, `amount`, `amount_state`, `currency_code`, `currency_state`, `category_token`, `note`, `image_quality`). State consistency rules rigorously enforced (`amount_state === 'PRESENT'` iff `amount !== null`, etc.). Warnings (`TOTAL_MISSING`, `TOTAL_AMBIGUOUS`, `CURRENCY_MISSING`, `CURRENCY_AMBIGUOUS`, `CURRENCY_UNSUPPORTED`, `DATE_MISSING`, `DATE_AMBIGUOUS`, `DATE_INVALID`, `IMAGE_QUALITY_LOW`, `MERCHANT_MISSING`, `CATEGORY_UNRESOLVED`, `CATEGORY_STALE`, `ACCOUNT_REQUIRED`, `DOCUMENT_UNSUPPORTED`) are deterministically derived from provider states and server checks.
-  2. **Exact Transport Headroom & Bounded Payload Architecture (F02):** Application file limit exact `4,194,304 bytes` (4 MiB). Next.js Server Action body limit set to exact numeric `4,350,000 bytes` (providing ~155 KiB overhead for multipart headers/action metadata) under the hard Vercel platform ceiling of `4,500,000 bytes`. Invariant: `4194304 < 4350000 < 4500000`. Client preflight check + server-side size check.
-  3. **Sharp Decoder Specification & Auth Precedence (F03):** Future implementation restricted to `sharp` (pinned `0.35.4`). Decoder limits: `limitInputPixels = 20_000_000`, dimensions <= 8192px, frame count MUST == 1 (animated WebP / multi-frame rejected with `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED`). Proportional resize to max long edge <= 2048px, sRGB conversion, metadata stripping. Buffer <= 4 MiB. Strict server auth precedence (`supabase.auth.getUser()`) before array buffering, decoder invocation, candidate querying, credential resolution, or AI dispatch.
-  4. **Unambiguous Exact Money & Separator Grammar (F04):** Dot `.` is strictly the decimal separator. `"85.000"` parsed as `85.0000`; `"85,000"` with comma rejected. Prompt instructs model to emit plain integer or dot-decimal strings (e.g. `'85000'` for 85,000 VND). Exact-money string canonicalization to `numeric(20,4)` string with zero floating-point arithmetic.
-  5. **Single Logical Provider Call & Single HTTP Attempt (F05):** Exactly 1 logical call per Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`). Exactly 1 HTTP attempt (`httpOptions.retryOptions.attempts = 1`). Zero auto-retry (`PHASE_12B_PROVIDER_AUTO_RETRY = false`). Media-safe error boundary guarantees raw image bytes, base64 strings, or provider payloads never leak into `AiError` messages, server logs, or client responses.
-  6. **Category Candidates Cap & Degraded Context Resilience (F06):** Active same-user expense categories capped at 50 (`PHASE_12B_MAX_CATEGORY_CANDIDATES = 50`), labels sanitized to max 50 chars (`PHASE_12B_MAX_CATEGORY_LABEL_LENGTH = 50`), mapped to opaque `CAT_n` tokens. Category overflow (>50) safely omits candidate tokens (`CATEGORY_UNRESOLVED`). Database query failure degrades gracefully without aborting vision parse. Fabricated tokens fail closed. Stale categories detected via post-parse RLS revalidation (`CATEGORY_STALE`).
-  7. **AddTransactionModal Binding & Zero Default Leakage (F07):** Binding to `AddTransactionModal.handleSubmit -> createTransaction`. Apply populates React state with `can_apply != save_ready`. `account_id` remains empty / `null` with `ACCOUNT_REQUIRED` advisory. Receipt currency tied to account currency; currency mismatches must be explicitly resolved without silent relabeling. Null receipt fields clear stale form state. Persistence strictly requires user click on "Lưu giao dịch".
-  8. **Truthful UI, Ephemeral Lifecycle & Verifier Deliverables (F08):** External AI privacy disclosure prominently displayed before Analyze. Object URL revocation on unmount/close. Modal closure discards in-flight promise safely without claiming server cancellation. Zero financial mutation on Analyze/Apply. Planned verifier scripts and test suites documented as Pass 12B-1 / 12B-3 deliverables.
+- **Contract Invariants & Specifications Established:**
+  1. **Exact Observational Model Baseline:** `CURRENT_RECEIPT_VISION_MODEL = gemini-2.5-flash` centralized in `src/lib/ai/config.ts`. Feature modules strictly forbidden from hardcoding model IDs.
+  2. **Provider-Neutral Multimodal Contract:** Additive `AiInlineMediaPart` multimodal extension defined for `AiBaseRequest`. `AiRouter` passes media unchanged, feature modules never import `@google/genai`, SDK mapping restricted to provider adapter, zero media bytes/base64 logged. Text-only operations non-regression guaranteed.
+  3. **Exact Money Separation & Lexical Contract:** Provider lexical format `POSITIVE_PLAIN_DECIMAL_STRING_MAX_SCALE_4` (1..16 integer digits, 1..4 fractional digits, no commas, no currency symbols, no scientific notation, positive only). Server exact-money canonicalization converts string to `CANONICAL_NUMERIC_20_4_STRING` with zero floating-point arithmetic (`FLOAT_MONEY_CANONICALIZATION = false`).
+  4. **Apply Safety & Zero Default Leakage (`can_apply != save_ready`):** `can_apply = true` strictly requires `document_kind === 'PURCHASE_RECEIPT'`, amount non-null valid, currency non-null valid, and date non-null valid. Missing receipt date never defaults to today; missing currency never defaults to base currency; `category_id = null` clears stale form category; `account_id` remains user-selected.
+  5. **One Image -> One Purchase-Transaction Draft:** Gated to `PURCHASE_RECEIPT` only; `INVOICE`, `CREDIT_NOTE`, and `OTHER` do not produce applicable expense drafts.
+  6. **Single-Provider-Call Bound:** Exactly 1 structured multimodal vision call per explicit Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`). Zero auto-retries.
+  7. **Zero Financial Mutation Authority:** Analyze, Preview, and Apply actions perform 0 financial database mutations. Persistence is strictly gated to the existing user-initiated `addTransactionAction` explicit save path.
+  8. **Ephemeral Image Lifecycle & Privacy:** `RECEIPT_IMAGE_PERSISTENCE = false`. Zero Supabase Storage uploads, zero database blobs, zero image archiving, and zero EXIF/GPS metadata passed to provider.
+  9. **Line-Item Policy:** `LINE_ITEM_SPLITTING = false` in V1.
+  10. **SSRF Prevention:** Accepts browser-uploaded `File` byte streams only. Remote URLs (`http://`, `https://`) are strictly rejected.
+  11. **Phase 10 / Phase 11 Integration:** Reuses centralized `receipt_vision` operation in `src/lib/ai/config.ts` and Phase 11 priority credential provider (`PERSONAL > ADMIN_ASSIGNED > SYSTEM`).
 
 ### Next Recommended Step
-- Independent architectural audit of `docs/PHASE_12B_CONTRACT_DISCOVERY.md` (Corrective Pass 2) prior to authorization of Pass 12B-1 implementation.
+- Independent architectural audit of `docs/PHASE_12B_CONTRACT_DISCOVERY.md` prior to authorization of Pass 12B-1 implementation.
 
 
