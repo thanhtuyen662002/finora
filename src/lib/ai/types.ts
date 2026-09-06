@@ -34,18 +34,11 @@ export interface AiOutputValidator<T> {
 
 export type AiResponseMode = 'text' | 'structured';
 
-export interface AiInlineMediaPart {
-  readonly kind: 'inline_image';
-  readonly mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
-  readonly bytes: Uint8Array;
-}
-
 export interface AiBaseRequest<TInput = unknown> {
   readonly operation: AiOperation;
   readonly input?: TInput;
   readonly prompt: string;
   readonly systemInstruction?: string;
-  readonly media?: readonly AiInlineMediaPart[];
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly timeoutMs?: number;
