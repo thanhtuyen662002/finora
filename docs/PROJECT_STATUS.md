@@ -5,10 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B-1 — Multimodal Foundation & Receipt Vision
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1: IN_PROGRESS (feat/phase12b-1-multimodal-foundation)
+- **Current phase:** Phase 12B — Multimodal Foundation & Receipt Vision (Pass 6)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: COMPLETE (review/phase12b-1-receipt-vision)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B implementation:** NOT AUTHORIZED
+- **Phase 12B status:** COMPLETE (`PHASE_12B_1_2_3_STATUS = COMPLETE`)
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
@@ -1119,32 +1119,33 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 
 ## Phase 12B — Receipt Vision (Foundation & Corrective Implementation)
 
-### Status: IN_PROGRESS (feat/phase12b-1-multimodal-foundation)
+### Status: COMPLETE (`PHASE_12B_1_2_3_STATUS = COMPLETE`)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Current Phase:** Phase 12B-1 Corrective Pass 5 — Exact-Head Reproducibility and Contract Fidelity
-- **Branch:** `feat/phase12b-1-multimodal-foundation`
+- **Current Phase:** Phase 12B-3 Corrective Pass 6 — Error Taxonomy, Prompt Injection Boundary, Privacy-Safe Telemetry, and Verifier Completion
+- **Branch:** `review/phase12b-1-receipt-vision`
+- **Audit State:** Ready for final independent audit
 
-- **Correctives Completed in Pass 5:**
-  1. **Deterministic Action Tests with DI:** Injected mock Supabase, credential provider, and router via `ProcessReceiptActionDeps`. Proved auth check strictly precedes `formData.getAll('file')`, file buffering, image decoding, category queries, credential resolution, and router execution. Tested all 5 required cases: zero files, multiple files, non-File entry, unauthenticated request, authenticated valid request. Zero network calls and zero Supabase env vars required.
-  2. **Form-State Contract Fidelity:** Removed loose duplicate `TransactionFormState` definition. Reused authoritative `TransactionFormState` from `@/features/ai/transaction-draft/form-state` (used in `AddTransactionModal`). Cleared account and income-source fields using authoritative empty-state representations (`''`). Added tests proving no silent currency relabeling and no stale income/category leakage.
-  3. **Lockfile Reproducibility:** Preserved `package-lock.json` and `bun.lock`. Repaired `package-lock.json` with all required optional platform entries: `@unrs/resolver-binding-win32-x64-msvc`, `@unrs/resolver-binding-win32-ia32-msvc`, `@img/sharp-win32-x64`, `@img/sharp-linux-x64`, and `@img/sharp-darwin-x64`. Verified clean `npm ci` succeeds without regenerating lockfile.
-  4. **Full Verification Suite:**
-     - `test:phase12b:vision`: 25/25 subtests PASS.
-     - `scripts/verify-phase12b-source.mjs`: 17/17 PASS.
-     - `npm run typecheck`: 0 errors (PASS).
-     - `npm run lint`: 0 errors (PASS).
-     - `npm run build`: Production Next.js build PASS.
+- **Correctives Completed in Pass 6:**
+  1. **Receipt Error Taxonomy (C01):** Implemented feature-local `ReceiptVisionError` / `ReceiptVisionErrorCode` with exactly 9 normalized client-safe codes (`AUTH_REQUIRED`, `RECEIPT_FILE_REQUIRED`, `RECEIPT_FILE_INVALID`, `RECEIPT_FILE_TOO_LARGE`, `RECEIPT_FILE_TYPE_UNSUPPORTED`, `RECEIPT_IMAGE_DECODE_FAILED`, `RECEIPT_IMAGE_DIMENSIONS_EXCEEDED`, `RECEIPT_PARSER_OUTPUT_INVALID`, `RECEIPT_AMBIGUOUS_DATA`). Preserved the Phase 10 `AiErrorCode` contract with zero modifications or widening. All errors client-redacted (no buffers, base64 strings, or raw provider payloads).
+  2. **Prompt Injection Boundary (C02):** Implemented `BEGIN_CATEGORY_DELIMITER` and `END_CATEGORY_DELIMITER` in `src/features/ai/receipt-vision/prompt.ts`. Category candidates are isolated within structured JSON delimiters accompanied by explicit system instructions to treat enclosed content strictly as static data. Zero database UUIDs leaked into prompt. Adversarial category labels sanitized and capped at 50 chars.
+  3. **Privacy-Safe Telemetry (C03):** Implemented `FINORA_RECEIPT_VISION_TIMING` with injectable `ReceiptVisionTelemetrySink`. Strictly allowlisted fields only (`operation`, `success`, `input_format`, `input_bytes_bucket`, `image_width_bucket`, `image_height_bucket`, `preprocess_ms`, `context_ms`, `ai_provider_ms`, `revalidation_ms`, `total_ms`, `warning_count`, `error_code`). All bytes/dimensions bucketed into coarse ranges. Sanitizer guarantees zero PII, zero filenames, zero raw byte buffers, zero base64 payload, and zero user IDs.
+  4. **Strict Architectural Verifier & Deterministic Test Suite (C04):**
+     - Source verifier (`scripts/verify-phase12b-source.mjs`) expanded to 28 comprehensive gates covering all Phase 12B constraints, passing 28/28 checks.
+     - Deterministic test suite (`tests/phase12b-receipt-vision.test.ts` & `tests/phase12b-source-verifier.test.ts`) covering 28 subtests across schema, domain, categories, image binary parsing, retry policy, error sanitization, prompt injection defenses, and privacy-safe telemetry.
+     - Preserved lockfiles (`package-lock.json` and `bun.lock`).
+     - Zero database migrations, zero mutations, zero external runtime calls.
 
-### Verification Results
-- **Phase 12B Source Verifier (`scripts/verify-phase12b-source.mjs`)**: 17/17 PASS
-- **Receipt Vision Tests (`tests/phase12b-receipt-vision.test.ts`)**: 25/25 PASS
+### Verification Results (Pass 6)
+- **Phase 12B Source Verifier (`scripts/verify-phase12b-source.mjs`)**: 28/28 PASS
+- **Receipt Vision & Verifier Tests (`npm test`)**: 28/28 subtests PASS (0 failed)
 - **TypeScript (`npm run typecheck`)**: PASS (0 errors)
 - **Lint (`npm run lint`)**: PASS (0 errors)
 - **Production Build (`compile_applet` / `npm run build`)**: PASS
+- **Lockfile & Dependencies**: Unchanged, sharp pinned at exact version, zero zod dependencies.
 
 ### Next Recommended Step
-- Review commit and push to `feat/phase12b-1-multimodal-foundation`.
+- Independent audit of branch `review/phase12b-1-receipt-vision`.
 
 
 
