@@ -47,12 +47,50 @@ export interface GeminiCoreOptions {
   clientFactory: GeminiClientFactory;
 }
 
+function sanitizeErrorString(str: string): string {
+  if (!str) return str;
+  return str
+    .replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '[REDACTED_DATA_URL]')
+    .replace(/(?:[A-Za-z0-9+/]{4}){10,}={0,2}/g, '[REDACTED_BASE64]')
+    .replace(/<Buffer(?:\s+[0-9a-fA-F]{2})+.*?>/g, '[REDACTED_BUFFER]')
+    .replace(/Uint8Array\s*\([^)]+\)/g, '[REDACTED_BYTES]');
+}
+
+function sanitizeCause(cause: unknown): unknown {
+  if (!cause) return undefined;
+  if (cause instanceof Error) {
+    const cleanCauseMsg = sanitizeErrorString(cause.message);
+    const sanitizedError = new Error(cleanCauseMsg);
+    sanitizedError.name = cause.name;
+    if (cause.cause) {
+      sanitizedError.cause = sanitizeCause(cause.cause);
+    }
+    return sanitizedError;
+  }
+  if (typeof cause === "string") {
+    return sanitizeErrorString(cause);
+  }
+  return undefined;
+}
+
 export function normalizeGeminiError(err: unknown): AiError {
   if (err instanceof AiError) {
+    const sanitizedMsg = sanitizeErrorString(err.message);
+    const sanitizedCause = sanitizeCause(err.cause);
+    if (sanitizedMsg !== err.message || sanitizedCause !== err.cause) {
+      return new AiError({
+        code: err.code,
+        message: sanitizedMsg,
+        providerId: err.providerId,
+        cause: sanitizedCause,
+      });
+    }
     return err;
   }
 
   const rawMessage = err instanceof Error ? err.message : String(err);
+  const cleanMessage = sanitizeErrorString(rawMessage);
+  const sanitizedCause = err instanceof Error ? sanitizeCause(err.cause ?? err) : undefined;
   const lowerMsg = rawMessage.toLowerCase();
 
   let code: AiErrorCode = 'AI_PROVIDER_ERROR';
@@ -98,9 +136,9 @@ export function normalizeGeminiError(err: unknown): AiError {
 
   return new AiError({
     code,
-    message: rawMessage,
+    message: cleanMessage,
     providerId: 'gemini',
-    cause: err,
+    cause: sanitizedCause,
   });
 }
 
@@ -179,9 +217,54 @@ export class GeminiProviderCore implements AiProvider {
         config.responseJsonSchema = request.outputValidator.jsonSchema;
       }
 
+      if (request.operation === 'receipt_vision') {
+        if (!request.media || request.media.length !== 1) {
+          throw new AiError({
+            code: 'AI_INVALID_REQUEST',
+            message: 'receipt_vision requires exactly one media part.',
+            providerId: this.id,
+          });
+        }
+      }
+
+      let contents: string | Array<unknown> = request.prompt;
+
+      if (request.media && request.media.length > 0) {
+        const parts: Array<unknown> = [];
+        for (const part of request.media) {
+          if (part.kind !== 'inline_image') {
+            throw new AiError({
+              code: 'AI_INVALID_REQUEST',
+              message: 'Invalid media part kind. Only inline_image is supported.',
+              providerId: this.id,
+            });
+          }
+          if (
+            part.mimeType !== 'image/jpeg' &&
+            part.mimeType !== 'image/png' &&
+            part.mimeType !== 'image/webp'
+          ) {
+            throw new AiError({
+              code: 'AI_INVALID_REQUEST',
+              message: 'Unsupported media MIME type. Only image/jpeg, image/png, and image/webp are allowed.',
+              providerId: this.id,
+            });
+          }
+          const base64Data = Buffer.from(part.bytes).toString('base64');
+          parts.push({
+            inlineData: {
+              mimeType: part.mimeType,
+              data: base64Data,
+            },
+          });
+        }
+        parts.push(request.prompt);
+        contents = parts;
+      }
+
       const response = await client.models.generateContent({
         model: modelName,
-        contents: request.prompt,
+        contents: contents,
         config: Object.keys(config).length > 0 ? config : undefined,
       });
 

@@ -34,7 +34,11 @@ export interface AiCredentialResolverOptions {
 }
 
 export class AiCredentialResolver implements AiCredentialProvider {
-  constructor(private readonly options: AiCredentialResolverOptions) {}
+  private readonly options: AiCredentialResolverOptions;
+
+  constructor(options: AiCredentialResolverOptions) {
+    this.options = options;
+  }
 
   async resolveCredential(context: AiCredentialContext): Promise<AiCredential | null> {
     // 1. Invariant: Only 'gemini' provider is authorized for Gemini credentials
