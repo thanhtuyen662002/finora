@@ -179,25 +179,9 @@ export class GeminiProviderCore implements AiProvider {
         config.responseJsonSchema = request.outputValidator.jsonSchema;
       }
 
-      let contents: string | Array<unknown> = request.prompt;
-
-      if (request.media && request.media.length > 0) {
-        const parts: Array<unknown> = [];
-        for (const part of request.media) {
-          parts.push({
-            inlineData: {
-              mimeType: part.mimeType,
-              data: typeof part.data === 'string' ? part.data : part.data.toString('base64'),
-            },
-          });
-        }
-        parts.push(request.prompt);
-        contents = parts;
-      }
-
       const response = await client.models.generateContent({
         model: modelName,
-        contents: contents,
+        contents: request.prompt,
         config: Object.keys(config).length > 0 ? config : undefined,
       });
 
