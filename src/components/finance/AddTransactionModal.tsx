@@ -36,6 +36,9 @@ import {
   applyDraftToFormState,
   TransactionFormState,
 } from '@/features/ai/transaction-draft/form-state';
+import { ReceiptPicker } from '@/features/ai/receipt-vision/components/ReceiptPicker';
+import { applyReceiptDraftToForm } from '@/features/ai/receipt-vision/form-state';
+import type { ReceiptTransactionDraft } from '@/features/ai/receipt-vision/types';
 
 interface AddTransactionModalProps {
   open: boolean;
@@ -124,6 +127,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [aiInputMode, setAiInputMode] = useState<'text' | 'receipt'>('text');
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
@@ -323,6 +327,39 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   };
 
+  const handleApplyReceiptDraft = (draft: ReceiptTransactionDraft) => {
+    const currentState: TransactionFormState = {
+      type,
+      amount,
+      currency,
+      accountId,
+      categoryId,
+      incomeSourceId,
+      incomeSourceStreamId,
+      merchant,
+      note,
+      occurredOn,
+    };
+    const nextState = applyReceiptDraftToForm(draft, currentState);
+
+    setType(nextState.type);
+    setAmount(nextState.amount);
+    setCurrency(nextState.currency);
+    setAccountId(nextState.accountId);
+    setCategoryId(nextState.categoryId);
+    setIncomeSourceId(nextState.incomeSourceId);
+    setIncomeSourceStreamId(nextState.incomeSourceStreamId);
+    setMerchant(nextState.merchant);
+    setNote(nextState.note);
+    setOccurredOn(nextState.occurredOn);
+
+    if (draft.warnings.length > 0) {
+      setDraftNotice('Giao dịch được tạo từ hóa đơn. Vui lòng kiểm tra lại thông tin và xác nhận tài khoản.');
+    } else {
+      setDraftNotice('Giao dịch được tạo từ hóa đơn. Vui lòng chọn tài khoản.');
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -437,12 +474,44 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         )}
 
         {!initialData && (
-          <AiTransactionDraftInput
-            accounts={accounts}
-            categories={categories}
-            incomeSources={incomeSources}
-            onApplyDraft={handleApplyDraft}
-          />
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={aiInputMode === 'text' ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+                onClick={() => setAiInputMode('text')}
+              >
+                Nhập bằng văn bản
+              </Button>
+              <Button
+                type="button"
+                variant={aiInputMode === 'receipt' ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+                onClick={() => setAiInputMode('receipt')}
+              >
+                Phân tích hóa đơn
+              </Button>
+            </div>
+            
+            {aiInputMode === 'text' && (
+              <AiTransactionDraftInput
+                accounts={accounts}
+                categories={categories}
+                incomeSources={incomeSources}
+                onApplyDraft={handleApplyDraft}
+              />
+            )}
+            
+            {aiInputMode === 'receipt' && (
+              <ReceiptPicker
+                onApplyDraft={handleApplyReceiptDraft}
+                onCancel={() => setAiInputMode('text')}
+              />
+            )}
+          </div>
         )}
 
         {draftNotice && (
