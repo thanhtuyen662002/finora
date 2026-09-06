@@ -10,9 +10,7 @@
     "build": "NODE_ENV=production next build",
     "start": "next start -p 3000",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test:phase12b:vision": "node --require ./tests/mock-server-only.cjs --import tsx --test --test-concurrency=1 tests/phase12b-receipt-vision.test.ts tests/phase12b-source-verifier.test.ts",
-    "test": "npm run test:phase12b:vision"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "2.19.0",
@@ -34,7 +32,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
-    "sharp": "0.35.4",
     "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {

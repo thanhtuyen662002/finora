@@ -327,11 +327,7 @@ export function hydrateWireRecordToEnvelope(wire: EncryptedEnvelopeWire): Encryp
 }
 
 export class AiCredentialRepository {
-  private readonly supabase: SupabaseClient;
-
-  constructor(supabase: SupabaseClient) {
-    this.supabase = supabase;
-  }
+  constructor(private readonly supabase: SupabaseClient) {}
 
   /**
    * Reads active database credentials for a user via service-role RPC.

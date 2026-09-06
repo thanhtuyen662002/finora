@@ -5,10 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Multimodal Foundation & Receipt Vision (Pass 6)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: COMPLETE (review/phase12b-1-receipt-vision)
+- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 2
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B status:** COMPLETE (`PHASE_12B_1_2_3_STATUS = COMPLETE`)
+- **Phase 12B implementation:** NOT AUTHORIZED
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
@@ -1117,35 +1117,25 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 ### Next Recommended Step
 - Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
 
-## Phase 12B — Receipt Vision (Foundation & Corrective Implementation)
+## Phase 12B — Receipt Vision (Contract Discovery & Corrective Pass 2)
 
-### Status: COMPLETE (`PHASE_12B_1_2_3_STATUS = COMPLETE`)
+### Status: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Current Phase:** Phase 12B-3 Corrective Pass 6 — Error Taxonomy, Prompt Injection Boundary, Privacy-Safe Telemetry, and Verifier Completion
-- **Branch:** `review/phase12b-1-receipt-vision`
-- **Audit State:** Ready for final independent audit
+- **Phase 12B Implementation:** NOT AUTHORIZED
+- **Phase 12C Implementation:** NOT AUTHORIZED
 
-- **Correctives Completed in Pass 6:**
-  1. **Receipt Error Taxonomy (C01):** Implemented feature-local `ReceiptVisionError` / `ReceiptVisionErrorCode` with exactly 9 normalized client-safe codes (`AUTH_REQUIRED`, `RECEIPT_FILE_REQUIRED`, `RECEIPT_FILE_INVALID`, `RECEIPT_FILE_TOO_LARGE`, `RECEIPT_FILE_TYPE_UNSUPPORTED`, `RECEIPT_IMAGE_DECODE_FAILED`, `RECEIPT_IMAGE_DIMENSIONS_EXCEEDED`, `RECEIPT_PARSER_OUTPUT_INVALID`, `RECEIPT_AMBIGUOUS_DATA`). Preserved the Phase 10 `AiErrorCode` contract with zero modifications or widening. All errors client-redacted (no buffers, base64 strings, or raw provider payloads).
-  2. **Prompt Injection Boundary (C02):** Implemented `BEGIN_CATEGORY_DELIMITER` and `END_CATEGORY_DELIMITER` in `src/features/ai/receipt-vision/prompt.ts`. Category candidates are isolated within structured JSON delimiters accompanied by explicit system instructions to treat enclosed content strictly as static data. Zero database UUIDs leaked into prompt. Adversarial category labels sanitized and capped at 50 chars.
-  3. **Privacy-Safe Telemetry (C03):** Implemented `FINORA_RECEIPT_VISION_TIMING` with injectable `ReceiptVisionTelemetrySink`. Strictly allowlisted fields only (`operation`, `success`, `input_format`, `input_bytes_bucket`, `image_width_bucket`, `image_height_bucket`, `preprocess_ms`, `context_ms`, `ai_provider_ms`, `revalidation_ms`, `total_ms`, `warning_count`, `error_code`). All bytes/dimensions bucketed into coarse ranges. Sanitizer guarantees zero PII, zero filenames, zero raw byte buffers, zero base64 payload, and zero user IDs.
-  4. **Strict Architectural Verifier & Deterministic Test Suite (C04):**
-     - Source verifier (`scripts/verify-phase12b-source.mjs`) expanded to 28 comprehensive gates covering all Phase 12B constraints, passing 28/28 checks.
-     - Deterministic test suite (`tests/phase12b-receipt-vision.test.ts` & `tests/phase12b-source-verifier.test.ts`) covering 28 subtests across schema, domain, categories, image binary parsing, retry policy, error sanitization, prompt injection defenses, and privacy-safe telemetry.
-     - Preserved lockfiles (`package-lock.json` and `bun.lock`).
-     - Zero database migrations, zero mutations, zero external runtime calls.
-
-### Verification Results (Pass 6)
-- **Phase 12B Source Verifier (`scripts/verify-phase12b-source.mjs`)**: 28/28 PASS
-- **Receipt Vision & Verifier Tests (`npm test`)**: 28/28 subtests PASS (0 failed)
-- **TypeScript (`npm run typecheck`)**: PASS (0 errors)
-- **Lint (`npm run lint`)**: PASS (0 errors)
-- **Production Build (`compile_applet` / `npm run build`)**: PASS
-- **Lockfile & Dependencies**: Unchanged, sharp pinned at exact version, zero zod dependencies.
+- **Contract Invariants & Specifications Established (Corrective Pass 2 Resolution):**
+  1. **Canonical 11-Key Keyset & Explicit Provenance States (F01):** Exact 11-key schema (`document_kind`, `merchant`, `occurred_on`, `occurred_on_state`, `amount`, `amount_state`, `currency_code`, `currency_state`, `category_token`, `note`, `image_quality`). State consistency rules rigorously enforced (`amount_state === 'PRESENT'` iff `amount !== null`, etc.). Warnings (`TOTAL_MISSING`, `TOTAL_AMBIGUOUS`, `CURRENCY_MISSING`, `CURRENCY_AMBIGUOUS`, `CURRENCY_UNSUPPORTED`, `DATE_MISSING`, `DATE_AMBIGUOUS`, `DATE_INVALID`, `IMAGE_QUALITY_LOW`, `MERCHANT_MISSING`, `CATEGORY_UNRESOLVED`, `CATEGORY_STALE`, `ACCOUNT_REQUIRED`, `DOCUMENT_UNSUPPORTED`) are deterministically derived from provider states and server checks.
+  2. **Exact Transport Headroom & Bounded Payload Architecture (F02):** Application file limit exact `4,194,304 bytes` (4 MiB). Next.js Server Action body limit set to exact numeric `4,350,000 bytes` (providing ~155 KiB overhead for multipart headers/action metadata) under the hard Vercel platform ceiling of `4,500,000 bytes`. Invariant: `4194304 < 4350000 < 4500000`. Client preflight check + server-side size check.
+  3. **Sharp Decoder Specification & Auth Precedence (F03):** Future implementation restricted to `sharp` (pinned `0.35.4`). Decoder limits: `limitInputPixels = 20_000_000`, dimensions <= 8192px, frame count MUST == 1 (animated WebP / multi-frame rejected with `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED`). Proportional resize to max long edge <= 2048px, sRGB conversion, metadata stripping. Buffer <= 4 MiB. Strict server auth precedence (`supabase.auth.getUser()`) before array buffering, decoder invocation, candidate querying, credential resolution, or AI dispatch.
+  4. **Unambiguous Exact Money & Separator Grammar (F04):** Dot `.` is strictly the decimal separator. `"85.000"` parsed as `85.0000`; `"85,000"` with comma rejected. Prompt instructs model to emit plain integer or dot-decimal strings (e.g. `'85000'` for 85,000 VND). Exact-money string canonicalization to `numeric(20,4)` string with zero floating-point arithmetic.
+  5. **Single Logical Provider Call & Single HTTP Attempt (F05):** Exactly 1 logical call per Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`). Exactly 1 HTTP attempt (`httpOptions.retryOptions.attempts = 1`). Zero auto-retry (`PHASE_12B_PROVIDER_AUTO_RETRY = false`). Media-safe error boundary guarantees raw image bytes, base64 strings, or provider payloads never leak into `AiError` messages, server logs, or client responses.
+  6. **Category Candidates Cap & Degraded Context Resilience (F06):** Active same-user expense categories capped at 50 (`PHASE_12B_MAX_CATEGORY_CANDIDATES = 50`), labels sanitized to max 50 chars (`PHASE_12B_MAX_CATEGORY_LABEL_LENGTH = 50`), mapped to opaque `CAT_n` tokens. Category overflow (>50) safely omits candidate tokens (`CATEGORY_UNRESOLVED`). Database query failure degrades gracefully without aborting vision parse. Fabricated tokens fail closed. Stale categories detected via post-parse RLS revalidation (`CATEGORY_STALE`).
+  7. **AddTransactionModal Binding & Zero Default Leakage (F07):** Binding to `AddTransactionModal.handleSubmit -> createTransaction`. Apply populates React state with `can_apply != save_ready`. `account_id` remains empty / `null` with `ACCOUNT_REQUIRED` advisory. Receipt currency tied to account currency; currency mismatches must be explicitly resolved without silent relabeling. Null receipt fields clear stale form state. Persistence strictly requires user click on "Lưu giao dịch".
+  8. **Truthful UI, Ephemeral Lifecycle & Verifier Deliverables (F08):** External AI privacy disclosure prominently displayed before Analyze. Object URL revocation on unmount/close. Modal closure discards in-flight promise safely without claiming server cancellation. Zero financial mutation on Analyze/Apply. Planned verifier scripts and test suites documented as Pass 12B-1 / 12B-3 deliverables.
 
 ### Next Recommended Step
-- Independent audit of branch `review/phase12b-1-receipt-vision`.
-
+- Independent architectural audit of `docs/PHASE_12B_CONTRACT_DISCOVERY.md` (Corrective Pass 2) prior to authorization of Pass 12B-1 implementation.
 
 
