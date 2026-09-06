@@ -55,12 +55,9 @@ export function sanitizeCandidateLabel(label: string): string {
 }
 
 export class ContextLoadError extends Error {
-  readonly cause?: unknown;
-
-  constructor(message: string, cause?: unknown) {
+  constructor(message: string, readonly cause?: unknown) {
     super(message);
     this.name = 'ContextLoadError';
-    this.cause = cause;
   }
 }
 
