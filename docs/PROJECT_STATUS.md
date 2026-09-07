@@ -1184,10 +1184,11 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 
 ## Phase 12B — Receipt Vision UI Corrective Pass 9
 
-### Status: PRODUCTION_PATCH_PENDING_VERIFICATION
+### Status: PRODUCTION_DEPLOYED / PENDING_RUNTIME_VERIFICATION
 
 - Replaced low-contrast amber warning chips in `ReceiptPicker` with an accessible warning panel: high-contrast light/dark surfaces, explicit border, warning icon, count badge, and one wrapped row per server-derived warning.
 - Hardened the receipt error panel with a bordered red surface and dark-mode text/icon colors that remain readable against the background.
 - Kept warning codes, server taxonomy, draft eligibility, and all receipt-analysis behavior unchanged; this is presentation-only.
 - Added source assertions for the warning panel role/label, high-contrast classes, and long-message wrapping.
-- The production correction is ready to deploy after local gates pass. Runtime Phase 12B acceptance remains separate and is not inferred from this visual patch.
+- Promoted to `main` in commit `dd19849e0afa78461b36fe9b7f22c0b0896a2962`. Vercel production deployment `dpl_7yrqR6ChQZWRwnurqYxrasNGdMXb` reached `READY` and serves `https://finora-orpin-nu.vercel.app`.
+- Post-deploy verification: production returned HTTP `200`; Vercel reported no runtime errors in the selected verification window. Runtime Phase 12B acceptance remains separate and is not inferred from this visual patch.
