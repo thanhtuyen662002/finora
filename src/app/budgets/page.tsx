@@ -276,7 +276,7 @@ export default function BudgetsPage() {
       </PageHeader>
 
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-sm flex items-center justify-between">
+        <div className="finora-notice-error p-4 border rounded-xl text-sm flex items-center justify-between" role="alert">
           <span>{error}</span>
           <Button size="sm" variant="outline" onClick={loadData}>
             Thử lại

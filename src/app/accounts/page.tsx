@@ -107,7 +107,7 @@ export default function AccountsPage() {
       </PageHeader>
 
       {errorMessage && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+        <div className="finora-notice-error rounded-lg border px-4 py-3 text-sm" role="alert">
           {errorMessage}
         </div>
       )}

@@ -103,7 +103,11 @@ export const AddCategoryModal: React.FC<AddCategoryModalProps> = ({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          {errorMsg && <div className="text-sm font-medium text-destructive">{errorMsg}</div>}
+          {errorMsg && (
+            <div className="finora-notice-error rounded-lg border px-3 py-2 text-sm font-medium" role="alert">
+              {errorMsg}
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="catName">Tên danh mục</Label>
             <Input

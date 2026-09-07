@@ -209,7 +209,7 @@ export default function OnboardingPage() {
 
         <Card className="shadow-lg border-border">
           {errorMessage && (
-            <div className="mx-6 mt-6 p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+            <div className="finora-notice-error mx-6 mt-6 p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>

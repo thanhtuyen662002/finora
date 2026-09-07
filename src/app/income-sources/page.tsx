@@ -354,14 +354,14 @@ export default function IncomeSourcesPage() {
       {feedback && (
         <div className={`p-3.5 rounded-lg border flex items-center justify-between text-xs font-medium animate-in fade-in duration-200 ${
           feedback.type === 'success'
-            ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
-            : 'bg-destructive/10 text-destructive border-destructive/20'
-        }`}>
+            ? 'finora-notice-success'
+            : 'finora-notice-error'
+        }`} role="status" aria-live="polite">
           <div className="flex items-center space-x-2">
             {feedback.type === 'success' ? (
               <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             ) : (
-              <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+              <AlertCircle className="h-4 w-4 shrink-0" />
             )}
             <span>{feedback.message}</span>
           </div>
@@ -526,13 +526,13 @@ export default function IncomeSourcesPage() {
               Đang phân tích cơ cấu thu nhập...
             </div>
           ) : reportError ? (
-            <div className="py-6 text-center text-xs text-destructive">
+            <div className="finora-notice-error rounded-lg border px-3 py-3 text-center text-xs" role="alert">
               <AlertCircle className="h-5 w-5 mx-auto mb-1" />
               {reportError}
             </div>
           ) : (selectedCurrency || reportData?.selectedCurrency || 'VND') === 'BASE' &&
             reportData?.baseHistorical.status !== 'AVAILABLE' ? (
-            <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+            <div className="finora-notice-warning mx-1 my-1 rounded-lg border p-4 text-center text-sm" role="status">
               Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
             </div>
           ) : (
@@ -602,8 +602,8 @@ export default function IncomeSourcesPage() {
 
       {/* Main Income Sources Grid */}
       {error ? (
-        <div className="p-8 text-center rounded-xl border border-destructive/20 bg-destructive/5 space-y-3 max-w-md mx-auto my-8">
-          <AlertCircle className="h-8 w-8 text-destructive mx-auto" />
+        <div className="finora-notice-error p-8 text-center rounded-xl border space-y-3 max-w-md mx-auto my-8" role="alert">
+          <AlertCircle className="h-8 w-8 mx-auto" />
           <h3 className="font-semibold text-foreground text-sm">Không thể tải nguồn thu nhập</h3>
           <p className="text-xs text-muted-foreground">{error}</p>
           <Button size="sm" variant="outline" onClick={loadData}>
@@ -806,7 +806,7 @@ export default function IncomeSourcesPage() {
 
             <div className="space-y-4 py-4 text-xs">
               {sourceModalError && (
-                <div className="p-3 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive flex items-center space-x-2">
+                <div className="finora-notice-error p-3 rounded-lg border flex items-center space-x-2" role="alert">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{sourceModalError}</span>
                 </div>
@@ -882,7 +882,7 @@ export default function IncomeSourcesPage() {
 
             <div className="space-y-4 py-4 text-xs">
               {streamModalError && (
-                <div className="p-3 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive flex items-center space-x-2">
+                <div className="finora-notice-error p-3 rounded-lg border flex items-center space-x-2" role="alert">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{streamModalError}</span>
                 </div>

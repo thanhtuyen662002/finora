@@ -217,7 +217,7 @@ export default function TransactionsPage() {
         >
           {exported ? (
             <>
-              <Check className="h-4 w-4 mr-1.5 text-emerald-600" />
+              <Check className="h-4 w-4 mr-1.5 text-emerald-700 dark:text-emerald-300" />
               Đã xuất CSV
             </>
           ) : (
@@ -244,7 +244,7 @@ export default function TransactionsPage() {
       </PageHeader>
 
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+        <div className="finora-notice-error rounded-lg border px-4 py-3 text-sm" role="alert">
           {error}
         </div>
       )}

@@ -214,11 +214,11 @@ export default function AdminPage() {
       </PageHeader>
 
       {!isCheckingAdmin && !isAdmin && (
-        <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive flex items-start gap-3">
+        <div className="finora-notice-error p-4 rounded-xl border flex items-start gap-3" role="alert">
           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
           <div>
             <h4 className="text-sm font-semibold">Quyền truy cập quản trị bị từ chối (Admin Access Restricted)</h4>
-            <p className="text-xs mt-1 text-destructive/90">
+            <p className="text-xs mt-1 opacity-90">
               Tài khoản hiện tại không nằm trong danh sách quản trị viên được ủy quyền của hệ thống. Mọi thao tác ghi hoặc tra cứu quản trị server-side sẽ bị từ chối với mã lỗi FORBIDDEN.
             </p>
           </div>
@@ -352,8 +352,8 @@ export default function AdminPage() {
                 </CardDescription>
               </div>
               <div className="flex items-center space-x-2">
-                {inviteFeedback && (
-                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  {inviteFeedback && (
+                  <span className="finora-notice-success inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium" role="status">
                     Đã gửi thư mời (Mô phỏng)!
                   </span>
                 )}
@@ -434,11 +434,11 @@ export default function AdminPage() {
                   <span className="text-xs">Đang xác thực quyền quản trị...</span>
                 </div>
               ) : !isAdmin ? (
-                <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/10 text-destructive flex items-start gap-3">
+                <div className="finora-notice-error p-4 rounded-xl border flex items-start gap-3" role="alert">
                   <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-sm font-semibold">Quyền truy cập quản trị bị từ chối (Access Denied)</h4>
-                    <p className="text-xs mt-1 text-destructive/90">
+                    <p className="text-xs mt-1 opacity-90">
                       Bạn không có quyền quản trị viên để tra cứu, quản lý hoặc cấp khóa AI cho người dùng khác.
                     </p>
                   </div>
@@ -484,14 +484,14 @@ export default function AdminPage() {
                   </form>
 
                   {targetLookupError && (
-                    <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+                    <div className="finora-notice-error p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
                       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                       <span>{targetLookupError}</span>
                     </div>
                   )}
 
                   {targetLookupSuccess && (
-                    <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
+                    <div className="finora-notice-success p-3 text-xs border rounded-lg flex items-start gap-2" role="status">
                       <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
                       <span>{targetLookupSuccess}</span>
                     </div>
@@ -543,14 +543,14 @@ export default function AdminPage() {
                       </div>
 
                       {assignError && (
-                        <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+                        <div className="finora-notice-error p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
                           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                           <span>{assignError}</span>
                         </div>
                       )}
 
                       {assignSuccess && (
-                        <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
+                        <div className="finora-notice-success p-3 text-xs border rounded-lg flex items-start gap-2" role="status">
                           <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
                           <span>{assignSuccess}</span>
                         </div>
@@ -693,7 +693,7 @@ export default function AdminPage() {
 
                 <div className="flex items-center justify-between pt-2">
                   {savedSuccess ? (
-                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center">
+                    <span className="finora-notice-success inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold" role="status">
                       <CheckCircle2 className="h-4 w-4 mr-1" />
                       Đã cập nhật cấu hình mô phỏng (Preview only — Chưa lưu backend)
                     </span>
@@ -721,7 +721,7 @@ export default function AdminPage() {
               </div>
               <div className="flex items-center space-x-2">
                 {fxSyncFeedback && (
-                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  <span className="finora-notice-success inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium" role="status">
                     Đã làm mới dữ liệu mô phỏng (Mock refresh complete)
                   </span>
                 )}

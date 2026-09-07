@@ -53,6 +53,12 @@ test('Phase 12B Source Verifier', async (t) => {
     assert.match(globalStyles, /\*::\-webkit\-scrollbar-thumb:hover/);
     assert.match(globalStyles, /scrollbar-width: thin/);
     assert.match(globalStyles, /scrollbar-gutter: stable/);
+    assert.match(globalStyles, /\.finora-notice-error/);
+    assert.match(globalStyles, /\.dark \.finora-notice-error/);
+    assert.match(globalStyles, /\.finora-notice-warning/);
+    assert.match(globalStyles, /\.finora-notice-success/);
+    assert.match(modalCode, /finora-notice-error/);
+    assert.match(modalCode, /finora-notice-warning/);
     assert.match(pickerCode, /Cần kiểm tra trước khi áp dụng/);
     assert.match(pickerCode, /aria-label="Cảnh báo từ kết quả phân tích hóa đơn"/);
     assert.match(pickerCode, /dark:text-amber-50/);

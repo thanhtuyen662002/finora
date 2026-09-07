@@ -91,7 +91,7 @@ export const ContributeGoalModal: React.FC<ContributeGoalModalProps> = ({
         </DialogHeader>
 
         {error && (
-          <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg text-sm flex items-center space-x-2">
+          <div className="finora-notice-error p-3 border rounded-lg text-sm flex items-center space-x-2" role="alert">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>

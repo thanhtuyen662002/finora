@@ -212,7 +212,7 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
           {/* Error Banner */}
           {errorMsg && (
             <div
-              className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive"
+              className="finora-notice-error flex items-start gap-2 rounded-md border p-2.5 text-xs"
               role="alert"
             >
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -220,7 +220,7 @@ export const AiTransactionDraftInput: React.FC<AiTransactionDraftInputProps> = (
               <button
                 type="button"
                 onClick={() => setErrorMsg(null)}
-                className="shrink-0 text-destructive/70 hover:text-destructive"
+                className="shrink-0 text-red-700 hover:text-red-900 dark:text-red-300 dark:hover:text-red-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

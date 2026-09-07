@@ -100,7 +100,7 @@ export default function ForgotPasswordPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {errorMessage && (
-              <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+              <div className="finora-notice-error p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span className="leading-relaxed">{errorMessage}</span>
               </div>

@@ -136,8 +136,8 @@ export default function DashboardPage() {
   if (error || !data) {
     return (
       <AppShell>
-        <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-destructive/20 bg-destructive/5 text-center space-y-4 max-w-md mx-auto my-12">
-          <AlertCircle className="h-10 w-10 text-destructive" />
+        <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
+          <AlertCircle className="h-10 w-10" />
           <div>
             <h3 className="font-semibold text-foreground">Không thể tải dữ liệu tài chính</h3>
             <p className="text-xs text-muted-foreground mt-1">{error || 'Lỗi không xác định'}</p>
@@ -231,13 +231,13 @@ export default function DashboardPage() {
       {/* 4 Core Financial Summary Cards for active currency */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         {effectiveCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? (
-          <div className="flex flex-col p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="finora-notice-warning flex flex-col p-4 rounded-xl shadow-sm border" role="status">
             <div className="flex items-center gap-2 mb-2">
-              <Wallet className="w-5 h-5 text-slate-400" />
-              <h3 className="text-sm font-medium text-slate-500">Tài sản ({displayCurrency})</h3>
+              <Wallet className="w-5 h-5" />
+              <h3 className="text-sm font-medium">Tài sản ({displayCurrency})</h3>
             </div>
-            <div className="text-xl font-semibold text-slate-400 mb-1">— (Không khả dụng)</div>
-            <p className="text-xs text-amber-600 mb-2">Thiếu tỷ giá hiện tại.</p>
+            <div className="text-xl font-semibold mb-1">— (Không khả dụng)</div>
+            <p className="text-xs mb-2">Thiếu tỷ giá hiện tại.</p>
             <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="w-fit h-7 text-xs">Thử lại</Button>
           </div>
         ) : (
@@ -346,7 +346,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
-                <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+                <div className="finora-notice-warning mx-1 my-1 rounded-lg border p-4 text-center text-sm" role="status">
                   Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
                 </div>
               ) : (
@@ -384,7 +384,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' ? (
-                <div className="p-8 text-center text-sm text-amber-700 dark:text-amber-300">
+                <div className="finora-notice-warning mx-1 my-1 rounded-lg border p-4 text-center text-sm" role="status">
                   Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.
                 </div>
               ) : (

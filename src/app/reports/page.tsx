@@ -153,8 +153,8 @@ export default function ReportsPage() {
   if (error || !data) {
     return (
       <AppShell>
-        <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-destructive/20 bg-destructive/5 text-center space-y-4 max-w-md mx-auto my-12">
-          <AlertCircle className="h-10 w-10 text-destructive" />
+        <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
+          <AlertCircle className="h-10 w-10" />
           <div>
             <h3 className="font-semibold text-foreground">Không thể tải báo cáo tài chính</h3>
             <p className="text-xs text-muted-foreground mt-1">{error || 'Lỗi không xác định'}</p>
@@ -223,9 +223,9 @@ export default function ReportsPage() {
 
       {/* Consolidated BASE Mode Unavailability Banner */}
       {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' && (
-        <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 text-amber-800 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+        <div className="finora-notice-warning p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs" role="status">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
             <div>
               <h4 className="font-semibold text-sm">Báo cáo tổng hợp ({data.baseCurrency}) tạm thời chưa khả dụng</h4>
               <p className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-0.5">

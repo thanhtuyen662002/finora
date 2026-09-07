@@ -253,7 +253,7 @@ export default function RecurringPage() {
       </PageHeader>
 
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-sm flex items-center justify-between">
+        <div className="finora-notice-error p-4 border rounded-xl text-sm flex items-center justify-between" role="alert">
           <span>{error}</span>
           <Button size="sm" variant="outline" onClick={loadData}>
             Thử lại
@@ -366,7 +366,7 @@ export default function RecurringPage() {
                           </Badge>
                         )}
                         {item.is_paused && !item.is_archived && (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
+                          <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:bg-amber-950/30">
                             Tạm dừng
                           </Badge>
                         )}

@@ -1192,3 +1192,13 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - Added source assertions for the warning panel role/label, high-contrast classes, and long-message wrapping.
 - Promoted to `main` in commit `dd19849e0afa78461b36fe9b7f22c0b0896a2962`. Vercel production deployment `dpl_7yrqR6ChQZWRwnurqYxrasNGdMXb` reached `READY` and serves `https://finora-orpin-nu.vercel.app`.
 - Post-deploy verification: production returned HTTP `200`; Vercel reported no runtime errors in the selected verification window. Runtime Phase 12B acceptance remains separate and is not inferred from this visual patch.
+
+## Phase 12B — Application Notification Theme Corrective Pass 10
+
+### Status: IMPLEMENTED / PENDING_PRODUCTION_DEPLOYMENT
+
+- Added shared `finora-notice-error`, `finora-notice-warning`, and `finora-notice-success` palettes with explicit light/dark foreground, background, and border pairs.
+- Applied the palette to receipt analysis errors/warnings, transaction draft notices, authentication forms, account/budget/goal/recurring/transfer modals, dashboard/report fallbacks, settings, income sources, and admin feedback surfaces.
+- Added alert/status semantics to dynamically rendered messages and removed dark-theme-incompatible hardcoded light surfaces such as the dashboard unavailable-rate card.
+- Receipt-analysis behavior, warning taxonomy, draft-only semantics, authentication ordering, database/storage boundaries, and live AI-call policy are unchanged.
+- Verification: TypeScript, ESLint, Phase 12B deterministic/source tests, and production build all pass locally. Production deployment and runtime verification remain separate follow-up gates.

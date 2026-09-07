@@ -461,7 +461,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
         {errorMsg && (
           <div
-            className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            className="finora-notice-error rounded-lg border px-3 py-2 text-sm"
             role="alert"
           >
             {errorMsg}
@@ -551,10 +551,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
         {draftNotice && (
           <div
-            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2"
+            className="finora-notice-warning rounded-lg border px-3 py-2 text-xs flex items-start gap-2"
             role="status"
           >
-            <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>{draftNotice}</span>
           </div>
         )}
@@ -627,7 +627,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <div className="p-3 rounded-lg border bg-muted/20 space-y-3">
               {incomeSourcesLoadError && (
                 <div
-                  className="flex items-start justify-between gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-xs text-destructive"
+                  className="finora-notice-error flex items-start justify-between gap-2 rounded-md border p-2.5 text-xs"
                   role="alert"
                 >
                   <div className="flex items-start gap-1.5">

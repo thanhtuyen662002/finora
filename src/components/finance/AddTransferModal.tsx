@@ -396,7 +396,7 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
         </DialogHeader>
 
         {errorMsg && (
-          <div className="flex items-start gap-2 p-3 text-xs bg-destructive/10 text-destructive rounded-lg border border-destructive/20">
+          <div className="finora-notice-error flex items-start gap-2 p-3 text-xs rounded-lg border" role="alert">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>
@@ -569,7 +569,7 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
               <div className="pt-2 flex items-center justify-between border-t">
                 {initialData.is_voided ? (
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs text-destructive font-semibold bg-destructive/10 px-2 py-1 rounded">
+                    <span className="finora-notice-error text-xs font-semibold border px-2 py-1 rounded">
                       Giao dịch đã bị hủy
                     </span>
                     <Button

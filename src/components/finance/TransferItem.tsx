@@ -46,7 +46,7 @@ export const TransferItem: React.FC<TransferItemProps> = ({
               {transfer.toAccountName || 'Tài khoản đích'}
             </span>
             {transfer.is_voided && (
-              <span className="text-[10px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-md ml-2 font-semibold">
+              <span className="finora-notice-error text-[10px] px-1.5 py-0.5 rounded-md ml-2 font-semibold border">
                 ĐÃ HỦY
               </span>
             )}

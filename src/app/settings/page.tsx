@@ -340,7 +340,7 @@ export default function SettingsPage() {
         ) : (
           <form onSubmit={handleSave} className="space-y-6 pb-10">
             {errorMessage && (
-              <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+              <div className="finora-notice-error p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>{errorMessage}</span>
               </div>
@@ -596,14 +596,14 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {aiActionError && (
-                    <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+                    <div className="finora-notice-error p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
                       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                       <span>{aiActionError}</span>
                     </div>
                   )}
 
                   {aiActionSuccess && (
-                    <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
+                    <div className="finora-notice-success p-3 text-xs border rounded-lg flex items-start gap-2" role="status">
                       <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
                       <span>{aiActionSuccess}</span>
                     </div>
@@ -627,7 +627,7 @@ export default function SettingsPage() {
                             <span>Đang kiểm tra...</span>
                           </div>
                         ) : aiMetadata?.activeResolvedSource === 'PERSONAL' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                          <span className="finora-notice-success inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium" role="status">
                             Khóa cá nhân (Active)
                           </span>
                         ) : aiMetadata?.activeResolvedSource === 'ADMIN_ASSIGNED' ? (
@@ -703,8 +703,8 @@ export default function SettingsPage() {
 
                     {/* Revoke confirmation block */}
                     {isConfirmingRevoke && (
-                      <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <span className="text-xs text-destructive font-medium">
+                      <div className="finora-notice-warning p-3 border rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2" role="alert">
+                        <span className="text-xs font-medium">
                           Xác nhận xóa khóa API cá nhân khỏi tài khoản?
                         </span>
                         <div className="flex items-center gap-2">
@@ -836,14 +836,14 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {passwordError && (
-                  <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-lg flex items-start gap-2">
+                  <div className="finora-notice-error p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
                     <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                     <span>{passwordError}</span>
                   </div>
                 )}
 
                 {passwordSuccess && (
-                  <div className="p-3 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-lg flex items-start gap-2">
+                  <div className="finora-notice-success p-3 text-xs border rounded-lg flex items-start gap-2" role="status">
                     <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
                     <span>Mật khẩu của bạn đã được cập nhật thành công!</span>
                   </div>
@@ -957,7 +957,7 @@ export default function SettingsPage() {
             {/* Action Button */}
             <div className="flex items-center justify-between pt-2">
               {saveSuccess ? (
-                <span className="inline-flex items-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="finora-notice-success inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold" role="status">
                   <CheckCircle2 className="h-4 w-4 mr-1.5" />
                   Đã lưu cài đặt thành công!
                 </span>
@@ -982,4 +982,3 @@ export default function SettingsPage() {
     </AppShell>
   );
 }
-

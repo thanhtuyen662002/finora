@@ -49,6 +49,37 @@
   }
 }
 
+@layer components {
+  /*
+   * Shared notification palette. Keep the foreground deliberately bright in
+   * dark mode: the destructive token is also used as a button background and
+   * is too dark to be used as notification text on its own.
+   */
+  .finora-notice-error {
+    @apply border-red-300 bg-red-50 text-red-900;
+  }
+
+  .dark .finora-notice-error {
+    @apply border-red-800/80 bg-red-950/60 text-red-100;
+  }
+
+  .finora-notice-warning {
+    @apply border-amber-300 bg-amber-50 text-amber-950;
+  }
+
+  .dark .finora-notice-warning {
+    @apply border-amber-700/80 bg-amber-950/50 text-amber-50;
+  }
+
+  .finora-notice-success {
+    @apply border-emerald-300 bg-emerald-50 text-emerald-900;
+  }
+
+  .dark .finora-notice-success {
+    @apply border-emerald-700/80 bg-emerald-950/50 text-emerald-100;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -240,7 +240,7 @@ export function ReceiptPicker({ onApplyDraft, onCancel }: ReceiptPickerProps) {
 
       {error && (
         <div
-          className="flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-sm leading-relaxed text-red-900 dark:border-red-800/80 dark:bg-red-950/60 dark:text-red-100"
+          className="finora-notice-error flex items-start gap-2 rounded-xl border p-3 text-sm leading-relaxed"
           role="alert"
         >
           <span className="mt-0.5 shrink-0 rounded-full bg-red-200 p-0.5 text-red-800 dark:bg-red-900/80 dark:text-red-100">
@@ -301,7 +301,7 @@ export function ReceiptPicker({ onApplyDraft, onCancel }: ReceiptPickerProps) {
 
           {draft.warnings.length > 0 && (
             <section
-              className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-700/80 dark:bg-amber-950/50 dark:text-amber-50"
+              className="finora-notice-warning rounded-xl border p-3"
               role="alert"
               aria-label="Cảnh báo từ kết quả phân tích hóa đơn"
             >
