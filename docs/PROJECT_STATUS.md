@@ -5,10 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Receipt Vision Contract Corrective Pass 2
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+- **Current phase:** Phase 12B — Multimodal Foundation & Receipt Vision (Corrective Pass 7)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: IMPLEMENTED / INDEPENDENT AUDIT PASS / RUNTIME PENDING
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B implementation:** NOT AUTHORIZED
+- **Phase 12B status:** PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_AUDITED_PENDING_RUNTIME`)
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
@@ -1115,27 +1115,66 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - **Phase 12A Overall:** PASS (CLOSED)
 
 ### Next Recommended Step
-- Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
+- Execute the separately authorized Phase 12B-Runtime production gates; do not close Phase 12B before all three runtime receipts pass.
 
-## Phase 12B — Receipt Vision (Contract Discovery & Corrective Pass 2)
+## Phase 12B — Receipt Vision (Foundation & Corrective Implementation)
 
-### Status: CONTRACT_CORRECTIVE_2_COMPLETE / PENDING_INDEPENDENT_AUDIT (Phase 12 Overall: PARTIAL)
+### Status: PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_AUDITED_PENDING_RUNTIME`)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B Implementation:** NOT AUTHORIZED
-- **Phase 12C Implementation:** NOT AUTHORIZED
+- **Current Phase:** Phase 12B-3 Corrective Pass 7 — Runtime-Safe Telemetry, Fixed Public Errors, Delimiter Collision Defense, and Exact Contract Verifier
+- **Branch:** `review/phase12b-1-receipt-vision`
+- **Audit State:** Independent exact-head audit PASS at implementation SHA `e08a88e1e4fb8e161de73f38e8fefb3c494231bf`, tree `13dbdccc3c0581b68ed90a79562acdb20999dd37`; Pass 12B-Runtime remains pending
 
-- **Contract Invariants & Specifications Established (Corrective Pass 2 Resolution):**
-  1. **Canonical 11-Key Keyset & Explicit Provenance States (F01):** Exact 11-key schema (`document_kind`, `merchant`, `occurred_on`, `occurred_on_state`, `amount`, `amount_state`, `currency_code`, `currency_state`, `category_token`, `note`, `image_quality`). State consistency rules rigorously enforced (`amount_state === 'PRESENT'` iff `amount !== null`, etc.). Warnings (`TOTAL_MISSING`, `TOTAL_AMBIGUOUS`, `CURRENCY_MISSING`, `CURRENCY_AMBIGUOUS`, `CURRENCY_UNSUPPORTED`, `DATE_MISSING`, `DATE_AMBIGUOUS`, `DATE_INVALID`, `IMAGE_QUALITY_LOW`, `MERCHANT_MISSING`, `CATEGORY_UNRESOLVED`, `CATEGORY_STALE`, `ACCOUNT_REQUIRED`, `DOCUMENT_UNSUPPORTED`) are deterministically derived from provider states and server checks.
-  2. **Exact Transport Headroom & Bounded Payload Architecture (F02):** Application file limit exact `4,194,304 bytes` (4 MiB). Next.js Server Action body limit set to exact numeric `4,350,000 bytes` (providing ~155 KiB overhead for multipart headers/action metadata) under the hard Vercel platform ceiling of `4,500,000 bytes`. Invariant: `4194304 < 4350000 < 4500000`. Client preflight check + server-side size check.
-  3. **Sharp Decoder Specification & Auth Precedence (F03):** Future implementation restricted to `sharp` (pinned `0.35.4`). Decoder limits: `limitInputPixels = 20_000_000`, dimensions <= 8192px, frame count MUST == 1 (animated WebP / multi-frame rejected with `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED`). Proportional resize to max long edge <= 2048px, sRGB conversion, metadata stripping. Buffer <= 4 MiB. Strict server auth precedence (`supabase.auth.getUser()`) before array buffering, decoder invocation, candidate querying, credential resolution, or AI dispatch.
-  4. **Unambiguous Exact Money & Separator Grammar (F04):** Dot `.` is strictly the decimal separator. `"85.000"` parsed as `85.0000`; `"85,000"` with comma rejected. Prompt instructs model to emit plain integer or dot-decimal strings (e.g. `'85000'` for 85,000 VND). Exact-money string canonicalization to `numeric(20,4)` string with zero floating-point arithmetic.
-  5. **Single Logical Provider Call & Single HTTP Attempt (F05):** Exactly 1 logical call per Analyze action (`PHASE_12B_MAX_PROVIDER_CALLS_PER_ANALYZE = 1`). Exactly 1 HTTP attempt (`httpOptions.retryOptions.attempts = 1`). Zero auto-retry (`PHASE_12B_PROVIDER_AUTO_RETRY = false`). Media-safe error boundary guarantees raw image bytes, base64 strings, or provider payloads never leak into `AiError` messages, server logs, or client responses.
-  6. **Category Candidates Cap & Degraded Context Resilience (F06):** Active same-user expense categories capped at 50 (`PHASE_12B_MAX_CATEGORY_CANDIDATES = 50`), labels sanitized to max 50 chars (`PHASE_12B_MAX_CATEGORY_LABEL_LENGTH = 50`), mapped to opaque `CAT_n` tokens. Category overflow (>50) safely omits candidate tokens (`CATEGORY_UNRESOLVED`). Database query failure degrades gracefully without aborting vision parse. Fabricated tokens fail closed. Stale categories detected via post-parse RLS revalidation (`CATEGORY_STALE`).
-  7. **AddTransactionModal Binding & Zero Default Leakage (F07):** Binding to `AddTransactionModal.handleSubmit -> createTransaction`. Apply populates React state with `can_apply != save_ready`. `account_id` remains empty / `null` with `ACCOUNT_REQUIRED` advisory. Receipt currency tied to account currency; currency mismatches must be explicitly resolved without silent relabeling. Null receipt fields clear stale form state. Persistence strictly requires user click on "Lưu giao dịch".
-  8. **Truthful UI, Ephemeral Lifecycle & Verifier Deliverables (F08):** External AI privacy disclosure prominently displayed before Analyze. Object URL revocation on unmount/close. Modal closure discards in-flight promise safely without claiming server cancellation. Zero financial mutation on Analyze/Apply. Planned verifier scripts and test suites documented as Pass 12B-1 / 12B-3 deliverables.
+- **Correctives Completed in Pass 7:**
+  1. **Exact fixed public errors:** `ReceiptVisionError` accepts only an exact code and derives its browser-safe message from an immutable map. The exact taxonomy is `AUTH_REQUIRED`, `RECEIPT_FILE_REQUIRED`, `RECEIPT_FILE_TOO_LARGE`, `RECEIPT_FILE_TYPE_UNSUPPORTED`, `RECEIPT_FILE_INVALID`, `RECEIPT_IMAGE_TOO_LARGE`, `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED`, `RECEIPT_IMAGE_NORMALIZED_TOO_LARGE`, and `RECEIPT_IMAGE_DECODE_FAILED`.
+  2. **Delimiter collision defense:** Category labels containing either reserved prompt delimiter are neutralized before JSON serialization; opaque tokens remain the only identifiers exposed to the provider.
+  3. **Runtime-safe telemetry:** The Section 17.3 schema is reconstructed from runtime-validated enums and finite non-negative integer timings. Unknown keys are discarded, invalid allowed-key values fail closed, pre-decode formats/dimensions are omitted, and `document_kind` is emitted only for validated success events.
+  4. **Request-scoped telemetry isolation:** Removed the mutable process-global sink. Synchronous and asynchronous sink failures are caught and cannot alter receipt-analysis results or produce unhandled rejections.
+  5. **Same-user category defense in depth:** Candidate loading and post-parse revalidation now require the authenticated `userId` predicate in addition to database RLS.
+  6. **Exact verifier coverage:** `scripts/verify-phase12b-source.mjs` maps and reports every one of the 91 names in Contract Section 19.2. Runtime closure remains explicitly pending rather than being represented as complete.
+
+### Verification Results (Pass 7)
+- **Phase 12B Source Verifier (`scripts/verify-phase12b-source.mjs`)**: 91/91 PASS
+- **Receipt Vision & Verifier Tests (`npm test`)**: 31/31 tests PASS (0 failed)
+- **TypeScript (`npm run typecheck`)**: PASS (0 errors)
+- **Lint (`npm run lint`)**: PASS (0 errors)
+- **Production Build (`compile_applet` / `npm run build`)**: PASS
+- **Full Repository Regression:** PASS (Phase 10, Phase 11, Phase 12A, Phase 12B, Phase 8, and Phase 9 suites; 0 failures)
+- **Lockfiles & Dependencies:** `package-lock.json` and `bun.lock` unchanged; `sharp` remains pinned to `0.35.4`; zero direct `zod` dependency.
+- **Database / Storage / Live AI:** Zero database mutations, zero storage writes, and zero real Gemini calls.
+
+### Independent Exact-Head Audit Receipt
+- **Audited implementation SHA:** `e08a88e1e4fb8e161de73f38e8fefb3c494231bf`
+- **Audited implementation tree:** `13dbdccc3c0581b68ed90a79562acdb20999dd37`
+- **Audit environment:** Fresh single-branch clone from GitHub; clean worktree; `npm ci` installed 495 packages without lockfile mutation.
+- **Scope verification:** Exactly 11 declared Pass 7 files changed; no package, lockfile, Next.js configuration, or migration changes.
+- **Independent gates:** `npm test` 31/31 PASS; full repository regression 0 failures; typecheck, lint, and production build PASS; Phase 10/11/12A/12B source verifiers PASS at 38/38, 99/99, 110/110, and 91/91.
+- **Supabase security review:** Server-side `auth.getUser()` precedes file processing and privileged factories; category reads and revalidation use the request-scoped authenticated client, RLS, and an explicit authenticated `user_id` predicate.
+- **Deployment check:** Vercel status SUCCESS for the audited implementation SHA.
+- **Audit verdict:** PASS with no open static findings. Runtime acceptance is intentionally not inferred from static or mocked tests.
+
+### Mandatory Runtime Gates Still Pending
+- Authenticated near-4-MiB Vercel Server Action transport smoke.
+- Live receipt-analysis verification with zero financial mutations.
+- Explicit standard Save verification proving exactly one transaction mutation and zero duplicates.
 
 ### Next Recommended Step
-- Independent architectural audit of `docs/PHASE_12B_CONTRACT_DISCOVERY.md` (Corrective Pass 2) prior to authorization of Pass 12B-1 implementation.
+- Execute the separately authorized Pass 12B-Runtime. Do not mark Phase 12B complete until near-limit transport, zero-mutation Analyze, and exactly-one-mutation explicit Save all pass.
 
+## Phase 12B — Receipt Vision UI Corrective Pass 8
 
+### Status: IMPLEMENTED / PENDING_PREVIEW_AND_RUNTIME_VERIFICATION
+
+- Replaced the low-emphasis text/receipt controls in `AddTransactionModal` with a mobile-first, icon-labelled `Nhập nhanh` / `Quét hóa đơn` selector. The receipt entry point is now visible immediately below the modal header and exposes its selected state through `aria-pressed`.
+- Added mode-specific helper copy so users know that receipt mode accepts a camera capture or an existing image before opening the picker.
+- Added a global scrollbar treatment for the full application and every nested scroll container: thin rounded thumb, transparent track, horizontal-scroll support, hover feedback, Firefox support, and a stable document gutter. The transaction modal additionally contains overscroll so mobile scrolling does not pull the page behind it.
+- Added a deterministic source test covering the visible receipt entry point, accessible mode state, global WebKit/Firefox scrollbar rules, and stable document gutter.
+- Verification: Phase 12B tests `32/32 PASS`; full repository regression `41/41 PASS`; Phase 12B exact source verifier `91/91 PASS`; TypeScript, ESLint, and production build `PASS`.
+- Phase 12B remains `PENDING_RUNTIME`; this UI corrective does not infer completion of the near-limit transport, zero-mutation Analyze, or exactly-one-mutation Save gates.
+
+### Pre-Corrective Runtime Data Baseline (provided 2026-09-07)
+
+- Transactions: `transaction_count=11`, `marker_count=0`, `transaction_fingerprint=b3ba24d1163cb88d3d311bceac98f70e`, `latest_created_at=2026-09-04 11:45:33.751761+00`.
+- Accounts: `account_count=17`, `balance_fingerprint=11d14119ead920ebabdb6df4dc704b25`.
+- Database/storage/live AI mutation during this corrective: `NONE`.

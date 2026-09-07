@@ -12,7 +12,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import {
+  Plus,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  ScanLine,
+  Sparkles,
+} from 'lucide-react';
 import { MoneyInput } from './MoneyInput';
 import { AccountRow, CategoryRow } from '@/types/database';
 import {
@@ -36,6 +43,9 @@ import {
   applyDraftToFormState,
   TransactionFormState,
 } from '@/features/ai/transaction-draft/form-state';
+import { ReceiptPicker } from '@/features/ai/receipt-vision/components/ReceiptPicker';
+import { applyReceiptDraftToForm } from '@/features/ai/receipt-vision/form-state';
+import type { ReceiptTransactionDraft } from '@/features/ai/receipt-vision/types';
 
 interface AddTransactionModalProps {
   open: boolean;
@@ -124,6 +134,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [aiInputMode, setAiInputMode] = useState<'text' | 'receipt'>('text');
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
@@ -323,6 +334,39 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   };
 
+  const handleApplyReceiptDraft = (draft: ReceiptTransactionDraft) => {
+    const currentState: TransactionFormState = {
+      type,
+      amount,
+      currency,
+      accountId,
+      categoryId,
+      incomeSourceId,
+      incomeSourceStreamId,
+      merchant,
+      note,
+      occurredOn,
+    };
+    const nextState = applyReceiptDraftToForm(draft, currentState);
+
+    setType(nextState.type);
+    setAmount(nextState.amount);
+    setCurrency(nextState.currency);
+    setAccountId(nextState.accountId);
+    setCategoryId(nextState.categoryId);
+    setIncomeSourceId(nextState.incomeSourceId);
+    setIncomeSourceStreamId(nextState.incomeSourceStreamId);
+    setMerchant(nextState.merchant);
+    setNote(nextState.note);
+    setOccurredOn(nextState.occurredOn);
+
+    if (draft.warnings.length > 0) {
+      setDraftNotice('Giao dịch được tạo từ hóa đơn. Vui lòng kiểm tra lại thông tin và xác nhận tài khoản.');
+    } else {
+      setDraftNotice('Giao dịch được tạo từ hóa đơn. Vui lòng chọn tài khoản.');
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -406,7 +450,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-lg">
             <Plus className="h-5 w-5 text-primary" />
@@ -437,12 +481,72 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         )}
 
         {!initialData && (
-          <AiTransactionDraftInput
-            accounts={accounts}
-            categories={categories}
-            incomeSources={incomeSources}
-            onApplyDraft={handleApplyDraft}
-          />
+          <div className="space-y-3">
+            <div
+              className="grid grid-cols-2 gap-1 rounded-xl border border-border/80 bg-muted/60 p-1.5"
+              role="group"
+              aria-label="Chọn cách nhập giao dịch"
+            >
+              <button
+                type="button"
+                aria-pressed={aiInputMode === 'text'}
+                className={`flex min-h-12 items-center justify-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  aiInputMode === 'text'
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border/70'
+                    : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                }`}
+                onClick={() => setAiInputMode('text')}
+              >
+                <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Nhập nhanh</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={aiInputMode === 'receipt'}
+                className={`relative flex min-h-12 items-center justify-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  aiInputMode === 'receipt'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                }`}
+                onClick={() => setAiInputMode('receipt')}
+              >
+                <ScanLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Quét hóa đơn</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                    aiInputMode === 'receipt'
+                      ? 'bg-primary-foreground/15 text-primary-foreground'
+                      : 'bg-primary/10 text-primary'
+                  }`}
+                  aria-hidden="true"
+                >
+                  AI
+                </span>
+              </button>
+            </div>
+
+            <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+              {aiInputMode === 'receipt'
+                ? 'Chụp hoặc chọn ảnh hóa đơn để Finora điền sẵn thông tin giao dịch.'
+                : 'Mô tả giao dịch bằng câu tự nhiên để Finora tạo bản nháp.'}
+            </p>
+
+            {aiInputMode === 'text' && (
+              <AiTransactionDraftInput
+                accounts={accounts}
+                categories={categories}
+                incomeSources={incomeSources}
+                onApplyDraft={handleApplyDraft}
+              />
+            )}
+
+            {aiInputMode === 'receipt' && (
+              <ReceiptPicker
+                onApplyDraft={handleApplyReceiptDraft}
+                onCancel={() => setAiInputMode('text')}
+              />
+            )}
+          </div>
         )}
 
         {draftNotice && (
