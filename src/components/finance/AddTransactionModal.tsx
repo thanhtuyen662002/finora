@@ -12,7 +12,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import {
+  Plus,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  ScanLine,
+  Sparkles,
+} from 'lucide-react';
 import { MoneyInput } from './MoneyInput';
 import { AccountRow, CategoryRow } from '@/types/database';
 import {
@@ -443,7 +450,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-lg">
             <Plus className="h-5 w-5 text-primary" />
@@ -475,27 +482,55 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
         {!initialData && (
           <div className="space-y-3">
-            <div className="flex gap-2">
-              <Button
+            <div
+              className="grid grid-cols-2 gap-1 rounded-xl border border-border/80 bg-muted/60 p-1.5"
+              role="group"
+              aria-label="Chọn cách nhập giao dịch"
+            >
+              <button
                 type="button"
-                variant={aiInputMode === 'text' ? 'default' : 'outline'}
-                size="sm"
-                className="flex-1"
+                aria-pressed={aiInputMode === 'text'}
+                className={`flex min-h-12 items-center justify-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  aiInputMode === 'text'
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border/70'
+                    : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                }`}
                 onClick={() => setAiInputMode('text')}
               >
-                Nhập bằng văn bản
-              </Button>
-              <Button
+                <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Nhập nhanh</span>
+              </button>
+              <button
                 type="button"
-                variant={aiInputMode === 'receipt' ? 'default' : 'outline'}
-                size="sm"
-                className="flex-1"
+                aria-pressed={aiInputMode === 'receipt'}
+                className={`relative flex min-h-12 items-center justify-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  aiInputMode === 'receipt'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                }`}
                 onClick={() => setAiInputMode('receipt')}
               >
-                Phân tích hóa đơn
-              </Button>
+                <ScanLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Quét hóa đơn</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                    aiInputMode === 'receipt'
+                      ? 'bg-primary-foreground/15 text-primary-foreground'
+                      : 'bg-primary/10 text-primary'
+                  }`}
+                  aria-hidden="true"
+                >
+                  AI
+                </span>
+              </button>
             </div>
-            
+
+            <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+              {aiInputMode === 'receipt'
+                ? 'Chụp hoặc chọn ảnh hóa đơn để Finora điền sẵn thông tin giao dịch.'
+                : 'Mô tả giao dịch bằng câu tự nhiên để Finora tạo bản nháp.'}
+            </p>
+
             {aiInputMode === 'text' && (
               <AiTransactionDraftInput
                 accounts={accounts}
@@ -504,7 +539,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 onApplyDraft={handleApplyDraft}
               />
             )}
-            
+
             {aiInputMode === 'receipt' && (
               <ReceiptPicker
                 onApplyDraft={handleApplyReceiptDraft}

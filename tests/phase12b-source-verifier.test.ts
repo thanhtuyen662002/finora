@@ -8,6 +8,8 @@ test('Phase 12B Source Verifier', async (t) => {
   const actionsPath = path.join(process.cwd(), 'src/features/ai/receipt-vision/actions.ts');
   const actionCorePath = path.join(process.cwd(), 'src/features/ai/receipt-vision/action-core.ts');
   const imagePath = path.join(process.cwd(), 'src/features/ai/receipt-vision/image.ts');
+  const modalPath = path.join(process.cwd(), 'src/components/finance/AddTransactionModal.tsx');
+  const globalStylesPath = path.join(process.cwd(), 'src/app/globals.css');
   
   await t.test('Server action exists and uses auth.getUser', () => {
     const actionsCode = fs.readFileSync(actionsPath, 'utf8');
@@ -35,5 +37,19 @@ test('Phase 12B Source Verifier', async (t) => {
     );
     assert.match(output, /TOTAL CHECKS: 91/);
     assert.match(output, /PHASE_12B_SOURCE_VERIFIER: PASS 91\/91/);
+  });
+
+  await t.test('Receipt entry point and application scrollbars remain visible and accessible', () => {
+    const modalCode = fs.readFileSync(modalPath, 'utf8');
+    const globalStyles = fs.readFileSync(globalStylesPath, 'utf8');
+
+    assert.match(modalCode, /aria-label="Chọn cách nhập giao dịch"/);
+    assert.match(modalCode, /aria-pressed=\{aiInputMode === 'receipt'\}/);
+    assert.match(modalCode, />Quét hóa đơn</);
+    assert.match(modalCode, /overflow-y-auto overscroll-contain/);
+    assert.match(globalStyles, /\*::\-webkit\-scrollbar-thumb/);
+    assert.match(globalStyles, /\*::\-webkit\-scrollbar-thumb:hover/);
+    assert.match(globalStyles, /scrollbar-width: thin/);
+    assert.match(globalStyles, /scrollbar-gutter: stable/);
   });
 });

@@ -1161,3 +1161,20 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 
 ### Next Recommended Step
 - Execute the separately authorized Pass 12B-Runtime. Do not mark Phase 12B complete until near-limit transport, zero-mutation Analyze, and exactly-one-mutation explicit Save all pass.
+
+## Phase 12B — Receipt Vision UI Corrective Pass 8
+
+### Status: IMPLEMENTED / PENDING_PREVIEW_AND_RUNTIME_VERIFICATION
+
+- Replaced the low-emphasis text/receipt controls in `AddTransactionModal` with a mobile-first, icon-labelled `Nhập nhanh` / `Quét hóa đơn` selector. The receipt entry point is now visible immediately below the modal header and exposes its selected state through `aria-pressed`.
+- Added mode-specific helper copy so users know that receipt mode accepts a camera capture or an existing image before opening the picker.
+- Added a global scrollbar treatment for the full application and every nested scroll container: thin rounded thumb, transparent track, horizontal-scroll support, hover feedback, Firefox support, and a stable document gutter. The transaction modal additionally contains overscroll so mobile scrolling does not pull the page behind it.
+- Added a deterministic source test covering the visible receipt entry point, accessible mode state, global WebKit/Firefox scrollbar rules, and stable document gutter.
+- Verification: Phase 12B tests `32/32 PASS`; full repository regression `41/41 PASS`; Phase 12B exact source verifier `91/91 PASS`; TypeScript, ESLint, and production build `PASS`.
+- Phase 12B remains `PENDING_RUNTIME`; this UI corrective does not infer completion of the near-limit transport, zero-mutation Analyze, or exactly-one-mutation Save gates.
+
+### Pre-Corrective Runtime Data Baseline (provided 2026-09-07)
+
+- Transactions: `transaction_count=11`, `marker_count=0`, `transaction_fingerprint=b3ba24d1163cb88d3d311bceac98f70e`, `latest_created_at=2026-09-04 11:45:33.751761+00`.
+- Accounts: `account_count=17`, `balance_fingerprint=11d14119ead920ebabdb6df4dc704b25`.
+- Database/storage/live AI mutation during this corrective: `NONE`.
