@@ -3,10 +3,18 @@ import type { CategoryCandidate } from './categories';
 export const BEGIN_CATEGORY_DELIMITER = 'BEGIN_CATEGORY_CANDIDATES_JSON';
 export const END_CATEGORY_DELIMITER = 'END_CATEGORY_CANDIDATES_JSON';
 
+const NEUTRALIZED_CATEGORY_DELIMITER = '[CATEGORY_BOUNDARY_REMOVED]';
+
+export function neutralizeCategoryPromptLabel(label: string): string {
+  return label
+    .replaceAll(BEGIN_CATEGORY_DELIMITER, NEUTRALIZED_CATEGORY_DELIMITER)
+    .replaceAll(END_CATEGORY_DELIMITER, NEUTRALIZED_CATEGORY_DELIMITER);
+}
+
 export function buildReceiptVisionPrompt(candidates: readonly CategoryCandidate[]): string {
   const serializedCandidates = candidates.map((cat, index) => ({
     token: `CAT_${index + 1}`,
-    label: cat.name,
+    label: neutralizeCategoryPromptLabel(cat.name),
   }));
 
   const candidatesJson = JSON.stringify(serializedCandidates, null, 2);

@@ -24,7 +24,7 @@ function sanitizeCategoryName(name: string): string {
 
 export async function getCategoryCandidates(
   supabase: SupabaseClient,
-  userId?: string
+  userId: string
 ): Promise<readonly CategoryCandidate[]> {
   try {
     let query = supabase
@@ -33,9 +33,7 @@ export async function getCategoryCandidates(
       .eq('type', 'EXPENSE')
       .eq('is_archived', false);
 
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
+    query = query.eq('user_id', userId);
 
     const { data, error } = await query.limit(PHASE_12B_MAX_CATEGORY_CANDIDATES + 1);
 
@@ -60,7 +58,7 @@ export async function revalidateCategoryToken(
   supabase: SupabaseClient,
   token: string | null,
   candidates: readonly CategoryCandidate[],
-  userId?: string
+  userId: string
 ): Promise<CategoryResolutionResult> {
   if (!token) {
     return { status: 'UNRESOLVED' };
@@ -86,9 +84,7 @@ export async function revalidateCategoryToken(
       .eq('type', 'EXPENSE')
       .eq('is_archived', false);
 
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
+    query = query.eq('user_id', userId);
 
     const { data, error } = await query.maybeSingle();
 

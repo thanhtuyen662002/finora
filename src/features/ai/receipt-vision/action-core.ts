@@ -14,7 +14,11 @@ import {
   getImageDimensionBucket,
   type ReceiptVisionTelemetrySink,
 } from './telemetry';
-import type { ReceiptTransactionDraft, ReceiptVisionParseOutput } from './types';
+import type {
+  ReceiptDocumentKind,
+  ReceiptTransactionDraft,
+  ReceiptVisionParseOutput,
+} from './types';
 
 export async function processReceiptCore(
   file: File,
@@ -33,10 +37,47 @@ export async function processReceiptCore(
   let aiProviderMs = 0;
   let revalidationMs = 0;
 
-  let inputFormat: 'jpeg' | 'png' | 'webp' = 'jpeg';
+  let inputFormat: 'jpeg' | 'png' | 'webp' | undefined;
   let originalBytes = file.size;
-  let originalWidth = 0;
-  let originalHeight = 0;
+  let originalWidth: number | undefined;
+  let originalHeight: number | undefined;
+
+  const emitTiming = async (
+    success: boolean,
+    completion?: {
+      readonly warningCount: number;
+      readonly documentKind: ReceiptDocumentKind;
+    }
+  ): Promise<void> => {
+    await emitReceiptVisionTelemetry(
+      {
+        operation: 'receipt_vision',
+        success,
+        input_bytes_bucket: getInputBytesBucket(originalBytes),
+        ...(inputFormat !== undefined &&
+        originalWidth !== undefined &&
+        originalHeight !== undefined
+          ? {
+              input_format: inputFormat,
+              image_width_bucket: getImageDimensionBucket(originalWidth),
+              image_height_bucket: getImageDimensionBucket(originalHeight),
+            }
+          : {}),
+        preprocess_ms: preprocessMs,
+        context_ms: contextMs,
+        ai_provider_ms: aiProviderMs,
+        revalidation_ms: revalidationMs,
+        total_ms: Math.max(0, Math.round(performance.now() - startTime)),
+        ...(success && completion
+          ? {
+              warning_count: completion.warningCount,
+              document_kind: completion.documentKind,
+            }
+          : {}),
+      },
+      telemetrySink
+    );
+  };
 
   try {
     // 1. Array buffer boundary + sharp processing in memory
@@ -51,7 +92,7 @@ export async function processReceiptCore(
 
     // 2. Fetch category candidates using authenticated RLS client
     const t1 = performance.now();
-    const candidates = await getCategoryCandidates(supabase);
+    const candidates = await getCategoryCandidates(supabase, userId);
 
     // 3. Build prompt with opaque tokens CAT_n and JSON boundary
     const prompt = buildReceiptVisionPrompt(candidates);
@@ -71,24 +112,7 @@ export async function processReceiptCore(
     aiProviderMs = Math.max(0, Math.round(performance.now() - t2));
 
     if (!result.ok) {
-      const totalMs = Math.max(0, Math.round(performance.now() - startTime));
-      emitReceiptVisionTelemetry(
-        {
-          operation: 'receipt_vision',
-          success: false,
-          input_format: inputFormat,
-          input_bytes_bucket: getInputBytesBucket(originalBytes),
-          image_width_bucket: getImageDimensionBucket(originalWidth),
-          image_height_bucket: getImageDimensionBucket(originalHeight),
-          preprocess_ms: preprocessMs,
-          context_ms: contextMs,
-          ai_provider_ms: aiProviderMs,
-          revalidation_ms: revalidationMs,
-          total_ms: totalMs,
-          error_code: result.error.code,
-        },
-        telemetrySink
-      );
+      await emitTiming(false);
       return result;
     }
 
@@ -99,76 +123,28 @@ export async function processReceiptCore(
     const categoryResolution = await revalidateCategoryToken(
       supabase,
       output.category_token,
-      candidates
+      candidates,
+      userId
     );
 
     // 6. Derive draft with deterministic warnings calculation
     const draft = deriveReceiptDraft(output, categoryResolution);
     revalidationMs = Math.max(0, Math.round(performance.now() - t3));
 
-    const totalMs = Math.max(0, Math.round(performance.now() - startTime));
-
-    emitReceiptVisionTelemetry(
-      {
-        operation: 'receipt_vision',
-        success: true,
-        input_format: inputFormat,
-        input_bytes_bucket: getInputBytesBucket(originalBytes),
-        image_width_bucket: getImageDimensionBucket(originalWidth),
-        image_height_bucket: getImageDimensionBucket(originalHeight),
-        preprocess_ms: preprocessMs,
-        context_ms: contextMs,
-        ai_provider_ms: aiProviderMs,
-        revalidation_ms: revalidationMs,
-        total_ms: totalMs,
-        warning_count: draft.warnings.length,
-      },
-      telemetrySink
-    );
+    await emitTiming(true, {
+      warningCount: draft.warnings.length,
+      documentKind: draft.document_kind,
+    });
 
     return { ok: true, draft };
   } catch (err: unknown) {
-    const totalMs = Math.max(0, Math.round(performance.now() - startTime));
-
     if (err instanceof ReceiptVisionError) {
-      emitReceiptVisionTelemetry(
-        {
-          operation: 'receipt_vision',
-          success: false,
-          input_format: inputFormat,
-          input_bytes_bucket: getInputBytesBucket(originalBytes),
-          image_width_bucket: getImageDimensionBucket(originalWidth),
-          image_height_bucket: getImageDimensionBucket(originalHeight),
-          preprocess_ms: preprocessMs,
-          context_ms: contextMs,
-          ai_provider_ms: aiProviderMs,
-          revalidation_ms: revalidationMs,
-          total_ms: totalMs,
-          error_code: err.code,
-        },
-        telemetrySink
-      );
+      await emitTiming(false);
       return { ok: false, error: err };
     }
 
     if (err instanceof AiError) {
-      emitReceiptVisionTelemetry(
-        {
-          operation: 'receipt_vision',
-          success: false,
-          input_format: inputFormat,
-          input_bytes_bucket: getInputBytesBucket(originalBytes),
-          image_width_bucket: getImageDimensionBucket(originalWidth),
-          image_height_bucket: getImageDimensionBucket(originalHeight),
-          preprocess_ms: preprocessMs,
-          context_ms: contextMs,
-          ai_provider_ms: aiProviderMs,
-          revalidation_ms: revalidationMs,
-          total_ms: totalMs,
-          error_code: err.code,
-        },
-        telemetrySink
-      );
+      await emitTiming(false);
       return { ok: false, error: err };
     }
 
@@ -177,23 +153,7 @@ export async function processReceiptCore(
       message: 'An unexpected error occurred during receipt processing.',
     });
 
-    emitReceiptVisionTelemetry(
-      {
-        operation: 'receipt_vision',
-        success: false,
-        input_format: inputFormat,
-        input_bytes_bucket: getInputBytesBucket(originalBytes),
-        image_width_bucket: getImageDimensionBucket(originalWidth),
-        image_height_bucket: getImageDimensionBucket(originalHeight),
-        preprocess_ms: preprocessMs,
-        context_ms: contextMs,
-        ai_provider_ms: aiProviderMs,
-        revalidation_ms: revalidationMs,
-        total_ms: totalMs,
-        error_code: 'AI_PROVIDER_ERROR',
-      },
-      telemetrySink
-    );
+    await emitTiming(false);
 
     return { ok: false, error: unexpectedError };
   }

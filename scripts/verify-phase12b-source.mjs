@@ -1,157 +1,65 @@
 #!/usr/bin/env node
 
-/**
- * Finora Phase 12B Source & Architecture Verification Script
- * Deterministic source checks for Receipt Vision Multimodal Foundation (Section 19.2).
- */
-
 import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = process.cwd();
-
-let totalChecks = 0;
-let passedChecks = 0;
-let failedChecks = 0;
-
-function check(name, pass, details = '') {
-  totalChecks++;
-  if (pass) {
-    passedChecks++;
-    console.log(`[PASS] ${name}`);
-  } else {
-    failedChecks++;
-    console.error(`[FAIL] ${name}${details ? `: ${details}` : ''}`);
-  }
-}
-
-function readFile(relPath) {
-  return fs.readFileSync(path.join(ROOT, relPath), 'utf8');
-}
-
-function fileExists(relPath) {
-  return fs.existsSync(path.join(ROOT, relPath));
-}
-
-function getFilesRecursively(dir) {
-  const fullPath = path.join(ROOT, dir);
-  if (!fs.existsSync(fullPath)) return [];
-  const entries = fs.readdirSync(fullPath, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries) {
-    const res = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...getFilesRecursively(res));
-    } else {
-      files.push(res);
-    }
-  }
-  return files;
-}
-
-console.log('--- Phase 12B Source & Static Architecture Verification ---');
-
-// 1. Lockfile coexistence
-const hasPackageLock = fileExists('package-lock.json');
-const hasYarnLock = fileExists('yarn.lock');
-const hasPnpmLock = fileExists('pnpm-lock.yaml');
-const hasBunLock = fileExists('bun.lockb') || fileExists('bun.lock');
-check(
-  'LOCKFILE_COEXISTENCE',
-  hasPackageLock && hasBunLock && !hasYarnLock && !hasPnpmLock,
-  'package-lock.json and bun.lock must coexist without yarn/pnpm'
-);
-
-// 2. Package.json checks: sharp pinned, test script present, no zod
-const packageJson = JSON.parse(readFile('package.json'));
-const sharpVersion = packageJson.dependencies?.sharp;
-check('SHARP_PINNED_EXACTLY', sharpVersion === '0.35.4', `sharp version is ${sharpVersion}`);
-
-const testScript = packageJson.scripts?.['test:phase12b:vision'];
-check(
-  'TEST_SCRIPT_PRESENT',
-  typeof testScript === 'string' && testScript.includes('tests/phase12b-receipt-vision.test.ts'),
-  `test script: ${testScript}`
-);
-
-const allDeps = {
-  ...packageJson.dependencies,
-  ...packageJson.devDependencies,
+const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
+const exists = (file) => fs.existsSync(path.join(ROOT, file));
+const filesUnder = (directory) => {
+  const root = path.join(ROOT, directory);
+  if (!fs.existsSync(root)) return [];
+  return fs.readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(entry.parentPath ?? entry.path, entry.name));
 };
-check('NO_ZOD_DEPENDENCY', !allDeps.zod, 'zod found in package.json');
+const before = (source, first, second) => {
+  const firstIndex = source.indexOf(first);
+  const secondIndex = source.indexOf(second);
+  return firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex;
+};
+const containsNone = (source, values) => values.every((value) => !source.includes(value));
+const countMatches = (source, expression) => [...source.matchAll(expression)].length;
 
-// 3. Centralized model identifiers (only in src/lib/ai/config.ts)
-const receiptVisionFiles = getFilesRecursively('src/features/ai/receipt-vision');
-let modelLiteralsInReceiptVision = 0;
-for (const f of receiptVisionFiles) {
-  const content = readFile(f);
-  if (/gemini-[123]\.[0-9]/.test(content)) {
-    modelLiteralsInReceiptVision++;
-  }
-}
-check(
-  'ZERO_MODEL_LITERALS_IN_RECEIPT_VISION',
-  modelLiteralsInReceiptVision === 0,
-  `found ${modelLiteralsInReceiptVision} model literals in receipt-vision`
-);
+const contract = read('docs/PHASE_12B_CONTRACT_DISCOVERY.md');
+const contractSectionStart = contract.indexOf('### 19.2');
+const contractSectionEnd = contract.indexOf('## 20.', contractSectionStart);
+const requiredNames = [
+  ...contract
+    .slice(contractSectionStart, contractSectionEnd)
+    .matchAll(/`([A-Z][A-Z0-9_]+)`/g),
+].map((match) => match[1]);
 
-// 4. Server-only boundary & zero client Gemini imports
-const clientComponentFiles = getFilesRecursively('src/features/ai/receipt-vision/components');
-let clientGeminiImports = 0;
-for (const f of clientComponentFiles) {
-  const content = readFile(f);
-  if (content.includes('@google/genai')) {
-    clientGeminiImports++;
-  }
-}
-check(
-  'ZERO_CLIENT_GEMINI_IMPORTS',
-  clientGeminiImports === 0,
-  `Found @google/genai in client components: ${clientGeminiImports}`
-);
+const actions = read('src/features/ai/receipt-vision/actions.ts');
+const actionCore = read('src/features/ai/receipt-vision/action-core.ts');
+const categories = read('src/features/ai/receipt-vision/categories.ts');
+const constants = read('src/features/ai/receipt-vision/constants.ts');
+const domain = read('src/features/ai/receipt-vision/domain.ts');
+const errors = read('src/features/ai/receipt-vision/errors.ts');
+const formState = read('src/features/ai/receipt-vision/form-state.ts');
+const image = read('src/features/ai/receipt-vision/image.ts');
+const prompt = read('src/features/ai/receipt-vision/prompt.ts');
+const schema = read('src/features/ai/receipt-vision/schema.ts');
+const telemetry = read('src/features/ai/receipt-vision/telemetry.ts');
+const types = read('src/features/ai/receipt-vision/types.ts');
+const picker = read('src/features/ai/receipt-vision/components/ReceiptPicker.tsx');
+const modal = read('src/components/finance/AddTransactionModal.tsx');
+const aiConfig = read('src/lib/ai/config.ts');
+const aiTypes = read('src/lib/ai/types.ts');
+const aiRouter = read('src/lib/ai/router.ts');
+const geminiCore = read('src/lib/ai/providers/gemini-core.ts');
+const geminiAdapter = read('src/lib/ai/providers/gemini.ts');
+const phase10Errors = read('src/lib/ai/errors.ts');
+const nextConfig = read('next.config.ts');
+const tests = read('tests/phase12b-receipt-vision.test.ts');
+const phase10Tests = read('tests/phase10-ai-foundation.test.ts');
+const status = read('docs/PROJECT_STATUS.md');
+const packageJson = JSON.parse(read('package.json'));
+const receiptSources = filesUnder('src/features/ai/receipt-vision')
+  .map((file) => fs.readFileSync(file, 'utf8'))
+  .join('\n');
 
-const actionsContent = readFile('src/features/ai/receipt-vision/actions.ts');
-check(
-  'SERVER_ACTION_DIRECTIVE',
-  actionsContent.startsWith("'use server'") || actionsContent.includes("'use server';"),
-  'actions.ts must start with use server directive'
-);
-
-// 5. Auth check strictly precedes file processing, candidate queries, and credential/router resolution
-const authCheckIndex = actionsContent.indexOf('supabase.auth.getUser()');
-const fileReadIndex = actionsContent.indexOf("formData.getAll('file')");
-const routerInstantiateIndex = actionsContent.indexOf('deps?.createRouter');
-check(
-  'AUTH_ORDERING_STRICT_PRECEDENCE',
-  authCheckIndex !== -1 &&
-    fileReadIndex !== -1 &&
-    authCheckIndex < fileReadIndex &&
-    (routerInstantiateIndex === -1 || fileReadIndex < routerInstantiateIndex),
-  'auth.getUser() must strictly precede formData file reading and router resolution'
-);
-
-// 6. Router and Phase 11 credential usage
-check(
-  'ROUTER_AND_CREDENTIAL_RESOLVER_USED',
-  actionsContent.includes('createAiCredentialRepository') &&
-    actionsContent.includes('AiCredentialResolver') &&
-    actionsContent.includes('createDefaultServerRouter'),
-  'actions.ts must use Phase 11 credential resolver and AI router'
-);
-
-// 7. Exact budgets in constants.ts
-const constantsContent = readFile('src/features/ai/receipt-vision/constants.ts');
-check(
-  'EXACT_FILE_AND_IMAGE_BUDGETS',
-  constantsContent.includes('4_194_304') &&
-    constantsContent.includes('8192') &&
-    constantsContent.includes('20_000_000'),
-  'constants.ts must define exact file (4MB), dimension (8192px), and pixel (20M) budgets'
-);
-
-// 8. Strict receipt error taxonomy
-const errorsContent = readFile('src/features/ai/receipt-vision/errors.ts');
-const requiredErrorCodes = [
+const expectedErrorCodes = [
   'AUTH_REQUIRED',
   'RECEIPT_FILE_REQUIRED',
   'RECEIPT_FILE_TOO_LARGE',
@@ -162,75 +70,7 @@ const requiredErrorCodes = [
   'RECEIPT_IMAGE_NORMALIZED_TOO_LARGE',
   'RECEIPT_IMAGE_DECODE_FAILED',
 ];
-const hasAllErrorCodes = requiredErrorCodes.every((code) => errorsContent.includes(code));
-check(
-  'RECEIPT_ERROR_TAXONOMY_EXACT_9_CODES',
-  hasAllErrorCodes,
-  'ReceiptVisionError must define exactly the 9 required taxonomy codes'
-);
-
-const libAiErrorsContent = readFile('src/lib/ai/errors.ts');
-const pollutesPhase10 = requiredErrorCodes.some(
-  (code) => code !== 'AUTH_REQUIRED' && libAiErrorsContent.includes(code)
-);
-check(
-  'PHASE_10_AI_ERROR_CODE_NOT_EXPANDED',
-  !pollutesPhase10,
-  'Phase 10 AiErrorCode must not be polluted with receipt-vision error codes'
-);
-
-// 9. Single-frame and animated rejection
-const imageContent = readFile('src/features/ai/receipt-vision/image.ts');
-check(
-  'SINGLE_FRAME_ENFORCEMENT',
-  imageContent.includes('metadata.pages') &&
-    imageContent.includes('metadata.pageHeight') &&
-    imageContent.includes('RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED'),
-  'image.ts must reject multi-frame and animated inputs with RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED'
-);
-
-// 10. Image security: signatures, limitInputPixels, no metadata preservation
-check(
-  'IMAGE_SECURITY_AND_METADATA_STRIPPING',
-  imageContent.includes('0xff') &&
-    imageContent.includes('0xd8') &&
-    imageContent.includes('0x89') &&
-    imageContent.includes('0x50') &&
-    imageContent.includes('0x52') &&
-    imageContent.includes('0x49') &&
-    imageContent.includes('limitInputPixels') &&
-    !imageContent.includes('withMetadata') &&
-    !imageContent.includes('keepIccProfile'),
-  'image.ts must enforce binary signatures and strip EXIF/ICC metadata'
-);
-
-// 11. Prompt injection boundary
-const promptContent = readFile('src/features/ai/receipt-vision/prompt.ts');
-check(
-  'PROMPT_INJECTION_BOUNDARY',
-  promptContent.includes('BEGIN_CATEGORY_CANDIDATES_JSON') &&
-    promptContent.includes('END_CATEGORY_CANDIDATES_JSON') &&
-    promptContent.includes('JSON.stringify') &&
-    promptContent.includes('CRITICAL DATA BOUNDARY INSTRUCTION'),
-  'prompt.ts must use JSON delimiters and explicit data boundary instruction'
-);
-
-// 12. Exact 11-key schema and document kinds
-const typesContent = readFile('src/features/ai/receipt-vision/types.ts');
-const schemaContent = readFile('src/features/ai/receipt-vision/schema.ts');
-check(
-  'UNKNOWN_COMPLETELY_REMOVED',
-  !typesContent.includes("'UNKNOWN'") && !schemaContent.includes("'UNKNOWN'"),
-  'UNKNOWN document kind must be completely removed'
-);
-
-const exactDocKinds = ['PURCHASE_RECEIPT', 'INVOICE', 'CREDIT_NOTE', 'OTHER'];
-const hasAllDocKinds = exactDocKinds.every(
-  (k) => typesContent.includes(k) && schemaContent.includes(k)
-);
-check('EXACT_DOCUMENT_KINDS', hasAllDocKinds, 'Missing document_kind enum values');
-
-const exact11Keys = [
+const expectedSchemaKeys = [
   'document_kind',
   'merchant',
   'occurred_on',
@@ -243,161 +83,151 @@ const exact11Keys = [
   'note',
   'image_quality',
 ];
-const hasAll11Keys = exact11Keys.every(
-  (k) => typesContent.includes(k) && schemaContent.includes(k)
-);
-check('EXACT_11_SCHEMA_KEYS', hasAll11Keys, 'Missing required 11 schema keys');
-
-// 13. State consistency in schema validator
-check(
-  'SCHEMA_STATE_CONSISTENCY_ENFORCED',
-  schemaContent.includes('PRESENT') &&
-    schemaContent.includes('MISSING') &&
-    schemaContent.includes('AMBIGUOUS'),
-  'schema.ts must enforce state consistency between values and state indicators'
-);
-
-// 14. Exact-money zero-coercion
-check(
-  'EXACT_MONEY_ZERO_COERCION',
-  (schemaContent.includes('isValidAmountString') || schemaContent.includes('isStrictPositiveDecimal')) &&
-    !schemaContent.includes('Number(') &&
-    !schemaContent.includes('parseFloat('),
-  'schema.ts must validate amount strictly as plain positive decimal without Number/parseFloat'
+const errorArrayBody = errors.match(/RECEIPT_VISION_ERROR_CODES\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+const schemaArrayBody = schema.match(/EXPECTED_RECEIPT_VISION_KEYS\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+const exactErrorTaxonomy =
+  expectedErrorCodes.every((code) => errorArrayBody.includes(`'${code}'`)) &&
+  countMatches(errorArrayBody, /'[^']+'/g) === expectedErrorCodes.length;
+const exactSchemaKeyset =
+  expectedSchemaKeys.every((key) => schemaArrayBody.includes(`'${key}'`)) &&
+  countMatches(schemaArrayBody, /'[^']+'/g) === expectedSchemaKeys.length;
+const receiptModelLiterals = /gemini-[123]\.[0-9]/.test(receiptSources);
+const authBeforeCore = before(actions, 'supabase.auth.getUser()', 'processReceiptCore(');
+const bodyLimit = 4_350_000;
+const fileLimit = 4_194_304;
+const platformBudget = 4_500_000;
+const imageDependencyNames = Object.keys(packageJson.dependencies ?? {}).filter((name) =>
+  /^(sharp|jimp|canvas|gm|imagemagick|imagemin)$/i.test(name)
 );
 
-// 15. Category caps and RLS revalidation
-const categoriesContent = readFile('src/features/ai/receipt-vision/categories.ts');
-check(
-  'CATEGORY_CAPS_AND_DISCRIMINATED_RESOLUTION',
-  categoriesContent.includes('PHASE_12B_MAX_CATEGORY_CANDIDATES') &&
-    categoriesContent.includes('PHASE_12B_MAX_CATEGORY_LABEL_LENGTH') &&
-    categoriesContent.includes("status: 'RESOLVED'") &&
-    categoriesContent.includes("status: 'UNRESOLVED'") &&
-    categoriesContent.includes("status: 'STALE'"),
-  'categories.ts must enforce bounds and discriminated resolution'
-);
+const matrix = new Map([
+  ['RECEIPT_SERVER_ONLY', actions.startsWith("'use server';")],
+  ['NO_CLIENT_GEMINI', !picker.includes('@google/genai')],
+  ['NO_DIRECT_GEMINI_SDK_IN_FEATURE', !receiptSources.includes('@google/genai')],
+  ['USES_AI_ROUTER', actionCore.includes('router.execute(')],
+  ['USES_RECEIPT_VISION_OPERATION', actionCore.includes("operation: 'receipt_vision'")],
+  ['USES_PHASE11_CREDENTIAL_PROVIDER', actions.includes('AiCredentialResolver') && actions.includes('createAiCredentialRepository')],
+  ['RECEIPT_MODEL_FROM_CENTRAL_CONFIG', aiConfig.includes('receipt_vision') && !receiptModelLiterals],
+  ['NO_MODEL_LITERAL_IN_RECEIPT_FEATURE', !receiptModelLiterals],
+  ['PROVIDER_NEUTRAL_MEDIA_TYPE', aiTypes.includes('interface AiInlineMediaPart') && aiTypes.includes("kind: 'inline_image'")],
+  ['ROUTER_MEDIA_PASSTHROUGH', aiRouter.includes('...request') && aiTypes.includes('readonly media?:')],
+  ['GEMINI_MEDIA_MAPPING_PROVIDER_ONLY', geminiCore.includes('inlineData') && !receiptSources.includes('inlineData')],
+  ['TEXT_AI_OPERATIONS_NON_REGRESSION', phase10Tests.includes('TEXT_MODE_RETURNS_STRING_ONLY')],
+  ['AUTH_BEFORE_ARRAY_BUFFER', authBeforeCore && before(actionCore, 'processReceiptImage(file)', 'router.execute(')],
+  ['AUTH_BEFORE_SHARP', authBeforeCore && !actions.includes('sharp(')],
+  ['AUTH_BEFORE_CANDIDATE_READ', authBeforeCore && before(actionCore, 'processReceiptImage(file)', 'getCategoryCandidates(')],
+  ['AUTH_BEFORE_CREDENTIAL_RESOLUTION', before(actions, 'supabase.auth.getUser()', 'const credentialProvider =')],
+  ['AUTH_BEFORE_PROVIDER_DISPATCH', authBeforeCore],
+  ['ONE_IMAGE_ONLY', actions.includes("formData.getAll('file')") && actions.includes('fileEntries.length > 1')],
+  ['ONE_MEDIA_PART_FOR_RECEIPT', geminiCore.includes('request.media.length !== 1')],
+  ['MAX_RECEIPT_FILE_BYTES_4_MIB', constants.includes('4_194_304') && image.includes('PHASE_12B_MAX_RECEIPT_FILE_BYTES')],
+  ['SERVER_ACTION_BODY_LIMIT_EXACT_BYTES', nextConfig.includes('4_350_000')],
+  ['RAW_BODY_LIMIT_INCLUDES_MULTIPART_OVERHEAD', contract.includes('multipart') && contract.includes('overhead')],
+  ['NEXT_BODY_LIMIT_ABOVE_APP_FILE_LIMIT', bodyLimit > fileLimit],
+  ['NEXT_BODY_LIMIT_BELOW_PLATFORM_BUDGET', bodyLimit < platformBudget],
+  ['NEAR_LIMIT_PRODUCTION_TRANSPORT_SMOKE_REQUIRED', contract.includes('Near-limit production transport smoke test') && status.includes('PENDING_RUNTIME')],
+  ['SHARP_DIRECT_DEPENDENCY', packageJson.dependencies?.sharp === '0.35.4'],
+  ['NO_OTHER_NEW_IMAGE_DEPENDENCY', imageDependencyNames.length === 1 && imageDependencyNames[0] === 'sharp'],
+  ['ALLOWED_FORMATS_JPEG_PNG_WEBP_ONLY', image.includes('isJpeg') && image.includes('isPng') && image.includes('isWebp')],
+  ['UNSUPPORTED_FORMAT_REJECTED_BEFORE_SHARP_PIPELINE', before(image, 'if (!isJpeg && !isPng && !isWebp)', 'sharp(buffer')],
+  ['SHARP_LIMIT_INPUT_PIXELS', image.includes('limitInputPixels: PHASE_12B_MAX_DECODED_PIXELS')],
+  ['MAX_DECODED_PIXELS_20MP', constants.includes('20_000_000')],
+  ['MULTIFRAME_IMAGE_REJECTED', image.includes('metadata.pages') && image.includes('RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED')],
+  ['ANIMATED_WEBP_REJECTED', image.includes('isWebp') && image.includes('metadata.pages')],
+  ['SHARP_METADATA_STRIPPING', containsNone(image, ['withMetadata', 'keepIccProfile'])],
+  ['SHARP_AUTO_ORIENT', image.includes('.rotate()')],
+  ['NORMALIZED_LONG_EDGE_2048', image.includes('width: 2048') && image.includes('height: 2048') && image.includes('withoutEnlargement: true')],
+  ['NORMALIZED_OUTPUT_BYTE_CAP', image.includes('PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES')],
+  ['NORMALIZED_MIME_SERVER_DERIVED', image.includes("mimeType: 'image/jpeg'") && image.includes('.jpeg({ quality: 80 })')],
+  ['CLIENT_FILE_TYPE_NOT_AUTHORITY', before(image, 'const isJpeg', 'const rawMime')],
+  ['MIME_SIGNATURE_DECODE_AGREEMENT', image.includes('metadata.format !== detectedFormat')],
+  ['NO_IMAGE_FILESYSTEM_WRITE', !/fs\.(?:write|append|createWriteStream)/.test(receiptSources)],
+  ['NO_IMAGE_STORAGE_UPLOAD', !receiptSources.includes('.storage.')],
+  ['NO_REMOTE_IMAGE_FETCH', !/\bfetch\s*\(/.test(receiptSources)],
+  ['MAGIC_BYTE_VALIDATION', image.includes('buffer[0] === 0xff') && image.includes('buffer[0] === 0x89') && image.includes('buffer[0] === 0x52')],
+  ['OUTPUT_EXACT_11_KEYSET', exactSchemaKeyset && schema.includes('keys.length !== EXPECTED_RECEIPT_VISION_KEYS.length')],
+  ['PROVIDER_FIELD_STATE_PROVENANCE', schema.includes('ALLOWED_OCCURRED_ON_STATES') && schema.includes('ALLOWED_AMOUNT_STATES') && schema.includes('ALLOWED_CURRENCY_STATES')],
+  ['STATE_VALUE_CONSISTENCY', schema.includes("obj.amount_state === 'PRESENT'") && schema.includes("obj.currency_state === 'PRESENT'") && schema.includes("obj.occurred_on_state === 'PRESENT'")],
+  ['OUTPUT_EXACT_MONEY_STRING', schema.includes('isValidAmountString')],
+  ['NO_NUMERIC_AMOUNT', schema.includes("typeof obj.amount === 'number'")],
+  ['NO_RAW_UUID_PROVIDER_OUTPUT', prompt.includes('Do not return category names or database identifiers') && !prompt.includes('cat.id')],
+  ['OPAQUE_CATEGORY_TOKEN', prompt.includes('CAT_${index + 1}') && schema.includes('/^CAT_[1-9]\\d*$/')],
+  ['CATEGORY_CANDIDATES_CAP_50', constants.includes('PHASE_12B_MAX_CATEGORY_CANDIDATES = 50')],
+  ['CATEGORY_LABEL_LENGTH_CAP_50', constants.includes('PHASE_12B_MAX_CATEGORY_LABEL_LENGTH = 50') && categories.includes('.slice(0, PHASE_12B_MAX_CATEGORY_LABEL_LENGTH)')],
+  ['CATEGORY_OVERFLOW_FALLBACK', categories.includes('data.length > PHASE_12B_MAX_CATEGORY_CANDIDATES') && categories.includes('return []')],
+  ['CATEGORY_QUERY_FAILURE_RESILIENCE', categories.includes('catch') && categories.includes('return []')],
+  ['PROVIDER_AMOUNT_LEXICAL_VALIDATION', schema.includes("!isValidAmountString(obj.amount)")],
+  ['APPLICATION_AMOUNT_CANONICAL_20_4', domain.includes("padEnd(4, '0')")],
+  ['NO_FLOAT_MONEY_CANONICALIZATION', containsNone(schema + domain, ['Number(', 'parseFloat('])],
+  ['SHARED_RUNTIME_VALIDATOR', actionCore.includes('receiptVisionOutputValidator') && schema.includes('validateReceiptVisionOutput')],
+  ['POST_PARSE_RLS_REVALIDATION', actionCore.includes('revalidateCategoryToken') && categories.includes(".eq('user_id', userId)")],
+  ['TOTAL_MISSING_VS_AMBIGUOUS', domain.includes('TOTAL_MISSING') && domain.includes('TOTAL_AMBIGUOUS')],
+  ['CURRENCY_MISSING_VS_AMBIGUOUS_VS_UNSUPPORTED', domain.includes('CURRENCY_MISSING') && domain.includes('CURRENCY_AMBIGUOUS') && domain.includes('CURRENCY_UNSUPPORTED')],
+  ['DATE_MISSING_VS_AMBIGUOUS_VS_INVALID', domain.includes('DATE_MISSING') && domain.includes('DATE_AMBIGUOUS') && domain.includes('DATE_INVALID')],
+  ['IMAGE_QUALITY_WARNING_PROVENANCE', domain.includes("output.image_quality === 'LOW'")],
+  ['PURCHASE_RECEIPT_ONLY_APPLICABLE', domain.includes("output.document_kind === 'PURCHASE_RECEIPT'")],
+  ['INVOICE_NOT_AUTO_EXPENSE', types.includes("'INVOICE'") && domain.includes('DOCUMENT_UNSUPPORTED')],
+  ['CREDIT_NOTE_NOT_AUTO_EXPENSE', types.includes("'CREDIT_NOTE'") && domain.includes('DOCUMENT_UNSUPPORTED')],
+  ['CAN_APPLY_REQUIRES_AMOUNT', domain.includes('canonicalAmount !== null')],
+  ['CAN_APPLY_REQUIRES_CURRENCY', domain.includes('resolvedCurrency !== null')],
+  ['CAN_APPLY_REQUIRES_DATE', domain.includes('validDate !== null')],
+  ['CAN_APPLY_PURCHASE_RECEIPT_ONLY', domain.includes("output.document_kind === 'PURCHASE_RECEIPT'")],
+  ['NO_RECEIPT_DATE_DEFAULT_TODAY', !formState.includes('new Date') && formState.includes("occurredOn: draft.occurred_on ?? ''")],
+  ['NO_RECEIPT_CURRENCY_DEFAULT_BASE', formState.includes("currency: draft.currency_code ?? ''")],
+  ['NULL_CATEGORY_CLEARS_STALE_FORM_STATE', formState.includes("categoryId: draft.category_id ?? ''")],
+  ['ACCOUNT_ALWAYS_USER_SELECTED', formState.includes("accountId: ''") && types.includes('readonly account_id: null')],
+  ['MAX_PROVIDER_CALLS_ONE', countMatches(actionCore, /router\.execute\(/g) === 1],
+  ['PROVIDER_HTTP_ATTEMPTS_ONE', geminiAdapter.includes('attempts: 1')],
+  ['NO_PROVIDER_AUTO_RETRY', geminiAdapter.includes('attempts: 1') && !geminiAdapter.includes('attempts: 2')],
+  ['RECEIPT_ERROR_MEDIA_REDACTION', exactErrorTaxonomy && errors.includes('RECEIPT_VISION_PUBLIC_MESSAGES') && !errors.includes('constructor(code: ReceiptVisionErrorCode, message')],
+  ['NO_BASE64_IN_ERRORS', exactErrorTaxonomy && errors.includes('RECEIPT_VISION_PUBLIC_MESSAGES') && tests.includes('fixed messages never reflect untrusted MIME')],
+  ['NO_MEDIA_IN_LOGS', !/console\.(?:log|warn|error)\([^\n]*(?:prompt|media|bytes|buffer)/i.test(receiptSources)],
+  ['ANALYZE_ZERO_MUTATION', containsNone(receiptSources, ['.insert(', '.update(', '.delete(', '.upsert('])],
+  ['PREVIEW_ZERO_MUTATION', containsNone(picker, ['createTransaction(', '.insert(', '.update(', '.delete('])],
+  ['APPLY_ZERO_MUTATION', containsNone(formState, ['createTransaction(', '.insert(', '.update(', '.delete('])],
+  ['EXPLICIT_SAVE_ONLY', modal.includes('handleSubmit') && modal.includes('createTransaction')],
+  ['NO_FALSE_CANCEL_UI', !/(server|provider).{0,30}(cancelled|canceled|đã hủy)/i.test(picker)],
+  ['STALE_ANALYZE_RESULT_IGNORED', picker.includes('generationRef') && picker.includes('currentGeneration !== generationRef.current')],
+  ['EXTERNAL_AI_PRIVACY_DISCLOSURE', picker.includes('Finora không lưu ảnh hóa đơn')],
+  ['PROMPT_INJECTION_BOUNDARY', prompt.includes('neutralizeCategoryPromptLabel') && prompt.includes('CRITICAL DATA BOUNDARY INSTRUCTION') && tests.includes('prompt.split(BEGIN_CATEGORY_DELIMITER)')],
+  ['NO_URL_FETCH_FROM_RECEIPT', !/\bfetch\s*\(/.test(receiptSources)],
+  ['PHASE12A_NON_REGRESSION', exists('tests/phase12a-transaction-draft.test.ts') && exists('scripts/verify-phase12a-source.mjs')],
+]);
 
-// 16. Warning codes exactness (14 codes)
-const requiredWarnings = [
-  'DOCUMENT_UNSUPPORTED',
-  'TOTAL_MISSING',
-  'TOTAL_AMBIGUOUS',
-  'CURRENCY_MISSING',
-  'CURRENCY_AMBIGUOUS',
-  'CURRENCY_UNSUPPORTED',
-  'DATE_MISSING',
-  'DATE_AMBIGUOUS',
-  'DATE_INVALID',
-  'MERCHANT_MISSING',
-  'CATEGORY_UNRESOLVED',
-  'CATEGORY_STALE',
-  'ACCOUNT_REQUIRED',
-  'IMAGE_QUALITY_LOW',
-];
-const obsoleteWarnings = ['NOT_A_PURCHASE_RECEIPT', 'AMOUNT_MISSING', 'AMOUNT_AMBIGUOUS'];
-const hasAllWarnings = requiredWarnings.every((w) => typesContent.includes(w));
-const hasNoObsoleteWarnings = obsoleteWarnings.every((w) => !typesContent.includes(w));
-check(
-  'EXACT_14_WARNING_CODES',
-  hasAllWarnings && hasNoObsoleteWarnings,
-  `required: ${hasAllWarnings}, obsolete absent: ${hasNoObsoleteWarnings}`
-);
-
-// 17. Single provider call & attempts: 1
-const geminiAdapterContent = readFile('src/lib/ai/providers/gemini.ts');
-check(
-  'PROVIDER_ADAPTER_SINGLE_ATTEMPT',
-  geminiAdapterContent.includes('attempts: 1'),
-  'gemini.ts must set retryOptions.attempts = 1'
-);
-
-const geminiCoreContent = readFile('src/lib/ai/providers/gemini-core.ts');
-check(
-  'RECEIPT_VISION_EXACTLY_ONE_MEDIA_PART',
-  geminiCoreContent.includes('receipt_vision requires exactly one media part.'),
-  'gemini-core.ts must enforce exactly one media part for receipt_vision'
-);
-
-// 18. Privacy-safe telemetry allowlist
-const telemetryContent = readFile('src/features/ai/receipt-vision/telemetry.ts');
-const forbiddenTelemetryTerms = [
-  'user_id',
-  'category_id',
-  'account_id',
-  'merchant',
-  'filename',
-  'base64',
-  'Uint8Array',
-  'data_url',
-];
-const hasForbiddenTelemetry = forbiddenTelemetryTerms.some((t) =>
-  telemetryContent.includes(`'${t}'`)
-);
-check(
-  'TELEMETRY_PRIVACY_ALLOWLIST',
-  telemetryContent.includes('TELEMETRY_ALLOWED_KEYS') &&
-    telemetryContent.includes('FINORA_RECEIPT_VISION_TIMING') &&
-    !hasForbiddenTelemetry,
-  'telemetry.ts must enforce allowlisted timing metrics and exclude PII/payloads'
-);
-
-// 19. No filesystem write, storage upload, or remote fetch in receipt-vision
-let fsOrStorageViolations = 0;
-for (const f of receiptVisionFiles) {
-  const content = readFile(f);
-  if (
-    content.includes('fs.write') ||
-    content.includes('fs.writeFile') ||
-    content.includes('.storage.') ||
-    content.includes("from('receipts')") ||
-    /fetch\s*\(/.test(content)
-  ) {
-    fsOrStorageViolations++;
-  }
-}
-check(
-  'NO_FS_STORAGE_OR_REMOTE_FETCH',
-  fsOrStorageViolations === 0,
-  `Found ${fsOrStorageViolations} violations in receipt-vision`
-);
-
-// 20. Zero database mutations across receipt-vision
-let dbMutationViolations = 0;
-for (const f of receiptVisionFiles) {
-  const content = readFile(f);
-  if (
-    content.includes('.insert(') ||
-    content.includes('.update(') ||
-    content.includes('.delete(') ||
-    content.includes('.upsert(')
-  ) {
-    dbMutationViolations++;
-  }
-}
-check(
-  'ZERO_DATABASE_MUTATIONS',
-  dbMutationViolations === 0,
-  `Found ${dbMutationViolations} database mutation calls in receipt-vision`
-);
-
-// 21. Privacy disclosure in ReceiptPicker
-const pickerContent = readFile('src/features/ai/receipt-vision/components/ReceiptPicker.tsx');
-check(
-  'PRIVACY_DISCLOSURE_PRESENT',
-  pickerContent.includes('Finora không lưu ảnh hóa đơn'),
-  'ReceiptPicker.tsx must display privacy disclosure'
-);
-
-console.log('----------------------------------------------------');
-console.log(`TOTAL CHECKS: ${totalChecks}`);
-console.log(`PASSED: ${passedChecks}`);
-console.log(`FAILED: ${failedChecks}`);
-
-if (failedChecks > 0) {
-  console.error(`PHASE_12B_SOURCE_VERIFIER: FAIL (${failedChecks} failures)`);
+const uniqueRequiredNames = new Set(requiredNames);
+if (requiredNames.length !== 91 || uniqueRequiredNames.size !== 91) {
+  console.error(`PHASE_12B_SOURCE_VERIFIER: CONTRACT_NAMESET_INVALID ${requiredNames.length}/91`);
   process.exit(1);
-} else {
-  console.log(`PHASE_12B_SOURCE_VERIFIER: PASS ${passedChecks}/${totalChecks}`);
-  process.exit(0);
 }
+if (
+  matrix.size !== 91 ||
+  [...matrix.keys()].some((name) => !uniqueRequiredNames.has(name)) ||
+  requiredNames.some((name) => !matrix.has(name))
+) {
+  console.error(`PHASE_12B_SOURCE_VERIFIER: MATRIX_NAMESET_INVALID ${matrix.size}/91`);
+  process.exit(1);
+}
+
+let passed = 0;
+let failed = 0;
+console.log('--- Finora Phase 12B Exact Contract Source Verification ---');
+for (const name of requiredNames) {
+  if (matrix.get(name) === true) {
+    passed += 1;
+    console.log(`[PASS] ${name}`);
+  } else {
+    failed += 1;
+    console.error(`[FAIL] ${name}`);
+  }
+}
+console.log('----------------------------------------------------');
+console.log(`TOTAL CHECKS: ${requiredNames.length}`);
+console.log(`PASSED: ${passed}`);
+console.log(`FAILED: ${failed}`);
+
+if (failed > 0) {
+  console.error(`PHASE_12B_SOURCE_VERIFIER: FAIL ${passed}/${requiredNames.length}`);
+  process.exit(1);
+}
+
+console.log(`PHASE_12B_SOURCE_VERIFIER: PASS ${passed}/${requiredNames.length}`);

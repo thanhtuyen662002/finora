@@ -5,10 +5,10 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Multimodal Foundation & Receipt Vision (Pass 6)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: COMPLETE (review/phase12b-1-receipt-vision)
+- **Current phase:** Phase 12B — Multimodal Foundation & Receipt Vision (Corrective Pass 7)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: IMPLEMENTED / PENDING INDEPENDENT AUDIT AND RUNTIME
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B status:** COMPLETE (`PHASE_12B_1_2_3_STATUS = COMPLETE`)
+- **Phase 12B status:** PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_PENDING_INDEPENDENT_AUDIT_AND_RUNTIME`)
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
@@ -1119,33 +1119,36 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 
 ## Phase 12B — Receipt Vision (Foundation & Corrective Implementation)
 
-### Status: COMPLETE (`PHASE_12B_1_2_3_STATUS = COMPLETE`)
+### Status: PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_PENDING_INDEPENDENT_AUDIT_AND_RUNTIME`)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Current Phase:** Phase 12B-3 Corrective Pass 6 — Error Taxonomy, Prompt Injection Boundary, Privacy-Safe Telemetry, and Verifier Completion
+- **Current Phase:** Phase 12B-3 Corrective Pass 7 — Runtime-Safe Telemetry, Fixed Public Errors, Delimiter Collision Defense, and Exact Contract Verifier
 - **Branch:** `review/phase12b-1-receipt-vision`
-- **Audit State:** Ready for final independent audit
+- **Audit State:** Implementation complete; independent exact-head audit and Pass 12B-Runtime remain pending
 
-- **Correctives Completed in Pass 6:**
-  1. **Receipt Error Taxonomy (C01):** Implemented feature-local `ReceiptVisionError` / `ReceiptVisionErrorCode` with exactly 9 normalized client-safe codes (`AUTH_REQUIRED`, `RECEIPT_FILE_REQUIRED`, `RECEIPT_FILE_INVALID`, `RECEIPT_FILE_TOO_LARGE`, `RECEIPT_FILE_TYPE_UNSUPPORTED`, `RECEIPT_IMAGE_DECODE_FAILED`, `RECEIPT_IMAGE_DIMENSIONS_EXCEEDED`, `RECEIPT_PARSER_OUTPUT_INVALID`, `RECEIPT_AMBIGUOUS_DATA`). Preserved the Phase 10 `AiErrorCode` contract with zero modifications or widening. All errors client-redacted (no buffers, base64 strings, or raw provider payloads).
-  2. **Prompt Injection Boundary (C02):** Implemented `BEGIN_CATEGORY_DELIMITER` and `END_CATEGORY_DELIMITER` in `src/features/ai/receipt-vision/prompt.ts`. Category candidates are isolated within structured JSON delimiters accompanied by explicit system instructions to treat enclosed content strictly as static data. Zero database UUIDs leaked into prompt. Adversarial category labels sanitized and capped at 50 chars.
-  3. **Privacy-Safe Telemetry (C03):** Implemented `FINORA_RECEIPT_VISION_TIMING` with injectable `ReceiptVisionTelemetrySink`. Strictly allowlisted fields only (`operation`, `success`, `input_format`, `input_bytes_bucket`, `image_width_bucket`, `image_height_bucket`, `preprocess_ms`, `context_ms`, `ai_provider_ms`, `revalidation_ms`, `total_ms`, `warning_count`, `error_code`). All bytes/dimensions bucketed into coarse ranges. Sanitizer guarantees zero PII, zero filenames, zero raw byte buffers, zero base64 payload, and zero user IDs.
-  4. **Strict Architectural Verifier & Deterministic Test Suite (C04):**
-     - Source verifier (`scripts/verify-phase12b-source.mjs`) expanded to 28 comprehensive gates covering all Phase 12B constraints, passing 28/28 checks.
-     - Deterministic test suite (`tests/phase12b-receipt-vision.test.ts` & `tests/phase12b-source-verifier.test.ts`) covering 28 subtests across schema, domain, categories, image binary parsing, retry policy, error sanitization, prompt injection defenses, and privacy-safe telemetry.
-     - Preserved lockfiles (`package-lock.json` and `bun.lock`).
-     - Zero database migrations, zero mutations, zero external runtime calls.
+- **Correctives Completed in Pass 7:**
+  1. **Exact fixed public errors:** `ReceiptVisionError` accepts only an exact code and derives its browser-safe message from an immutable map. The exact taxonomy is `AUTH_REQUIRED`, `RECEIPT_FILE_REQUIRED`, `RECEIPT_FILE_TOO_LARGE`, `RECEIPT_FILE_TYPE_UNSUPPORTED`, `RECEIPT_FILE_INVALID`, `RECEIPT_IMAGE_TOO_LARGE`, `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED`, `RECEIPT_IMAGE_NORMALIZED_TOO_LARGE`, and `RECEIPT_IMAGE_DECODE_FAILED`.
+  2. **Delimiter collision defense:** Category labels containing either reserved prompt delimiter are neutralized before JSON serialization; opaque tokens remain the only identifiers exposed to the provider.
+  3. **Runtime-safe telemetry:** The Section 17.3 schema is reconstructed from runtime-validated enums and finite non-negative integer timings. Unknown keys are discarded, invalid allowed-key values fail closed, pre-decode formats/dimensions are omitted, and `document_kind` is emitted only for validated success events.
+  4. **Request-scoped telemetry isolation:** Removed the mutable process-global sink. Synchronous and asynchronous sink failures are caught and cannot alter receipt-analysis results or produce unhandled rejections.
+  5. **Same-user category defense in depth:** Candidate loading and post-parse revalidation now require the authenticated `userId` predicate in addition to database RLS.
+  6. **Exact verifier coverage:** `scripts/verify-phase12b-source.mjs` maps and reports every one of the 91 names in Contract Section 19.2. Runtime closure remains explicitly pending rather than being represented as complete.
 
-### Verification Results (Pass 6)
-- **Phase 12B Source Verifier (`scripts/verify-phase12b-source.mjs`)**: 28/28 PASS
-- **Receipt Vision & Verifier Tests (`npm test`)**: 28/28 subtests PASS (0 failed)
+### Verification Results (Pass 7)
+- **Phase 12B Source Verifier (`scripts/verify-phase12b-source.mjs`)**: 91/91 PASS
+- **Receipt Vision & Verifier Tests (`npm test`)**: 31/31 tests PASS (0 failed)
 - **TypeScript (`npm run typecheck`)**: PASS (0 errors)
 - **Lint (`npm run lint`)**: PASS (0 errors)
 - **Production Build (`compile_applet` / `npm run build`)**: PASS
-- **Lockfile & Dependencies**: Unchanged, sharp pinned at exact version, zero zod dependencies.
+- **Full Repository Regression:** PASS (Phase 10, Phase 11, Phase 12A, Phase 12B, Phase 8, and Phase 9 suites; 0 failures)
+- **Lockfiles & Dependencies:** `package-lock.json` and `bun.lock` unchanged; `sharp` remains pinned to `0.35.4`; zero direct `zod` dependency.
+- **Database / Storage / Live AI:** Zero database mutations, zero storage writes, and zero real Gemini calls.
+
+### Mandatory Runtime Gates Still Pending
+- Authenticated near-4-MiB Vercel Server Action transport smoke.
+- Live receipt-analysis verification with zero financial mutations.
+- Explicit standard Save verification proving exactly one transaction mutation and zero duplicates.
 
 ### Next Recommended Step
-- Independent audit of branch `review/phase12b-1-receipt-vision`.
-
-
+- Independent exact-head audit of Corrective Pass 7, followed by a separately authorized Pass 12B-Runtime. Do not mark Phase 12B complete before both gates pass.
 

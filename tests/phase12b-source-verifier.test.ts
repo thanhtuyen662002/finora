@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 test('Phase 12B Source Verifier', async (t) => {
   const actionsPath = path.join(process.cwd(), 'src/features/ai/receipt-vision/actions.ts');
@@ -26,5 +27,13 @@ test('Phase 12B Source Verifier', async (t) => {
     assert.match(imageCode, /PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES/);
     assert.match(imageCode, /sharp\(/);
     assert.match(imageCode, /limitInputPixels/);
+
+    const output = execFileSync(
+      process.execPath,
+      [path.join(process.cwd(), 'scripts/verify-phase12b-source.mjs')],
+      { cwd: process.cwd(), encoding: 'utf8' }
+    );
+    assert.match(output, /TOTAL CHECKS: 91/);
+    assert.match(output, /PHASE_12B_SOURCE_VERIFIER: PASS 91\/91/);
   });
 });

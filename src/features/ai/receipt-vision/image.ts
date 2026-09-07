@@ -19,14 +19,14 @@ export interface ProcessedReceiptImage {
 export async function processReceiptImage(file: File): Promise<ProcessedReceiptImage> {
   // 1. File size check
   if (file.size > PHASE_12B_MAX_RECEIPT_FILE_BYTES) {
-    throw new ReceiptVisionError('RECEIPT_FILE_TOO_LARGE', 'File size exceeds maximum allowed limit (4MB).');
+    throw new ReceiptVisionError('RECEIPT_FILE_TOO_LARGE');
   }
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
   if (buffer.length < 12) {
-    throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED', 'File is too small to be a valid supported image.');
+    throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
   }
 
   // 2. Binary signatures
@@ -62,10 +62,7 @@ export async function processReceiptImage(file: File): Promise<ProcessedReceiptI
     buffer[11] === 0x50;
 
   if (!isJpeg && !isPng && !isWebp) {
-    throw new ReceiptVisionError(
-      'RECEIPT_FILE_TYPE_UNSUPPORTED',
-      'Unsupported image format. Only JPEG, PNG, and WebP are allowed.'
-    );
+    throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
   }
 
   const detectedFormat: 'jpeg' | 'png' | 'webp' = isJpeg ? 'jpeg' : isPng ? 'png' : 'webp';
@@ -75,36 +72,21 @@ export async function processReceiptImage(file: File): Promise<ProcessedReceiptI
     const rawMime = file.type.trim().toLowerCase();
 
     if (rawMime === 'image/jpg') {
-      throw new ReceiptVisionError(
-        'RECEIPT_FILE_TYPE_UNSUPPORTED',
-        'MIME type "image/jpg" is an unsupported alias. Use standard "image/jpeg".'
-      );
+      throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
     }
 
     if (rawMime !== 'image/jpeg' && rawMime !== 'image/png' && rawMime !== 'image/webp') {
-      throw new ReceiptVisionError(
-        'RECEIPT_FILE_TYPE_UNSUPPORTED',
-        `MIME type "${rawMime}" is unsupported. Only image/jpeg, image/png, and image/webp are allowed.`
-      );
+      throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
     }
 
     if (isJpeg && rawMime !== 'image/jpeg') {
-      throw new ReceiptVisionError(
-        'RECEIPT_FILE_TYPE_UNSUPPORTED',
-        'File MIME type disagrees with binary JPEG signature.'
-      );
+      throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
     }
     if (isPng && rawMime !== 'image/png') {
-      throw new ReceiptVisionError(
-        'RECEIPT_FILE_TYPE_UNSUPPORTED',
-        'File MIME type disagrees with binary PNG signature.'
-      );
+      throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
     }
     if (isWebp && rawMime !== 'image/webp') {
-      throw new ReceiptVisionError(
-        'RECEIPT_FILE_TYPE_UNSUPPORTED',
-        'File MIME type disagrees with binary WebP signature.'
-      );
+      throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
     }
   }
 
@@ -116,35 +98,29 @@ export async function processReceiptImage(file: File): Promise<ProcessedReceiptI
       failOn: 'warning',
     });
   } catch {
-    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED', 'Failed to initialize image decoder.');
+    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED');
   }
 
   let metadata: Metadata;
   try {
     metadata = await image.metadata();
   } catch {
-    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED', 'Corrupt or malformed image data.');
+    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED');
   }
 
   // Require Sharp metadata.format to agree with signature
   if (metadata.format !== detectedFormat) {
-    throw new ReceiptVisionError(
-      'RECEIPT_FILE_TYPE_UNSUPPORTED',
-      'Decoded image format does not match binary signature.'
-    );
+    throw new ReceiptVisionError('RECEIPT_FILE_TYPE_UNSUPPORTED');
   }
 
   // Reject multi-frame and animated inputs
   if ((metadata.pages && metadata.pages > 1) || metadata.pageHeight) {
-    throw new ReceiptVisionError(
-      'RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED',
-      'Multi-frame or animated images are not supported.'
-    );
+    throw new ReceiptVisionError('RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED');
   }
 
   // Reject missing or excessive dimensions
   if (!metadata.width || !metadata.height) {
-    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED', 'Unable to determine image dimensions.');
+    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED');
   }
 
   if (
@@ -152,10 +128,7 @@ export async function processReceiptImage(file: File): Promise<ProcessedReceiptI
     metadata.height > PHASE_12B_MAX_DIMENSION_PX ||
     metadata.width * metadata.height > PHASE_12B_MAX_DECODED_PIXELS
   ) {
-    throw new ReceiptVisionError(
-      'RECEIPT_IMAGE_TOO_LARGE',
-      'Image dimensions or pixel count exceed maximum allowed limits.'
-    );
+    throw new ReceiptVisionError('RECEIPT_IMAGE_TOO_LARGE');
   }
 
   const originalWidth = metadata.width;
@@ -179,14 +152,11 @@ export async function processReceiptImage(file: File): Promise<ProcessedReceiptI
       .jpeg({ quality: 80 })
       .toBuffer();
   } catch {
-    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED', 'Failed to normalize image buffer.');
+    throw new ReceiptVisionError('RECEIPT_IMAGE_DECODE_FAILED');
   }
 
   if (outputBuffer.length > PHASE_12B_MAX_NORMALIZED_IMAGE_BYTES) {
-    throw new ReceiptVisionError(
-      'RECEIPT_IMAGE_NORMALIZED_TOO_LARGE',
-      'Normalized image size exceeds maximum allowed limit.'
-    );
+    throw new ReceiptVisionError('RECEIPT_IMAGE_NORMALIZED_TOO_LARGE');
   }
 
   return {
