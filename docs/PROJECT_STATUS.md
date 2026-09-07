@@ -6,9 +6,9 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 12B — Multimodal Foundation & Receipt Vision (Corrective Pass 7)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: IMPLEMENTED / PENDING INDEPENDENT AUDIT AND RUNTIME
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: IMPLEMENTED / INDEPENDENT AUDIT PASS / RUNTIME PENDING
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B status:** PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_PENDING_INDEPENDENT_AUDIT_AND_RUNTIME`)
+- **Phase 12B status:** PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_AUDITED_PENDING_RUNTIME`)
 - **Phase 12C implementation:** NOT AUTHORIZED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
@@ -1115,16 +1115,16 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - **Phase 12A Overall:** PASS (CLOSED)
 
 ### Next Recommended Step
-- Independent audit of Phase 12B — Receipt Vision Contract Discovery (`docs/PHASE_12B_CONTRACT_DISCOVERY.md`).
+- Execute the separately authorized Phase 12B-Runtime production gates; do not close Phase 12B before all three runtime receipts pass.
 
 ## Phase 12B — Receipt Vision (Foundation & Corrective Implementation)
 
-### Status: PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_PENDING_INDEPENDENT_AUDIT_AND_RUNTIME`)
+### Status: PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_AUDITED_PENDING_RUNTIME`)
 
 - **Phase 12B Contract Document:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Current Phase:** Phase 12B-3 Corrective Pass 7 — Runtime-Safe Telemetry, Fixed Public Errors, Delimiter Collision Defense, and Exact Contract Verifier
 - **Branch:** `review/phase12b-1-receipt-vision`
-- **Audit State:** Implementation complete; independent exact-head audit and Pass 12B-Runtime remain pending
+- **Audit State:** Independent exact-head audit PASS at implementation SHA `e08a88e1e4fb8e161de73f38e8fefb3c494231bf`, tree `13dbdccc3c0581b68ed90a79562acdb20999dd37`; Pass 12B-Runtime remains pending
 
 - **Correctives Completed in Pass 7:**
   1. **Exact fixed public errors:** `ReceiptVisionError` accepts only an exact code and derives its browser-safe message from an immutable map. The exact taxonomy is `AUTH_REQUIRED`, `RECEIPT_FILE_REQUIRED`, `RECEIPT_FILE_TOO_LARGE`, `RECEIPT_FILE_TYPE_UNSUPPORTED`, `RECEIPT_FILE_INVALID`, `RECEIPT_IMAGE_TOO_LARGE`, `RECEIPT_IMAGE_MULTIFRAME_UNSUPPORTED`, `RECEIPT_IMAGE_NORMALIZED_TOO_LARGE`, and `RECEIPT_IMAGE_DECODE_FAILED`.
@@ -1144,11 +1144,20 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - **Lockfiles & Dependencies:** `package-lock.json` and `bun.lock` unchanged; `sharp` remains pinned to `0.35.4`; zero direct `zod` dependency.
 - **Database / Storage / Live AI:** Zero database mutations, zero storage writes, and zero real Gemini calls.
 
+### Independent Exact-Head Audit Receipt
+- **Audited implementation SHA:** `e08a88e1e4fb8e161de73f38e8fefb3c494231bf`
+- **Audited implementation tree:** `13dbdccc3c0581b68ed90a79562acdb20999dd37`
+- **Audit environment:** Fresh single-branch clone from GitHub; clean worktree; `npm ci` installed 495 packages without lockfile mutation.
+- **Scope verification:** Exactly 11 declared Pass 7 files changed; no package, lockfile, Next.js configuration, or migration changes.
+- **Independent gates:** `npm test` 31/31 PASS; full repository regression 0 failures; typecheck, lint, and production build PASS; Phase 10/11/12A/12B source verifiers PASS at 38/38, 99/99, 110/110, and 91/91.
+- **Supabase security review:** Server-side `auth.getUser()` precedes file processing and privileged factories; category reads and revalidation use the request-scoped authenticated client, RLS, and an explicit authenticated `user_id` predicate.
+- **Deployment check:** Vercel status SUCCESS for the audited implementation SHA.
+- **Audit verdict:** PASS with no open static findings. Runtime acceptance is intentionally not inferred from static or mocked tests.
+
 ### Mandatory Runtime Gates Still Pending
 - Authenticated near-4-MiB Vercel Server Action transport smoke.
 - Live receipt-analysis verification with zero financial mutations.
 - Explicit standard Save verification proving exactly one transaction mutation and zero duplicates.
 
 ### Next Recommended Step
-- Independent exact-head audit of Corrective Pass 7, followed by a separately authorized Pass 12B-Runtime. Do not mark Phase 12B complete before both gates pass.
-
+- Execute the separately authorized Pass 12B-Runtime. Do not mark Phase 12B complete until near-limit transport, zero-mutation Analyze, and exactly-one-mutation explicit Save all pass.
