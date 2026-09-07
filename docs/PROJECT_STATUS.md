@@ -1164,13 +1164,16 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 
 ## Phase 12B — Receipt Vision UI Corrective Pass 8
 
-### Status: IMPLEMENTED / PENDING_PREVIEW_AND_RUNTIME_VERIFICATION
+### Status: IMPLEMENTED / PRODUCTION_DEPLOYED / PENDING_RUNTIME_VERIFICATION
 
 - Replaced the low-emphasis text/receipt controls in `AddTransactionModal` with a mobile-first, icon-labelled `Nhập nhanh` / `Quét hóa đơn` selector. The receipt entry point is now visible immediately below the modal header and exposes its selected state through `aria-pressed`.
 - Added mode-specific helper copy so users know that receipt mode accepts a camera capture or an existing image before opening the picker.
 - Added a global scrollbar treatment for the full application and every nested scroll container: thin rounded thumb, transparent track, horizontal-scroll support, hover feedback, Firefox support, and a stable document gutter. The transaction modal additionally contains overscroll so mobile scrolling does not pull the page behind it.
 - Added a deterministic source test covering the visible receipt entry point, accessible mode state, global WebKit/Firefox scrollbar rules, and stable document gutter.
 - Verification: Phase 12B tests `32/32 PASS`; full repository regression `41/41 PASS`; Phase 12B exact source verifier `91/91 PASS`; TypeScript, ESLint, and production build `PASS`.
+- Promoted via PR #1 squash merge to `main`: production commit `e63af217d351009744383b35cfaadde42fd8dcdf`.
+- Vercel production deployment `dpl_CbT5D3fP1i82fmfP3bnoAfQ31nMa` reached `READY`; aliases include `https://finora-orpin-nu.vercel.app` and `https://finora-thanhtuyen662002s-projects.vercel.app`.
+- Post-deploy Vercel runtime error check: no runtime errors found in the selected window.
 - Phase 12B remains `PENDING_RUNTIME`; this UI corrective does not infer completion of the near-limit transport, zero-mutation Analyze, or exactly-one-mutation Save gates.
 
 ### Pre-Corrective Runtime Data Baseline (provided 2026-09-07)
