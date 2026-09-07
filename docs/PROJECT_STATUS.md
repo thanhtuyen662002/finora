@@ -1181,3 +1181,13 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - Transactions: `transaction_count=11`, `marker_count=0`, `transaction_fingerprint=b3ba24d1163cb88d3d311bceac98f70e`, `latest_created_at=2026-09-04 11:45:33.751761+00`.
 - Accounts: `account_count=17`, `balance_fingerprint=11d14119ead920ebabdb6df4dc704b25`.
 - Database/storage/live AI mutation during this corrective: `NONE`.
+
+## Phase 12B — Receipt Vision UI Corrective Pass 9
+
+### Status: PRODUCTION_PATCH_PENDING_VERIFICATION
+
+- Replaced low-contrast amber warning chips in `ReceiptPicker` with an accessible warning panel: high-contrast light/dark surfaces, explicit border, warning icon, count badge, and one wrapped row per server-derived warning.
+- Hardened the receipt error panel with a bordered red surface and dark-mode text/icon colors that remain readable against the background.
+- Kept warning codes, server taxonomy, draft eligibility, and all receipt-analysis behavior unchanged; this is presentation-only.
+- Added source assertions for the warning panel role/label, high-contrast classes, and long-message wrapping.
+- The production correction is ready to deploy after local gates pass. Runtime Phase 12B acceptance remains separate and is not inferred from this visual patch.

@@ -239,14 +239,19 @@ export function ReceiptPicker({ onApplyDraft, onCancel }: ReceiptPickerProps) {
       )}
 
       {error && (
-        <div className="flex items-start gap-2 text-red-600 bg-red-50 dark:bg-red-950/40 p-3 rounded-lg text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <p>{error}</p>
+        <div
+          className="flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-sm leading-relaxed text-red-900 dark:border-red-800/80 dark:bg-red-950/60 dark:text-red-100"
+          role="alert"
+        >
+          <span className="mt-0.5 shrink-0 rounded-full bg-red-200 p-0.5 text-red-800 dark:bg-red-900/80 dark:text-red-100">
+            <AlertCircle className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <p className="min-w-0 break-words">{error}</p>
         </div>
       )}
 
       {draft && (
-        <div className="space-y-4 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 bg-zinc-50 dark:bg-zinc-900/50">
+        <div className="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-900/60">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               {draft.can_apply ? (
@@ -268,7 +273,7 @@ export function ReceiptPicker({ onApplyDraft, onCancel }: ReceiptPickerProps) {
           <div className="space-y-2 text-sm">
             {draft.amount && (
               <div className="flex justify-between">
-                <span className="text-zinc-500">Số tiền:</span>
+                <span className="text-zinc-600 dark:text-zinc-300">Số tiền:</span>
                 <span className="font-medium">
                   {draft.amount} {draft.currency_code ?? ''}
                 </span>
@@ -276,41 +281,58 @@ export function ReceiptPicker({ onApplyDraft, onCancel }: ReceiptPickerProps) {
             )}
             {draft.occurred_on && (
               <div className="flex justify-between">
-                <span className="text-zinc-500">Ngày:</span>
+                <span className="text-zinc-600 dark:text-zinc-300">Ngày:</span>
                 <span className="font-medium">{draft.occurred_on}</span>
               </div>
             )}
             {draft.merchant && (
               <div className="flex justify-between">
-                <span className="text-zinc-500">Đơn vị bán:</span>
+                <span className="text-zinc-600 dark:text-zinc-300">Đơn vị bán:</span>
                 <span className="font-medium truncate max-w-[60%]">{draft.merchant}</span>
               </div>
             )}
             {draft.note && (
               <div className="flex justify-between">
-                <span className="text-zinc-500">Ghi chú:</span>
+                <span className="text-zinc-600 dark:text-zinc-300">Ghi chú:</span>
                 <span className="font-medium truncate max-w-[60%]">{draft.note}</span>
               </div>
             )}
           </div>
 
           {draft.warnings.length > 0 && (
-            <div className="space-y-1 pt-1">
-              <div className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Cảnh báo:</div>
-              <div className="flex flex-wrap gap-1.5">
+            <section
+              className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-700/80 dark:bg-amber-950/50 dark:text-amber-50"
+              role="alert"
+              aria-label="Cảnh báo từ kết quả phân tích hóa đơn"
+            >
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0 rounded-full bg-amber-200 p-1 text-amber-800 dark:bg-amber-900/80 dark:text-amber-100">
+                  <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                    <h5 className="text-sm font-semibold leading-tight">Cần kiểm tra trước khi áp dụng</h5>
+                    <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-900/80 dark:text-amber-100">
+                      {draft.warnings.length} cảnh báo
+                    </span>
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
                 {draft.warnings.map((warningCode) => (
-                  <span
+                  <li
                     key={warningCode}
-                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                    className="flex items-start gap-2 rounded-lg border border-amber-200 bg-white/75 px-2.5 py-2 text-xs font-medium leading-relaxed text-amber-950 dark:border-amber-800/70 dark:bg-black/20 dark:text-amber-50"
                   >
-                    {WARNING_LABELS[warningCode] || warningCode}
-                  </span>
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-700 dark:bg-amber-300" aria-hidden="true" />
+                    <span className="min-w-0 break-words">{WARNING_LABELS[warningCode] || warningCode}</span>
+                  </li>
                 ))}
+                  </ul>
+                </div>
               </div>
-            </div>
+            </section>
           )}
 
-          <p className="text-xs text-zinc-500 text-center italic mt-2">
+          <p className="mt-2 text-center text-xs italic text-zinc-600 dark:text-zinc-300">
             Vui lòng kiểm tra lại thông tin trước khi lưu.
           </p>
 

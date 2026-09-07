@@ -8,6 +8,7 @@ test('Phase 12B Source Verifier', async (t) => {
   const actionsPath = path.join(process.cwd(), 'src/features/ai/receipt-vision/actions.ts');
   const actionCorePath = path.join(process.cwd(), 'src/features/ai/receipt-vision/action-core.ts');
   const imagePath = path.join(process.cwd(), 'src/features/ai/receipt-vision/image.ts');
+  const pickerPath = path.join(process.cwd(), 'src/features/ai/receipt-vision/components/ReceiptPicker.tsx');
   const modalPath = path.join(process.cwd(), 'src/components/finance/AddTransactionModal.tsx');
   const globalStylesPath = path.join(process.cwd(), 'src/app/globals.css');
   
@@ -42,6 +43,7 @@ test('Phase 12B Source Verifier', async (t) => {
   await t.test('Receipt entry point and application scrollbars remain visible and accessible', () => {
     const modalCode = fs.readFileSync(modalPath, 'utf8');
     const globalStyles = fs.readFileSync(globalStylesPath, 'utf8');
+    const pickerCode = fs.readFileSync(pickerPath, 'utf8');
 
     assert.match(modalCode, /aria-label="Chọn cách nhập giao dịch"/);
     assert.match(modalCode, /aria-pressed=\{aiInputMode === 'receipt'\}/);
@@ -51,5 +53,9 @@ test('Phase 12B Source Verifier', async (t) => {
     assert.match(globalStyles, /\*::\-webkit\-scrollbar-thumb:hover/);
     assert.match(globalStyles, /scrollbar-width: thin/);
     assert.match(globalStyles, /scrollbar-gutter: stable/);
+    assert.match(pickerCode, /Cần kiểm tra trước khi áp dụng/);
+    assert.match(pickerCode, /aria-label="Cảnh báo từ kết quả phân tích hóa đơn"/);
+    assert.match(pickerCode, /dark:text-amber-50/);
+    assert.match(pickerCode, /break-words/);
   });
 });
