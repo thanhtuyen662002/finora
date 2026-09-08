@@ -33,6 +33,15 @@ test('Phase 12C Financial Assistant deterministic contract', async (t) => {
     const clean = sanitizeFinancialReportSnapshot(snapshot);
     assert.equal(clean.currency, 'VND');
     assert.equal(serializeFinancialReportSnapshot(clean), serializeFinancialReportSnapshot(clean));
+    const deficit = sanitizeFinancialReportSnapshot({
+      ...snapshot,
+      netSavings: '-205000.0000',
+      cashFlow: [{ ...snapshot.cashFlow[0], savings: '-205000.0000' }],
+    });
+    assert.equal(deficit.netSavings, '-205000.0000');
+    assert.equal(deficit.cashFlow[0].savings, '-205000.0000');
+    assert.throws(() => sanitizeFinancialReportSnapshot({ ...snapshot, totalIncome: '-1' }));
+    assert.throws(() => sanitizeFinancialReportSnapshot({ ...snapshot, netSavings: '-0' }));
     assert.throws(() => sanitizeFinancialReportSnapshot({ ...snapshot, totalIncome: 25_000_000 }));
     assert.throws(() => sanitizeFinancialReportSnapshot({ ...snapshot, categories: [{ label: 'uuid 00000000-0000-4000-8000-000000000000', amount: '1', percentage: '1%', transactionCount: 1 }] }));
   });

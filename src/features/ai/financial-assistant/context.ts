@@ -2,6 +2,7 @@ import { FinancialAssistantError } from './errors';
 import type { FinancialReportSnapshot } from './types';
 
 const MONEY_PATTERN = /^(?:0|[1-9]\d{0,19})(?:\.\d{1,4})?$/;
+const SIGNED_MONEY_PATTERN = /^-?(?:0|[1-9]\d{0,19})(?:\.\d{1,4})?$/;
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
 const MAX_CONTEXT_BYTES = 24_000;
 
@@ -18,9 +19,14 @@ function cleanLabel(value: unknown, maxLength: number): string {
   return cleaned;
 }
 
-function cleanMoney(value: unknown, nullable = false): string | null {
+function cleanMoney(value: unknown, nullable = false, signed = false): string | null {
   if (value === null && nullable) return null;
-  if (typeof value !== 'string' || !MONEY_PATTERN.test(value)) {
+  const pattern = signed ? SIGNED_MONEY_PATTERN : MONEY_PATTERN;
+  if (
+    typeof value !== 'string' ||
+    !pattern.test(value) ||
+    (signed && value === '-0')
+  ) {
     throw new FinancialAssistantError('INVALID_CONTEXT');
   }
   return value;
@@ -63,7 +69,7 @@ export function sanitizeFinancialReportSnapshot(value: unknown): FinancialReport
       label: cleanLabel(row.label, 40),
       income: cleanMoney(row.income) as string,
       expense: cleanMoney(row.expense) as string,
-      savings: cleanMoney(row.savings) as string,
+      savings: cleanMoney(row.savings, false, true) as string,
     };
   });
 
@@ -73,7 +79,7 @@ export function sanitizeFinancialReportSnapshot(value: unknown): FinancialReport
     baseCurrency: cleanLabel(value.baseCurrency, 3),
     totalIncome: cleanMoney(value.totalIncome) as string,
     totalExpense: cleanMoney(value.totalExpense) as string,
-    netSavings: cleanMoney(value.netSavings) as string,
+    netSavings: cleanMoney(value.netSavings, false, true) as string,
     savingRatePercent:
       value.savingRatePercent === null ? null : cleanLabel(value.savingRatePercent, 24),
     transactionCount: cleanCount(value.transactionCount),
