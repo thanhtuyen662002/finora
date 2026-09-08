@@ -5,13 +5,16 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12C — Read-Only Financial Assistant & Report Summaries
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED
+- **Current phase:** Phase 13B — Onboarding, Empty States & Data Lifecycle (next)
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B: NOT STARTED
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
 - **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
-- **Post-test production data reset:** PASS (financial/test rows cleared; auth identities and default categories preserved)
+- **Post-test production data reset:** PASS (test financial/planning rows cleared; current owner accounts and recurring items retained; auth identities and default categories preserved)
 - **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
+- **Phase 13A closure receipt:** `docs/receipts/PHASE_13A_CLOSURE.md`
+- **Phase 13A status:** CLOSED / PASS WITH FOLLOW-UPS (production readiness audit complete; no code or database mutation)
+- **Next recommended phase:** Phase 13B — Onboarding, Empty States & Data Lifecycle
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1252,3 +1255,53 @@ PHASE_12B_RUNTIME=PASS
 PHASE_12B_DATABASE_RESET=PASS
 PHASE_12B_OVERALL=CLOSED_PASS
 ```
+
+## Phase 13A — Production Readiness Audit Closure
+
+### Status: CLOSED / PASS WITH FOLLOW-UPS
+
+Phase 13A is closed against the authoritative GitHub `main` head after a read-only production readiness audit. The audit did not modify source code, dependencies, migrations, Supabase data, Vercel configuration, or user-owned records.
+
+- **Authoritative main SHA:** `a9fc465a3233a9d7f0436e6e73755eaeb1f51d9d`
+- **Production deployment:** `dpl_CArAT7ydfutHLE8W7ExnstbUdTX7` (`READY`), source SHA matches `main`
+- **Production origin:** `https://finora-orpin-nu.vercel.app`
+- **Supabase project:** `qibfitbnlfgiqctntufr` (`ACTIVE_HEALTHY`)
+
+### Closure evidence
+
+- GitHub repository default branch is `main`; no open pull requests or issues were present at audit time.
+- GitHub commit status for the authoritative head is successful through Vercel.
+- Vercel production deployment is `READY`; `/`, `/login`, and protected `/reports` returned HTTP `200`.
+- Vercel reported no runtime errors in the latest 24-hour window.
+- All public user-owned tables have RLS enabled and ownership policies; all seven public derived views use `security_invoker=true`.
+- The private credential schema has no grants to `anon`, `authenticated`, or `PUBLIC`.
+- Supabase migration catalog contains 12 applied migrations through Phase 11.
+- Current owner data is retained intentionally: `accounts=5` and `recurring_items=4`. These are not classified as test residue.
+- Test/financial rows remain empty: `transactions=0`, `transfers=0`, `budgets=0`, `goals=0`, `income_sources=0`, `income_source_streams=0`, `transaction_fx_snapshots=0`, and `storage.objects=0`.
+- Default categories remain intact: `categories=60` (`12` per authenticated user). Auth identities, profiles, and settings remain `5` each.
+
+### Follow-ups carried into Phase 13B / maintenance
+
+| ID | Finding | Priority | Disposition |
+| --- | --- | --- | --- |
+| F13A-SEC-01 | Supabase Leaked Password Protection is disabled. | P1 | Enable in Supabase Auth settings before broader user onboarding. |
+| F13A-SEC-02 | `private.ai_credentials` has RLS enabled without a policy. The schema is not granted to client roles. | P2 | Add defense-in-depth policy or document the intentional private-schema boundary. |
+| F13A-OPS-01 | No GitHub Actions workflow is present; release verification currently relies on Vercel status and recorded gates. | P2 | Add a minimal CI release gate for typecheck, lint, tests, and build. |
+| F13A-OPS-02 | `.nvmrc` is `22`, package engines are `>=22`, while Vercel currently reports Node `24.x`. | P2 | Pin one supported major consistently and remove the build warning. |
+| F13A-DOC-01 | `docs/ARCHITECTURE.md` and `docs/DATABASE.md` contain historical “not initialized/remote pending” status text. | P2 | Normalize documentation during the next docs pass. |
+| F13A-PERF-01 | Supabase performance advisor reports 12 unindexed foreign keys and 9 unused indexes. | P3 | Defer index tuning until real usage justifies changes; no migration added in this audit. |
+| F13A-HIST-01 | Older deployments recorded missing `SUPABASE_SERVICE_ROLE_KEY` errors on `/settings` and `/api/fx/transaction-snapshots`. | P3 | Recheck those routes during the next authenticated production smoke; latest 24h is clean. |
+
+### Final constants
+
+PHASE_13A_AUDIT=PASS
+PHASE_13A_STATUS=CLOSED_PASS_WITH_FOLLOWUPS
+PHASE_13A_CODE_MUTATION=NONE
+PHASE_13A_DATABASE_MUTATION=NONE
+PHASE_13A_DATA_RESET=PASS_OWNER_DATA_RETAINED
+PHASE_13A_PRODUCTION_HEALTH=PASS
+PHASE_13B_STATUS=NOT_STARTED
+
+### Next recommended action
+
+Begin Phase 13B with onboarding and empty-state behavior, preserving the current owner-created accounts and recurring items. Resolve P1/P2 operational follow-ups through separate, scoped changes.
