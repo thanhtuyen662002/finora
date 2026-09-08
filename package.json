@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:phase12b:vision": "node --require ./tests/mock-server-only.cjs --import tsx --test --test-concurrency=1 tests/phase12b-receipt-vision.test.ts tests/phase12b-source-verifier.test.ts",
-    "test": "npm run test:phase12b:vision"
+    "test:phase12c:assistant": "node --require ./tests/mock-server-only.cjs --import tsx --test --test-concurrency=1 tests/phase12c-financial-assistant.test.ts",
+    "test": "npm run test:phase12b:vision && npm run test:phase12c:assistant"
   },
   "dependencies": {
     "@google/genai": "2.19.0",

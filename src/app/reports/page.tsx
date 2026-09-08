@@ -28,6 +28,8 @@ import {
   RefreshCw,
   FileSpreadsheet,
 } from 'lucide-react';
+import { FinancialAssistant } from '@/features/ai/financial-assistant/components/FinancialAssistant';
+import { createFinancialReportSnapshot } from '@/features/ai/financial-assistant/types';
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState<ReportPeriod>('6M');
@@ -195,6 +197,8 @@ export default function ReportsPage() {
         </div>
       </PageHeader>
 
+      <FinancialAssistant snapshot={createFinancialReportSnapshot(data)} />
+
       {/* Currency Selector if multiple currencies available */}
       {data.availableCurrencies.length > 1 && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border bg-muted/30">
@@ -225,10 +229,10 @@ export default function ReportsPage() {
       {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE' && (
         <div className="finora-notice-warning p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs" role="status">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
               <h4 className="font-semibold text-sm">Báo cáo tổng hợp ({data.baseCurrency}) tạm thời chưa khả dụng</h4>
-              <p className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+              <p className="text-xs text-amber-800/90 dark:text-amber-200/90 mt-0.5">
                 Một số giao dịch ngoại tệ trong kỳ chưa có tỷ giá lịch sử đã lưu. Vui lòng chuyển sang xem từng loại tiền tệ đơn lẻ.
               </p>
             </div>
