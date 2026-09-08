@@ -9,6 +9,8 @@
 - **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
+- **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
+- **Post-test production data reset:** PASS (financial/test rows cleared; auth identities and default categories preserved)
 - **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
@@ -1213,3 +1215,40 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - No migrations, database writes, storage uploads, or automatic AI execution were introduced. Financial mutations remain exclusively behind the standard explicit Save flow.
 - Verification: Phase 12C contract tests 5/5, source verifier 14/14, TypeScript, ESLint, and production build PASS.
 - Production commit: `ae5d89d737f10e3b79adf29f32f6a3b63f427a84`; Vercel deployment: `dpl_F7a8zGRaxcjxj9PhQHaXu6gAciuG`.
+
+
+## Phase 12B — Final Runtime Closure and Production Data Reset (2026-09-08)
+
+### Status: CLOSED / PASS
+
+The separately pending production gates are now closed with authenticated live evidence:
+
+- Near-limit receipt upload: PASS (`4,108,479` bytes, `2048 × 3072` JPEG, below the `4,194,304` byte file cap and `4,350,000` byte body budget).
+- Live receipt analysis: PASS; the production draft returned `85000.0000 VND`, `2026-09-08`, `FINORA TEST MART`, and `Coffee, Sandwich`.
+- Analyze/application mutation boundary: PASS; persistence occurred only through the standard explicit Save path.
+- Explicit Save cardinality: PASS; each of two deliberate Save actions created exactly one row. The resulting two equal rows were intentional separate saves, not automatic duplication.
+- Production Vercel login route: HTTP `200`.
+- Vercel runtime errors in the latest 24-hour window: none.
+
+Full evidence: `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`.
+
+### Authorized post-test reset
+
+After runtime verification, the owner-authorized reset cleared all financial/test rows across all users:
+
+- `accounts`, `transactions`, `transfers`, `budgets`, `goals`, `recurring_items`, `income_sources`, `income_source_streams`, and `transaction_fx_snapshots`: `0` rows.
+- `categories`: `60` clean default rows (`12` per user).
+- `auth.users`, `profiles`, and `user_settings`: preserved (`5` each).
+- `storage.objects`: `0` rows.
+
+No schema or source-code changes were made by the reset.
+
+```text
+PHASE_12B_NEAR_LIMIT_TRANSPORT=PASS
+PHASE_12B_LIVE_ANALYZE=PASS
+PHASE_12B_ANALYZE_FINANCIAL_MUTATION=false
+PHASE_12B_EXPLICIT_SAVE_CARDINALITY=PASS
+PHASE_12B_RUNTIME=PASS
+PHASE_12B_DATABASE_RESET=PASS
+PHASE_12B_OVERALL=CLOSED_PASS
+```
