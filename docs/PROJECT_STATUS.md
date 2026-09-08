@@ -5,11 +5,11 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 12B — Multimodal Foundation & Receipt Vision (Corrective Pass 7)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: IMPLEMENTED / INDEPENDENT AUDIT PASS / RUNTIME PENDING
+- **Current phase:** Phase 12C — Read-Only Financial Assistant & Report Summaries
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
-- **Phase 12B status:** PENDING_RUNTIME (`PHASE_12B_1_2_3_STATUS = IMPLEMENTED_AUDITED_PENDING_RUNTIME`)
-- **Phase 12C implementation:** NOT AUTHORIZED
+- **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
+- **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1202,3 +1202,14 @@ PHASE_12A_FINANCIAL_MUTATION_AUTHORITY=ZERO
 - Added alert/status semantics to dynamically rendered messages and removed dark-theme-incompatible hardcoded light surfaces such as the dashboard unavailable-rate card.
 - Receipt-analysis behavior, warning taxonomy, draft-only semantics, authentication ordering, database/storage boundaries, and live AI-call policy are unchanged.
 - Verification: TypeScript, ESLint, Phase 12B deterministic/source tests, and production build all pass locally. Production deployment and runtime verification remain separate follow-up gates.
+
+## Phase 12C — Read-Only Financial Assistant & Report Summaries
+
+### Status: IMPLEMENTED / PRODUCTION_DEPLOYED
+
+- Added an authenticated server action for explicit financial questions and report summaries using the existing Phase 10 router and Phase 11 credential resolver.
+- The model boundary receives only a bounded deterministic report snapshot: no raw transaction rows, database UUIDs, credentials, or mutation tools.
+- Added prompt-injection isolation, context byte limits, UUID rejection, output sanitization, and explicit Vietnamese read-only disclosure in the Reports screen.
+- No migrations, database writes, storage uploads, or automatic AI execution were introduced. Financial mutations remain exclusively behind the standard explicit Save flow.
+- Verification: Phase 12C contract tests 5/5, source verifier 14/14, TypeScript, ESLint, and production build PASS.
+- Production commit: `ae5d89d737f10e3b79adf29f32f6a3b63f427a84`; Vercel deployment: `dpl_F7a8zGRaxcjxj9PhQHaXu6gAciuG`.
