@@ -1372,4 +1372,16 @@ Phase 13C turns the previous Settings placeholders into user-controlled, in-app 
 ### Next gate
 
 Owner smoke test: open **Cài đặt → Thông báo & Cảnh báo**, toggle each switch, save, then open **Thông báo** and refresh.
-\n---\n\n## Phase 13D — Balance Privacy & Data Backup Export\n\n**Status:** IMPLEMENTED — pending CI, production build, and live smoke verification\n\nThis phase adds two account-level capabilities:\n\n- **Che số dư công cộng:** the `user_settings.mask_balance` preference is persisted per authenticated user. When enabled, account balances and dashboard/report financial summaries are replaced with a neutral mask (`••••••`) in the UI. Financial values in the database are unchanged, and transaction data remains intact.\n- **Xuất bản sao lưu dữ liệu:** Settings can download a JSON backup containing only rows owned by the authenticated user: profile/settings, notification preferences, accounts, categories, transactions, transfers, FX snapshots, budgets, goals, recurring items, income sources/streams, debts, and debt payments. AI credentials and all private credential material are intentionally excluded.\n\nThe database change is additive and RLS-safe: `public.user_settings.mask_balance BOOLEAN NOT NULL DEFAULT FALSE` with authenticated-column update permission. The export runs in the browser after a fresh auth check, reads user-scoped rows through the existing Supabase client, creates a local JSON Blob, and revokes the object URL after download. No storage upload, server-side file persistence, or credential read is performed.\n
+
+---
+
+## Phase 13D — Balance Privacy & Data Backup Export
+
+**Status:** IMPLEMENTED — pending CI, production build, and live smoke verification
+
+This phase adds two account-level capabilities:
+
+- **Che số dư công cộng:** the `user_settings.mask_balance` preference is persisted per authenticated user. When enabled, account balances and dashboard/report financial summaries are replaced with a neutral mask (`••••••`) in the UI. Financial values in the database are unchanged, and transaction data remains intact.
+- **Xuất bản sao lưu dữ liệu:** Settings can download a JSON backup containing only rows owned by the authenticated user: profile/settings, notification preferences, accounts, categories, transactions, transfers, FX snapshots, budgets, goals, recurring items, income sources/streams, debts, and debt payments. AI credentials and all private credential material are intentionally excluded.
+
+The database change is additive and RLS-safe: `public.user_settings.mask_balance BOOLEAN NOT NULL DEFAULT FALSE` with authenticated-column update permission. The export runs in the browser after a fresh auth check, reads user-scoped rows through the existing Supabase client, creates a local JSON Blob, and revokes the object URL after download. No storage upload, server-side file persistence, or credential read is performed.
