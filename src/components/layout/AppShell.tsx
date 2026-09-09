@@ -16,6 +16,7 @@ import {
   LogOut,
   Menu,
   Coins,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -114,6 +115,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         { href: '/income-sources', label: 'Nguồn thu nhập', icon: Coins },
         { href: '/budgets', label: 'Ngân sách', icon: Target },
         { href: '/recurring', label: 'Định kỳ & Hóa đơn', icon: Repeat },
+        { href: '/debts', label: 'Khoản nợ', icon: CreditCard },
       ],
     },
     {

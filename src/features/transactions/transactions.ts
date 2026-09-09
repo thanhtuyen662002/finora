@@ -53,6 +53,7 @@ function mapDetailRow(row: TransactionDetailRow): ExtendedTransaction {
     is_voided: row.is_voided,
     income_source_id: row.income_source_id,
     income_source_stream_id: row.income_source_stream_id,
+    debt_id: row.debt_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
     accountName: row.account_name,
