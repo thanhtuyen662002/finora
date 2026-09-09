@@ -20,6 +20,7 @@ import {
   aggregateCashFlow,
   aggregateCategoryExpenses,
   aggregateIncomeSourcesBreakdown,
+  aggregateDebtRepaymentBreakdown,
 } from './engine';
 import type {
   ReportPeriod,
@@ -30,8 +31,10 @@ import type {
   BaseValuationProvenance,
   BaseHistoricalProvenance,
   BaseConvertedTransaction,
-  FxQuote
+  FxQuote,
+  DebtRepaymentBreakdown,
 } from './types';
+import type { DebtPaymentDetailRow } from '@/types/database';
 import { convertExactAmount } from '@/lib/exchange-rate/fx-math';
 import { addExactDecimals } from '@/lib/money';
 
@@ -62,6 +65,25 @@ async function fetchSnapshots(targetCurrency: string, txIds: string[]) {
     batchResults.forEach((snaps) => allSnapshots.push(...snaps));
   }
   return allSnapshots;
+}
+
+async function fetchDebtRepaymentRows(
+  startDate?: string | null,
+  endDate?: string | null
+): Promise<DebtPaymentDetailRow[]> {
+  const supabase = createClient();
+  let query = supabase
+    .from('debt_payment_details')
+    .select('*')
+    .order('paid_on', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (startDate) query = query.gte('paid_on', startDate);
+  if (endDate) query = query.lte('paid_on', endDate);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []) as DebtPaymentDetailRow[];
 }
 
 export async function getDashboardReportData(
@@ -524,6 +546,16 @@ export async function getDetailedReportData(
     dateRange.endDate
   );
 
+  const debtRepaymentRows = selectedCurrency === 'BASE'
+    ? []
+    : await fetchDebtRepaymentRows(dateRange.startDate, dateRange.endDate);
+  const debtRepaymentBreakdown: DebtRepaymentBreakdown[] = aggregateDebtRepaymentBreakdown(
+    debtRepaymentRows,
+    selectedCurrency,
+    dateRange.startDate,
+    dateRange.endDate
+  );
+
   let accountsInCurrency: AccountBalanceSnapshot[] | null = [];
   let totalAccountBalance: string | null = '0.0000';
 
@@ -564,6 +596,7 @@ export async function getDetailedReportData(
     cashFlow,
     categoryBreakdown,
     incomeBreakdown,
+    debtRepaymentBreakdown,
     accountsInCurrency,
     totalAccountBalance,
     transactions: transactionsInScope,

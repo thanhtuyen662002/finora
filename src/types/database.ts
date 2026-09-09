@@ -567,6 +567,11 @@ export interface Database {
           principal_amount: string;
           interest_amount: string;
           currency_code: string;
+          debt_amount: string;
+          debt_currency_code: string;
+          exchange_rate: string;
+          exchange_rate_source: string;
+          exchange_rate_effective_date: string;
           paid_on: string;
           note: string | null;
           created_at: string;
@@ -581,6 +586,11 @@ export interface Database {
           principal_amount?: string | number;
           interest_amount?: string | number;
           currency_code: string;
+          debt_amount: string | number;
+          debt_currency_code: string;
+          exchange_rate: string | number;
+          exchange_rate_source: string;
+          exchange_rate_effective_date: string;
           paid_on?: string;
           note?: string | null;
           created_at?: string;
@@ -595,6 +605,11 @@ export interface Database {
           principal_amount?: string | number;
           interest_amount?: string | number;
           currency_code?: string;
+          debt_amount?: string | number;
+          debt_currency_code?: string;
+          exchange_rate?: string | number;
+          exchange_rate_source?: string;
+          exchange_rate_effective_date?: string;
           paid_on?: string;
           note?: string | null;
           created_at?: string;
@@ -779,6 +794,11 @@ export interface Database {
           lender_name: string | null;
           account_name: string;
           category_name: string;
+          debt_amount: string;
+          debt_currency_code: string;
+          exchange_rate: string;
+          exchange_rate_source: string;
+          exchange_rate_effective_date: string;
         };
         Relationships: [];
       };
@@ -883,6 +903,23 @@ export interface Database {
           p_amount: number | string;
           p_principal_amount: number | string;
           p_interest_amount: number | string;
+          p_paid_on: string;
+          p_note?: string | null;
+        };
+        Returns: string;
+      };
+      record_debt_payment_v2: {
+        Args: {
+          p_debt_id: string;
+          p_account_id: string;
+          p_category_id: string;
+          p_account_amount: number | string;
+          p_debt_amount: number | string;
+          p_principal_amount: number | string;
+          p_interest_amount: number | string;
+          p_exchange_rate: number | string;
+          p_exchange_rate_source: string;
+          p_exchange_rate_effective_date: string;
           p_paid_on: string;
           p_note?: string | null;
         };
@@ -1015,4 +1052,3 @@ export type IncomeSourceUpdate = Omit<Database['public']['Tables']['income_sourc
 export type IncomeSourceStreamRow = Database['public']['Tables']['income_source_streams']['Row'];
 export type IncomeSourceStreamInsert = Omit<Database['public']['Tables']['income_source_streams']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type IncomeSourceStreamUpdate = Omit<Database['public']['Tables']['income_source_streams']['Update'], 'id' | 'user_id' | 'income_source_id' | 'created_at' | 'updated_at'>;
-

@@ -63,9 +63,13 @@ type DebtFormState = {
 type PaymentFormState = {
   account_id: string;
   category_id: string;
-  amount: string;
+  account_amount: string;
+  debt_amount: string;
   principal_amount: string;
   interest_amount: string;
+  exchange_rate: string;
+  exchange_rate_source: string;
+  exchange_rate_effective_date: string;
   paid_on: string;
   note: string;
 };
@@ -131,9 +135,13 @@ export default function DebtsPage() {
   const [paymentForm, setPaymentForm] = useState<PaymentFormState>({
     account_id: '',
     category_id: '',
-    amount: '',
+    account_amount: '',
+    debt_amount: '',
     principal_amount: '',
     interest_amount: '0',
+    exchange_rate: '1',
+    exchange_rate_source: 'SAME_CURRENCY',
+    exchange_rate_effective_date: today(),
     paid_on: today(),
     note: '',
   });
@@ -288,9 +296,7 @@ export default function DebtsPage() {
   };
 
   const openPaymentDialog = (debt: Debt) => {
-    const firstAccount = accounts.find(
-      (account) => !account.is_archived && account.currency_code === debt.currency_code
-    );
+    const firstAccount = accounts.find((account) => !account.is_archived);
     const firstCategory = categories.find(
       (category) => !category.is_archived && category.type === 'EXPENSE'
     );
@@ -298,9 +304,13 @@ export default function DebtsPage() {
     setPaymentForm({
       account_id: firstAccount?.id || '',
       category_id: firstCategory?.id || '',
-      amount: '',
+      account_amount: '',
+      debt_amount: '',
       principal_amount: '',
       interest_amount: '0',
+      exchange_rate: firstAccount?.currency_code === debt.currency_code ? '1' : '',
+      exchange_rate_source: firstAccount?.currency_code === debt.currency_code ? 'SAME_CURRENCY' : 'MANUAL',
+      exchange_rate_effective_date: today(),
       paid_on: today(),
       note: '',
     });
@@ -317,9 +327,14 @@ export default function DebtsPage() {
       debt_id: paymentDebt.id,
       account_id: paymentForm.account_id,
       category_id: paymentForm.category_id,
-      amount: paymentForm.amount,
+      account_amount: paymentForm.account_amount,
+      account_currency_code: paymentAccounts.find((account) => account.id === paymentForm.account_id)?.currency_code || '',
+      debt_amount: paymentForm.debt_amount,
       principal_amount: paymentForm.principal_amount,
       interest_amount: paymentForm.interest_amount,
+      exchange_rate: paymentForm.exchange_rate,
+      exchange_rate_source: paymentForm.exchange_rate_source,
+      exchange_rate_effective_date: paymentForm.exchange_rate_effective_date,
       paid_on: paymentForm.paid_on,
       note: paymentForm.note || null,
     };
@@ -358,11 +373,14 @@ export default function DebtsPage() {
   };
 
   const paymentAccounts = paymentDebt
-    ? accounts.filter(
-        (account) =>
-          !account.is_archived && account.currency_code === paymentDebt.currency_code
-      )
+    ? accounts.filter((account) => !account.is_archived)
     : [];
+  const paymentAccountCurrency = paymentAccounts.find(
+    (account) => account.id === paymentForm.account_id
+  )?.currency_code || '';
+  const paymentIsCrossCurrency = Boolean(
+    paymentDebt && paymentAccountCurrency && paymentAccountCurrency !== paymentDebt.currency_code
+  );
   const expenseCategories = categories.filter(
     (category) => !category.is_archived && category.type === 'EXPENSE'
   );
@@ -678,7 +696,7 @@ export default function DebtsPage() {
           <DialogHeader>
             <DialogTitle>Ghi nhận trả nợ</DialogTitle>
             <DialogDescription>
-              {paymentDebt ? paymentDebt.name + ' · Dư nợ ' + formatExactMoney(paymentDebt.outstanding_amount, paymentDebt.currency_code) : ''}
+              {paymentDebt ? paymentDebt.name + ' · Dư nợ ' + formatExactMoney(paymentDebt.outstanding_amount, paymentDebt.currency_code) + ' · Có thể thanh toán từ tài khoản khác tiền tệ.' : ''}
             </DialogDescription>
           </DialogHeader>
           {paymentError && (
@@ -688,34 +706,62 @@ export default function DebtsPage() {
           )}
           {paymentDebt && paymentAccounts.length === 0 && (
             <div className="finora-notice-warning rounded-lg border px-3 py-2 text-sm" role="alert">
-              Chưa có tài khoản đang hoạt động cùng tiền tệ {paymentDebt.currency_code}. Hãy tạo hoặc khôi phục tài khoản phù hợp trước khi trả nợ.
+              Chưa có tài khoản đang hoạt động để thanh toán. Hãy tạo hoặc khôi phục tài khoản phù hợp trước khi trả nợ.
             </div>
           )}
           <form className="space-y-4" onSubmit={handlePaymentSubmit}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="payment-account">Tài khoản thanh toán</Label>
-                <Select id="payment-account" value={paymentForm.account_id} onChange={(event) => setPaymentForm({ ...paymentForm, account_id: event.target.value })} options={[{ value: '', label: 'Chọn tài khoản' }, ...paymentAccounts.map((account) => ({ value: account.id, label: account.name + ' (' + account.currency_code + ')' }))]} required />
+                <Select
+                  id="payment-account"
+                  value={paymentForm.account_id}
+                  onChange={(event) => {
+                    const nextAccount = paymentAccounts.find((account) => account.id === event.target.value);
+                    const sameCurrency = nextAccount?.currency_code === paymentDebt?.currency_code;
+                    setPaymentForm({
+                      ...paymentForm,
+                      account_id: event.target.value,
+                      exchange_rate: sameCurrency ? '1' : '',
+                      exchange_rate_source: sameCurrency ? 'SAME_CURRENCY' : 'MANUAL',
+                    });
+                  }}
+                  options={[{ value: '', label: 'Chọn tài khoản' }, ...paymentAccounts.map((account) => ({ value: account.id, label: account.name + ' (' + account.currency_code + ')' }))]}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="payment-category">Danh mục chi</Label>
                 <Select id="payment-category" value={paymentForm.category_id} onChange={(event) => setPaymentForm({ ...paymentForm, category_id: event.target.value })} options={[{ value: '', label: 'Chọn danh mục' }, ...expenseCategories.map((category) => ({ value: category.id, label: category.name }))]} required />
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="payment-amount">Tổng thanh toán</Label>
+                <Label htmlFor="payment-account-amount">Số tiền trừ tài khoản ({paymentAccountCurrency || '—'})</Label>
                 <MoneyInput
-                  id="payment-amount"
-                  currencyCode={paymentDebt?.currency_code || 'VND'}
-                  value={paymentForm.amount}
-                  onChange={(value) => setPaymentForm({ ...paymentForm, amount: value })}
-                  placeholder={paymentDebt?.currency_code === 'VND' ? '0' : '0.00'}
+                  id="payment-account-amount"
+                  currencyCode={paymentAccountCurrency || 'VND'}
+                  value={paymentForm.account_amount}
+                  onChange={(value) => setPaymentForm({ ...paymentForm, account_amount: value })}
+                  placeholder={paymentAccountCurrency === 'VND' ? '0' : '0.00'}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="payment-principal">Tiền gốc</Label>
+                <Label htmlFor="payment-debt-amount">Tổng giảm khoản nợ ({paymentDebt?.currency_code || '—'})</Label>
+                <MoneyInput
+                  id="payment-debt-amount"
+                  currencyCode={paymentDebt?.currency_code || 'VND'}
+                  value={paymentForm.debt_amount}
+                  onChange={(value) => setPaymentForm({ ...paymentForm, debt_amount: value })}
+                  placeholder={paymentDebt?.currency_code === 'VND' ? '0' : '0.00'}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="payment-principal">Tiền gốc ({paymentDebt?.currency_code || '—'})</Label>
                 <MoneyInput
                   id="payment-principal"
                   currencyCode={paymentDebt?.currency_code || 'VND'}
@@ -726,7 +772,7 @@ export default function DebtsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="payment-interest">Tiền lãi</Label>
+                <Label htmlFor="payment-interest">Tiền lãi ({paymentDebt?.currency_code || '—'})</Label>
                 <MoneyInput
                   id="payment-interest"
                   currencyCode={paymentDebt?.currency_code || 'VND'}
@@ -737,9 +783,42 @@ export default function DebtsPage() {
                 />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Tổng thanh toán phải bằng tiền gốc cộng tiền lãi. Khoản gốc sẽ được trừ khỏi dư nợ.
-            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="payment-rate">Tỷ giá (1 {paymentAccountCurrency || '—'} = ? {paymentDebt?.currency_code || '—'})</Label>
+                <Input
+                  id="payment-rate"
+                  inputMode="decimal"
+                  value={paymentForm.exchange_rate}
+                  onChange={(event) => setPaymentForm({ ...paymentForm, exchange_rate: event.target.value })}
+                  placeholder={paymentIsCrossCurrency ? 'Nhập tỷ giá đã xác nhận' : '1'}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment-rate-source">Nguồn tỷ giá</Label>
+                <Input
+                  id="payment-rate-source"
+                  value={paymentForm.exchange_rate_source}
+                  onChange={(event) => setPaymentForm({ ...paymentForm, exchange_rate_source: event.target.value })}
+                  placeholder={paymentIsCrossCurrency ? 'Ví dụ: MANUAL' : 'SAME_CURRENCY'}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="payment-rate-date">Ngày hiệu lực tỷ giá</Label>
+                <Input id="payment-rate-date" type="date" value={paymentForm.exchange_rate_effective_date} onChange={(event) => setPaymentForm({ ...paymentForm, exchange_rate_effective_date: event.target.value })} required />
+              </div>
+              <div className="flex items-end">
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {paymentIsCrossCurrency
+                    ? 'Nhập tỷ giá theo hướng tài khoản → khoản nợ. Finora không tự lấy tỷ giá hoặc tự đổi số tiền.'
+                    : 'Cùng tiền tệ dùng tỷ giá 1:1. Tiền gốc sẽ giảm dư nợ; tiền lãi vẫn được ghi riêng.'}
+                </p>
+              </div>
+            </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="payment-date">Ngày thanh toán</Label>
