@@ -38,6 +38,12 @@ import {
 } from 'lucide-react';
 
 export default function DashboardPage() {
+  return (
+      <DashboardContent />
+  );
+}
+
+function DashboardContent() {
   const { maskBalance } = useBalanceVisibility();
   const [data, setData] = useState<DashboardReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,8 +124,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <AppShell>
-        <div className="space-y-6 animate-pulse">
+          <div className="space-y-6 animate-pulse">
           <div className="h-10 bg-muted/60 rounded-md w-1/3" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
@@ -131,14 +136,12 @@ export default function DashboardPage() {
             <div className="lg:col-span-5 h-80 bg-muted/40 rounded-xl" />
           </div>
         </div>
-      </AppShell>
-    );
+      );
   }
 
   if (error || !data) {
     return (
-      <AppShell>
-        <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
+          <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
           <AlertCircle className="h-10 w-10" />
           <div>
             <h3 className="font-semibold text-foreground">Không thể tải dữ liệu tài chính</h3>
@@ -149,8 +152,7 @@ export default function DashboardPage() {
             Thử lại
           </Button>
         </div>
-      </AppShell>
-    );
+      );
   }
 
   const effectiveCurrency =
@@ -186,7 +188,6 @@ export default function DashboardPage() {
   const previewAccounts = allAccounts.slice(0, 6);
 
   return (
-    <AppShell>
       {/* Top Header */}
       <PageHeader
         title="Tổng quan tài chính"
@@ -548,6 +549,5 @@ export default function DashboardPage() {
         onOpenChange={setTransferOpen}
         onSuccess={loadDashboard}
       />
-    </AppShell>
   );
 }
