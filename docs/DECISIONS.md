@@ -359,7 +359,7 @@ Consequences:
 
 ## ADR-017 — Dedicated Liability Ledger and Atomic Repayments
 
-Status: Proposed on feat/phase13b-debt-management; acceptance pending verification and merge.
+Status: Accepted after production migration verification and merge on 2026-09-09.
 
 Decision:
 
@@ -372,6 +372,12 @@ Decision:
 Reason:
 
 A negative account balance cannot distinguish an asset from a liability and would corrupt net-worth semantics. The atomic RPC prevents concurrent repayments from overpaying a debt and keeps the cash ledger and liability ledger synchronized.
+
+Verification:
+
+- Source and production build: PASS.
+- Supabase migration and RLS/RPC structural checks: PASS.
+- No owner debt/payment rows were created during deployment.
 
 Consequences:
 
