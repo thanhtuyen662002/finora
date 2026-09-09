@@ -1347,7 +1347,7 @@ Phase 13C turns the previous Settings placeholders into user-controlled, in-app 
 
 ### Implementation files
 
-- `supabase/migrations/20260910000000_phase_13c_notification_preferences.sql`
+- `supabase/migrations/20260909024359_phase_13c_notification_preferences.sql`
 - `src/features/notifications/`
 - `src/app/notifications/page.tsx`
 - `src/app/settings/page.tsx`
