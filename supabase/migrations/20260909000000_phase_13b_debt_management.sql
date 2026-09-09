@@ -354,7 +354,7 @@ BEGIN
         'EXPENSE',
         p_amount,
         v_debt.currency_code,
-        'Trả nợ: ' || v_debt.name,
+        LEFT('Trả nợ: ' || v_debt.name, 200),
         NULLIF(trim(p_note), ''),
         COALESCE(p_paid_on, CURRENT_DATE),
         p_debt_id
@@ -381,6 +381,40 @@ BEGIN
     RETURN v_payment_id;
 END;
 $$;
+
+-- Debt-payment transactions are ledger entries, not ordinary editable expenses.
+-- Preventing edits/voids keeps the cash ledger synchronized with debt_payments.
+CREATE OR REPLACE FUNCTION public.guard_debt_payment_transaction_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $
+BEGIN
+    IF OLD.debt_id IS NOT NULL AND (
+        NEW.account_id IS DISTINCT FROM OLD.account_id
+        OR NEW.category_id IS DISTINCT FROM OLD.category_id
+        OR NEW.type IS DISTINCT FROM OLD.type
+        OR NEW.amount IS DISTINCT FROM OLD.amount
+        OR NEW.currency_code IS DISTINCT FROM OLD.currency_code
+        OR NEW.merchant IS DISTINCT FROM OLD.merchant
+        OR NEW.note IS DISTINCT FROM OLD.note
+        OR NEW.occurred_on IS DISTINCT FROM OLD.occurred_on
+        OR NEW.is_voided IS DISTINCT FROM OLD.is_voided
+        OR NEW.debt_id IS DISTINCT FROM OLD.debt_id
+    ) THEN
+        RAISE EXCEPTION 'Debt payment transactions are immutable; manage them from the debt module'
+            USING ERRCODE = '55006';
+    END IF;
+    RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS guard_debt_payment_transaction_update_trigger ON public.transactions;
+CREATE TRIGGER guard_debt_payment_transaction_update_trigger
+    BEFORE UPDATE ON public.transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION public.guard_debt_payment_transaction_update();
 
 -- RLS: all records are isolated to the authenticated owner.
 ALTER TABLE public.debts ENABLE ROW LEVEL SECURITY;
@@ -416,7 +450,7 @@ GRANT INSERT (
     payment_frequency, first_due_date, due_day, note
 ) ON public.debts TO authenticated;
 GRANT UPDATE (
-    name, lender_name, debt_type, currency_code, interest_rate,
+    name, lender_name, debt_type, interest_rate,
     minimum_payment, payment_frequency, first_due_date, due_day, note, is_archived
 ) ON public.debts TO authenticated;
 
