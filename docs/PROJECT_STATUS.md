@@ -1436,11 +1436,11 @@ setting is never changed by this interaction.
 - No database writes, transaction mutations, or backup/export behavior are
   affected.
 
-## Phase 13A Operations Hardening — In Review
+## Phase 13A Operations Hardening — Complete
 
 The production smoke gate for the balance privacy and tap-to-reveal release passed on the canonical production origin.
 
-This follow-up branch adds:
+This follow-up added:
 
 - A GitHub Actions quality gate for pull requests and pushes to `main`, running `npm ci`, typecheck, ESLint, the deterministic test suite, and the production build.
 - A single Node runtime contract: `.nvmrc`, `package.json`, and `package-lock.json` now pin the supported major to Node `22.x`.
@@ -1450,7 +1450,7 @@ Supabase Auth leaked-password protection remains an operator setting and is not 
 
 ```text
 PHASE_13A_PRODUCTION_SMOKE=PASS_OWNER_ATTESTED
-PHASE_13A_CI_RELEASE_GATE=IMPLEMENTED_PENDING_MERGE
+PHASE_13A_CI_RELEASE_GATE=PASS_MAIN_VERIFIED
 PHASE_13A_NODE_RUNTIME=PINNED_22_X
 PHASE_13A_LEAKED_PASSWORD_PROTECTION=OPERATOR_ACTION_REQUIRED
 PHASE_13B_2=PLANNED
