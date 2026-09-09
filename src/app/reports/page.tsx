@@ -506,4 +506,4 @@ function ReportsContent() {
       </Card>
     </>
   );
-}}
+}
