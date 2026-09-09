@@ -12,7 +12,7 @@ import { CurrencyBadge } from './CurrencyBadge';
 import { Button } from '@/components/ui/button';
 import { Plus, ArrowRightLeft } from 'lucide-react';
 import { formatExactMoney } from '@/lib/money';
-import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
+import { RevealableBalance } from './RevealableBalance';
 import type { AccountBalanceSnapshot } from '@/features/reports';
 
 interface AccountDetailModalProps {
@@ -28,8 +28,6 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   onOpenChange,
   onQuickAction,
 }) => {
-  const { maskBalance } = useBalanceVisibility();
-
   if (!account) return null;
 
   return (
@@ -57,9 +55,11 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
           <div className="p-4 rounded-xl bg-muted/60 border space-y-1">
             <span className="text-xs text-muted-foreground font-medium">Số dư hiện tại</span>
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold tracking-tight text-foreground">
-                {maskFinancialValue(formatExactMoney(account.currentBalance, account.currency), maskBalance)}
-              </span>
+              <RevealableBalance
+                value={formatExactMoney(account.currentBalance, account.currency)}
+                className="text-2xl font-bold tracking-tight text-foreground"
+                ariaLabel="Số dư hiện tại"
+              />
               <CurrencyBadge currency={account.currency} />
             </div>
           </div>
