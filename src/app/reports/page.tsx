@@ -11,6 +11,7 @@ import { TransactionList } from '@/components/finance/TransactionList';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatExactMoney } from '@/lib/money';
+import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
 import {
   getDetailedReportData,
   exportTransactionsToCSV,
@@ -32,6 +33,15 @@ import { FinancialAssistant } from '@/features/ai/financial-assistant/components
 import { createFinancialReportSnapshot } from '@/features/ai/financial-assistant/types';
 
 export default function ReportsPage() {
+  return (
+    <AppShell>
+      <ReportsContent />
+    </AppShell>
+  );
+}
+
+function ReportsContent() {
+  const { maskBalance } = useBalanceVisibility();
   const [period, setPeriod] = useState<ReportPeriod>('6M');
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
   const [data, setData] = useState<DetailedReportData | null>(null);
@@ -134,8 +144,7 @@ export default function ReportsPage() {
 
   if (loading) {
     return (
-      <AppShell>
-        <div className="space-y-6 animate-pulse">
+          <div className="space-y-6 animate-pulse">
           <div className="h-10 bg-muted/60 rounded-md w-1/3" />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[...Array(3)].map((_, i) => (
@@ -148,14 +157,12 @@ export default function ReportsPage() {
             <div className="h-72 bg-muted/40 rounded-xl" />
           </div>
         </div>
-      </AppShell>
-    );
+      );
   }
 
   if (error || !data) {
     return (
-      <AppShell>
-        <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
+          <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
           <AlertCircle className="h-10 w-10" />
           <div>
             <h3 className="font-semibold text-foreground">Không thể tải báo cáo tài chính</h3>
@@ -166,8 +173,7 @@ export default function ReportsPage() {
             Thử lại
           </Button>
         </div>
-      </AppShell>
-    );
+      );
   }
 
   const currency = data.selectedCurrency;
@@ -175,7 +181,7 @@ export default function ReportsPage() {
   const displayCurrency = currency === 'BASE' ? data.baseCurrency : currency;
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="Báo cáo tài chính"
         subtitle={`Phân tích dòng tiền, cơ cấu chi tiêu và lịch sử tài chính (${data.dateRangeLabel}).`}
@@ -261,7 +267,7 @@ export default function ReportsPage() {
             <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
                 ? '—'
-                : formatExactMoney(summary.totalIncome, displayCurrency)}
+                : maskFinancialValue(formatExactMoney(summary.totalIncome, displayCurrency), maskBalance)}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -282,7 +288,7 @@ export default function ReportsPage() {
             <p className="text-2xl font-bold text-foreground">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
                 ? '—'
-                : formatExactMoney(summary.totalExpense, displayCurrency)}
+                : maskFinancialValue(formatExactMoney(summary.totalExpense, displayCurrency), maskBalance)}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -303,7 +309,7 @@ export default function ReportsPage() {
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
                 ? '—'
-                : formatExactMoney(summary.netSavings, displayCurrency, { showSign: true })}
+                : maskFinancialValue(formatExactMoney(summary.netSavings, displayCurrency, { showSign: true }), maskBalance)}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -414,7 +420,7 @@ export default function ReportsPage() {
           <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Tổng số dư {displayCurrency}:</span>
             <span className="text-base font-bold text-foreground">
-              {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? 'Không khả dụng' : formatExactMoney(data.totalAccountBalance || '0', displayCurrency)}
+              {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? 'Không khả dụng' : maskFinancialValue(formatExactMoney(data.totalAccountBalance || '0', displayCurrency), maskBalance)}
             </span>
           </div>
 
@@ -451,7 +457,7 @@ export default function ReportsPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0 font-semibold text-foreground">
-                        {formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency)}
+                        {maskFinancialValue(formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency), maskBalance)}
                       </div>
                     </div>
                   ))}
@@ -498,6 +504,6 @@ export default function ReportsPage() {
           )}
         </CardContent>
       </Card>
-    </AppShell>
+    </>
   );
 }

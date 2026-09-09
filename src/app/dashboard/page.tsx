@@ -15,6 +15,7 @@ import { AddTransferModal } from '@/components/finance/AddTransferModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { formatExactMoney, formatExactDecimal } from '@/lib/money';
+import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
 import {
   getDashboardReportData,
   enrichDashboardBaseFx,
@@ -37,6 +38,15 @@ import {
 } from 'lucide-react';
 
 export default function DashboardPage() {
+  return (
+    <AppShell>
+      <DashboardContent />
+    </AppShell>
+  );
+}
+
+function DashboardContent() {
+  const { maskBalance } = useBalanceVisibility();
   const [data, setData] = useState<DashboardReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,8 +126,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <AppShell>
-        <div className="space-y-6 animate-pulse">
+          <div className="space-y-6 animate-pulse">
           <div className="h-10 bg-muted/60 rounded-md w-1/3" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
@@ -129,14 +138,12 @@ export default function DashboardPage() {
             <div className="lg:col-span-5 h-80 bg-muted/40 rounded-xl" />
           </div>
         </div>
-      </AppShell>
-    );
+      );
   }
 
   if (error || !data) {
     return (
-      <AppShell>
-        <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
+          <div className="finora-notice-error flex flex-col items-center justify-center p-8 rounded-xl border text-center space-y-4 max-w-md mx-auto my-12" role="alert">
           <AlertCircle className="h-10 w-10" />
           <div>
             <h3 className="font-semibold text-foreground">Không thể tải dữ liệu tài chính</h3>
@@ -147,8 +154,7 @@ export default function DashboardPage() {
             Thử lại
           </Button>
         </div>
-      </AppShell>
-    );
+      );
   }
 
   const effectiveCurrency =
@@ -184,7 +190,7 @@ export default function DashboardPage() {
   const previewAccounts = allAccounts.slice(0, 6);
 
   return (
-    <AppShell>
+    <>
       {/* Top Header */}
       <PageHeader
         title="Tổng quan tài chính"
@@ -243,7 +249,7 @@ export default function DashboardPage() {
         ) : (
           <SummaryCard
             title={`Tài sản (${displayCurrency})`}
-            value={formatExactMoney(activeAccountGroup.totalBalance, displayCurrency)}
+            value={maskFinancialValue(formatExactMoney(activeAccountGroup.totalBalance, displayCurrency), maskBalance)}
             icon={Wallet}
             highlight={true}
             subtext={`${activeAccountGroup.accounts.length} tài khoản ${displayCurrency}`}
@@ -253,7 +259,7 @@ export default function DashboardPage() {
           title="Thu nhập tháng này"
           value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Không khả dụng'
-            : formatExactMoney(activeSummary.totalIncome, displayCurrency)}
+            : maskFinancialValue(formatExactMoney(activeSummary.totalIncome, displayCurrency), maskBalance)}
           icon={ArrowDownLeft}
           subtext={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
@@ -263,7 +269,7 @@ export default function DashboardPage() {
           title="Chi tiêu tháng này"
           value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Không khả dụng'
-            : formatExactMoney(activeSummary.totalExpense, displayCurrency)}
+            : maskFinancialValue(formatExactMoney(activeSummary.totalExpense, displayCurrency), maskBalance)}
           icon={ArrowUpRight}
           subtext={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
@@ -273,7 +279,7 @@ export default function DashboardPage() {
           title="Tiết kiệm & Tỷ lệ"
           value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Không khả dụng'
-            : formatExactMoney(activeSummary.netSavings, displayCurrency, { showSign: true })}
+            : maskFinancialValue(formatExactMoney(activeSummary.netSavings, displayCurrency, { showSign: true }), maskBalance)}
           icon={PiggyBank}
           subtext={
             effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -304,7 +310,7 @@ export default function DashboardPage() {
                   <span className="font-medium text-foreground">
                     {isBaseValUnavailable
                       ? 'Không khả dụng'
-                      : formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c)}
+                      : maskFinancialValue(formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c), maskBalance)}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
                     ({group?.accounts.length || 0} TK)
@@ -546,6 +552,6 @@ export default function DashboardPage() {
         onOpenChange={setTransferOpen}
         onSuccess={loadDashboard}
       />
-    </AppShell>
+    </>
   );
 }

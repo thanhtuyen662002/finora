@@ -37,6 +37,8 @@ import {
   signOut,
 } from '@/lib/auth';
 import { applyTheme } from '@/lib/theme';
+import { useBalanceVisibility } from '@/features/preferences';
+import { buildUserBackup, downloadBackupFile } from '@/features/backup';
 import {
   getMyAiCredentialMetadata,
   saveMyPersonalAiCredential,
@@ -67,7 +69,16 @@ const COMMON_TIMEZONES = [
 ];
 
 export default function SettingsPage() {
+  return (
+    <AppShell>
+      <SettingsContent />
+    </AppShell>
+  );
+}
+
+function SettingsContent() {
   const router = useRouter();
+  const { maskBalance, setMaskBalance } = useBalanceVisibility();
 
   // User Profile
   const [name, setName] = useState('');
@@ -78,7 +89,6 @@ export default function SettingsPage() {
   const [baseCurrency, setBaseCurrency] = useState('VND');
   const [locale, setLocale] = useState('vi-VN');
   const [timezone, setTimezone] = useState('Asia/Ho_Chi_Minh');
-  const [maskBalance, setMaskBalance] = useState(false);
   const [autoFx, setAutoFx] = useState(true);
   const [hasAutoFxSchema, setHasAutoFxSchema] = useState(true);
 
@@ -112,6 +122,9 @@ export default function SettingsPage() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [backupExportMessage, setBackupExportMessage] = useState<string | null>(null);
+  const [backupExportError, setBackupExportError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -140,6 +153,7 @@ export default function SettingsPage() {
           if (settings.base_currency) setBaseCurrency(settings.base_currency);
           if (settings.locale) setLocale(settings.locale);
           if (settings.timezone) setTimezone(settings.timezone);
+          if (settings.mask_balance !== undefined) setMaskBalance(settings.mask_balance);
           if (settings.theme) {
             const savedTheme = settings.theme as 'light' | 'dark' | 'system';
             setTheme(savedTheme);
@@ -208,6 +222,7 @@ export default function SettingsPage() {
         locale,
         timezone,
         theme,
+        mask_balance: maskBalance,
       };
 
       if (hasAutoFxSchema) {
@@ -281,6 +296,27 @@ export default function SettingsPage() {
     }
   };
 
+  const handleExportBackup = async () => {
+    setBackupExportError(null);
+    setBackupExportMessage(null);
+    setIsExportingBackup(true);
+
+    try {
+      const backup = await buildUserBackup();
+      downloadBackupFile(backup);
+      setBackupExportMessage('Đã tạo bản sao lưu JSON. Hãy lưu tệp ở nơi an toàn.');
+      setTimeout(() => setBackupExportMessage(null), 5000);
+    } catch (error) {
+      setBackupExportError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể tạo bản sao lưu. Vui lòng thử lại.'
+      );
+    } finally {
+      setIsExportingBackup(false);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     router.push('/login');
@@ -350,7 +386,6 @@ export default function SettingsPage() {
     : 'FN';
 
   return (
-    <AppShell>
       <div className="max-w-6xl mx-auto space-y-6">
         <PageHeader
           title="Cài đặt"
@@ -531,17 +566,18 @@ export default function SettingsPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between opacity-60">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">Che số dư công cộng</p>
-                          <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium text-muted-foreground">Sắp hỗ trợ</span>
-                        </div>
+                        <p className="text-sm font-medium text-foreground">Che số dư công cộng</p>
                         <p className="text-xs text-muted-foreground">
-                          Ẩn các con số tài chính ở giao diện chính.
+                          Ẩn số dư tài khoản và các tổng số tiền khi bạn trình chiếu hoặc chia sẻ màn hình.
                         </p>
                       </div>
-                      <Switch checked={false} disabled />
+                      <Switch
+                        checked={maskBalance}
+                        onCheckedChange={setMaskBalance}
+                        aria-label="Che số dư công cộng"
+                      />
                     </div>
                   </div>
                 </CardContent>
@@ -966,25 +1002,44 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border bg-muted/20 opacity-60">
+                {backupExportError && (
+                  <div className="finora-notice-error p-3 text-xs border rounded-lg flex items-start gap-2" role="alert">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{backupExportError}</span>
+                  </div>
+                )}
+                {backupExportMessage && (
+                  <div className="finora-notice-success p-3 text-xs border rounded-lg flex items-start gap-2" role="status">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{backupExportMessage}</span>
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border bg-muted/20">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-foreground">Xuất bản sao lưu dữ liệu</p>
-                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium text-muted-foreground">Sắp hỗ trợ</span>
-                    </div>
+                    <p className="text-sm font-medium text-foreground">Xuất bản sao lưu dữ liệu</p>
                     <p className="text-xs text-muted-foreground">
-                      Tải về toàn bộ tài khoản và giao dịch dưới định dạng chuẩn.
+                      Tải JSON gồm tài khoản, giao dịch, ngân sách, mục tiêu, khoản nợ và tùy chọn ứng dụng. Không bao gồm khóa AI.
                     </p>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
                     type="button"
-                    disabled
+                    disabled={isExportingBackup}
+                    onClick={handleExportBackup}
                     className="shrink-0"
                   >
-                    <Download className="h-4 w-4 mr-1.5" />
-                    Tải bản sao lưu
+                    {isExportingBackup ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        Đang tạo bản sao...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 mr-1.5" />
+                        Tải bản sao lưu
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>
@@ -1015,6 +1070,5 @@ export default function SettingsPage() {
           </form>
         )}
       </div>
-    </AppShell>
   );
 }
