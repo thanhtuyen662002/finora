@@ -12,6 +12,7 @@ import { CurrencyBadge } from './CurrencyBadge';
 import { Button } from '@/components/ui/button';
 import { Plus, ArrowRightLeft } from 'lucide-react';
 import { formatExactMoney } from '@/lib/money';
+import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
 import type { AccountBalanceSnapshot } from '@/features/reports';
 
 interface AccountDetailModalProps {
@@ -55,7 +56,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
             <span className="text-xs text-muted-foreground font-medium">Số dư hiện tại</span>
             <div className="flex items-baseline justify-between">
               <span className="text-2xl font-bold tracking-tight text-foreground">
-                {formatExactMoney(account.currentBalance, account.currency)}
+                {maskFinancialValue(formatExactMoney(account.currentBalance, account.currency), maskBalance)}
               </span>
               <CurrencyBadge currency={account.currency} />
             </div>
