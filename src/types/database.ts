@@ -283,6 +283,7 @@ export interface Database {
           is_voided: boolean;
           income_source_id: string | null;
           income_source_stream_id: string | null;
+          debt_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -300,6 +301,7 @@ export interface Database {
           is_voided?: boolean;
           income_source_id?: string | null;
           income_source_stream_id?: string | null;
+          debt_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -317,6 +319,7 @@ export interface Database {
           is_voided?: boolean;
           income_source_id?: string | null;
           income_source_stream_id?: string | null;
+          debt_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -466,6 +469,133 @@ export interface Database {
         };
         Relationships: [];
       };
+      debts: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          lender_name: string | null;
+          debt_type: 'PERSONAL_LOAN' | 'CREDIT_CARD' | 'MORTGAGE' | 'INSTALLMENT' | 'BORROWED_FROM_PERSON' | 'OTHER';
+          principal_amount: string;
+          outstanding_amount: string;
+          currency_code: string;
+          interest_rate: string;
+          minimum_payment: string | null;
+          payment_frequency: 'ONE_TIME' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+          first_due_date: string | null;
+          due_day: number | null;
+          note: string | null;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          name: string;
+          lender_name?: string | null;
+          debt_type?: 'PERSONAL_LOAN' | 'CREDIT_CARD' | 'MORTGAGE' | 'INSTALLMENT' | 'BORROWED_FROM_PERSON' | 'OTHER';
+          principal_amount: string | number;
+          outstanding_amount: string | number;
+          currency_code: string;
+          interest_rate?: string | number;
+          minimum_payment?: string | number | null;
+          payment_frequency?: 'ONE_TIME' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+          first_due_date?: string | null;
+          due_day?: number | null;
+          note?: string | null;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          lender_name?: string | null;
+          debt_type?: 'PERSONAL_LOAN' | 'CREDIT_CARD' | 'MORTGAGE' | 'INSTALLMENT' | 'BORROWED_FROM_PERSON' | 'OTHER';
+          principal_amount?: string | number;
+          outstanding_amount?: string | number;
+          currency_code?: string;
+          interest_rate?: string | number;
+          minimum_payment?: string | number | null;
+          payment_frequency?: 'ONE_TIME' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+          first_due_date?: string | null;
+          due_day?: number | null;
+          note?: string | null;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      debt_payments: {
+        Row: {
+          id: string;
+          user_id: string;
+          debt_id: string;
+          transaction_id: string;
+          account_id: string;
+          amount: string;
+          principal_amount: string;
+          interest_amount: string;
+          currency_code: string;
+          paid_on: string;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          debt_id: string;
+          transaction_id: string;
+          account_id: string;
+          amount: string | number;
+          principal_amount?: string | number;
+          interest_amount?: string | number;
+          currency_code: string;
+          paid_on?: string;
+          note?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          debt_id?: string;
+          transaction_id?: string;
+          account_id?: string;
+          amount?: string | number;
+          principal_amount?: string | number;
+          interest_amount?: string | number;
+          currency_code?: string;
+          paid_on?: string;
+          note?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "debt_payments_debt_fkey";
+            columns: ["debt_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "debts";
+            referencedColumns: ["id", "user_id"];
+          },
+          {
+            foreignKeyName: "debt_payments_transaction_fkey";
+            columns: ["transaction_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "transactions";
+            referencedColumns: ["id", "user_id"];
+          },
+          {
+            foreignKeyName: "debt_payments_account_fkey";
+            columns: ["account_id", "user_id", "currency_code"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id", "user_id", "currency_code"];
+          }
+        ];
+      };
       recurring_items: {
         Row: {
           id: string;
@@ -575,6 +705,53 @@ export interface Database {
           income_source_name: string | null;
           income_source_type: IncomeSourceType | null;
           income_source_stream_name: string | null;
+          debt_id: string | null;
+        };
+        Relationships: [];
+      };
+      debt_details: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          lender_name: string | null;
+          debt_type: 'PERSONAL_LOAN' | 'CREDIT_CARD' | 'MORTGAGE' | 'INSTALLMENT' | 'BORROWED_FROM_PERSON' | 'OTHER';
+          principal_amount: string;
+          outstanding_amount: string;
+          currency_code: string;
+          interest_rate: string;
+          minimum_payment: string | null;
+          payment_frequency: 'ONE_TIME' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+          first_due_date: string | null;
+          due_day: number | null;
+          note: string | null;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+          paid_principal_amount: string;
+          paid_interest_amount: string;
+          payment_count: number;
+        };
+        Relationships: [];
+      };
+      debt_payment_details: {
+        Row: {
+          id: string;
+          user_id: string;
+          debt_id: string;
+          transaction_id: string;
+          account_id: string;
+          amount: string;
+          principal_amount: string;
+          interest_amount: string;
+          currency_code: string;
+          paid_on: string;
+          note: string | null;
+          created_at: string;
+          debt_name: string;
+          lender_name: string | null;
+          account_name: string;
+          category_name: string;
         };
         Relationships: [];
       };
@@ -671,6 +848,19 @@ export interface Database {
       };
     };
     Functions: {
+      record_debt_payment: {
+        Args: {
+          p_debt_id: string;
+          p_account_id: string;
+          p_category_id: string;
+          p_amount: number | string;
+          p_principal_amount: number | string;
+          p_interest_amount: number | string;
+          p_paid_on: string;
+          p_note?: string | null;
+        };
+        Returns: string;
+      };
       ai_credentials_read_for_service: {
         Args: {
           p_owner_user_id: string;
@@ -765,6 +955,21 @@ export type GoalInsert = Omit<Database['public']['Tables']['goals']['Insert'], '
 export type GoalUpdate = Omit<Database['public']['Tables']['goals']['Update'], 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 export type GoalDetailRow = Database['public']['Views']['goal_details']['Row'];
 export type GoalDetailsRow = GoalDetailRow;
+
+export type DebtType =
+  | 'PERSONAL_LOAN'
+  | 'CREDIT_CARD'
+  | 'MORTGAGE'
+  | 'INSTALLMENT'
+  | 'BORROWED_FROM_PERSON'
+  | 'OTHER';
+export type DebtPaymentFrequency = 'ONE_TIME' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+export type DebtRow = Database['public']['Tables']['debts']['Row'];
+export type DebtInsert = Omit<Database['public']['Tables']['debts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type DebtUpdate = Omit<Database['public']['Tables']['debts']['Update'], 'id' | 'user_id' | 'principal_amount' | 'outstanding_amount' | 'created_at' | 'updated_at'>;
+export type DebtPaymentRow = Database['public']['Tables']['debt_payments']['Row'];
+export type DebtDetailRow = Database['public']['Views']['debt_details']['Row'];
+export type DebtPaymentDetailRow = Database['public']['Views']['debt_payment_details']['Row'];
 
 export type RecurringFrequency = 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 export type RecurringItemRow = Database['public']['Tables']['recurring_items']['Row'];
