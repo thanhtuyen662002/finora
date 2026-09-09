@@ -99,7 +99,6 @@ export async function getDebts(options?: {
     .from('debt_details')
     .select('*')
     .order('is_archived', { ascending: true })
-    .order('outstanding_amount', { ascending: false })
     .order('name', { ascending: true });
 
   if (!options?.includeArchived) {
@@ -159,12 +158,25 @@ export async function updateDebt(
   input: DebtUpdateInput
 ): Promise<DebtDetailRow> {
   validateCommonFields(input);
-  const updatePayload: Record<string, unknown> = {};
+  const updatePayload: {
+    name?: string;
+    lender_name?: string | null;
+    debt_type?: DebtCreateInput['debt_type'];
+    interest_rate?: string;
+    minimum_payment?: string | null;
+    payment_frequency?: DebtCreateInput['payment_frequency'];
+    first_due_date?: string | null;
+    due_day?: number | null;
+    note?: string | null;
+    is_archived?: boolean;
+  } = {};
 
   if (input.name !== undefined) updatePayload.name = requireText(input.name, 'Tên khoản nợ', 200);
   if (input.lender_name !== undefined) updatePayload.lender_name = optionalText(input.lender_name, 200);
   if (input.debt_type !== undefined) updatePayload.debt_type = input.debt_type;
-  if (input.currency_code !== undefined) updatePayload.currency_code = normalizeCurrency(input.currency_code);
+  if (input.currency_code !== undefined) {
+    throw new Error('Không thể đổi tiền tệ của khoản nợ sau khi đã tạo. Hãy tạo khoản nợ mới để tránh sai lệch lịch sử.');
+  }
   if (input.interest_rate !== undefined) updatePayload.interest_rate = normalizeNonNegative(input.interest_rate, 'Lãi suất');
   if (input.minimum_payment !== undefined) {
     updatePayload.minimum_payment = input.minimum_payment === null
