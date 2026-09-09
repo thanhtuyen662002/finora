@@ -1331,3 +1331,35 @@ This feature branch adds the first dedicated liability module. It does not alter
 - Production route: PASS — `/debts` returned HTTP 200 on `https://finora-orpin-nu.vercel.app`.
 - Vercel production deployment: READY — `dpl_HmndHgqLmgvbHmmA6Vw9G4EqZGoR`.
 - Owner financial data mutation: NONE. No test debt or payment rows were inserted; authenticated owner CRUD/payment smoke is reserved for the owner’s first real debt entry.
+
+## Phase 13C — In-App Notification & Reminder Center
+
+### Status: IMPLEMENTED / PENDING_BUILD_AND_PRODUCTION_DEPLOYMENT
+
+Phase 13C turns the previous Settings placeholders into user-controlled, in-app financial notifications. The first release is deliberately on-demand: it derives a digest from the authenticated user's current budget and recurring-item views when the Notification Center is opened or refreshed. It does not run cron/queue jobs, send email or push notifications, or create transactions automatically.
+
+- **Budget alerts:** enabled by default and shown at or above 80% of the active monthly category limit; over-budget categories use the critical presentation.
+- **Recurring reminders:** enabled by default for active expense templates whose next due date is today through the next three calendar days.
+- **Preferences:** `public.notification_preferences` stores only `budget_alerts_enabled` and `recurring_reminders_enabled`, with RLS and ownership checks for select/insert/update. No delete policy is exposed.
+- **Navigation:** added `/notifications` to the desktop sidebar and mobile menu; Settings now exposes live switches and a shortcut to the center.
+- **Data boundary:** all source queries remain authenticated and user-scoped through existing RLS views. Amounts remain exact decimal strings and are formatted only at presentation time.
+- **Explicit non-goals:** no email/push channel, background scheduler, automatic transaction creation, read/unread persistence, or debt reminder channel in this first increment.
+
+### Implementation files
+
+- `supabase/migrations/20260910000000_phase_13c_notification_preferences.sql`
+- `src/features/notifications/`
+- `src/app/notifications/page.tsx`
+- `src/app/settings/page.tsx`
+- `src/components/layout/AppShell.tsx`
+- `src/types/database.ts`
+
+### Remote schema verification
+
+- Migration `phase_13c_notification_preferences` applied to Supabase project `qibfitbnlfgiqctntufr`.
+- `public.notification_preferences` exists with RLS enabled and exactly three ownership policies (select/insert/update).
+- Existing financial rows were not inserted, updated, or deleted; the new preference table remains empty until an authenticated user opens Settings or the Notification Center.
+
+### Next gate
+
+Run typecheck, lint, production build, and authenticated preview smoke for `/notifications` and Settings toggle persistence before merging to `main`.
