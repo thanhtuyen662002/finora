@@ -103,7 +103,7 @@ function formatBudgetPercent(basisPoints: number): string {
   const whole = Math.floor(basisPoints / 100);
   const fraction = basisPoints % 100;
   if (fraction === 0) return String(whole);
-  return \`\${whole}.\${String(fraction).padStart(2, '0').replace(/0+$/, '')}\`;
+  return `${whole}.${String(fraction).padStart(2, '0').replace(/0+$/, '')}`;
 }
 
 function severityRank(severity: FinancialNotification['severity']): number {
@@ -115,7 +115,7 @@ function severityRank(severity: FinancialNotification['severity']): number {
 export async function getNotificationDigest(): Promise<NotificationDigest> {
   const preferences = await getNotificationPreferences();
   const today = await getUserToday();
-  const periodMonth = \`\${today.slice(0, 7)}-01\`;
+  const periodMonth = `${today.slice(0, 7)}-01`;
 
   const [budgets, recurringItems] = await Promise.all([
     preferences.budget_alerts_enabled
@@ -140,11 +140,11 @@ export async function getNotificationDigest(): Promise<NotificationDigest> {
     const limit = formatExactMoney(budget.limit_amount, budget.currency_code);
 
     notifications.push({
-      id: \`budget:\${budget.id}:\${budget.period_month}:80\`,
+      id: `budget:${budget.id}:${budget.period_month}:80`,
       kind: 'BUDGET_THRESHOLD',
       severity: budget.isOverBudget ? 'critical' : 'warning',
-      title: \`Ngân sách \${budget.categoryName}\`,
-      message: \`Đã dùng \${percentage}% (\${spent} / \${limit}).\`,
+      title: `Ngân sách ${budget.categoryName}`,
+      message: `Đã dùng ${percentage}% (${spent} / ${limit}).`,
       href: '/budgets',
       currency_code: budget.currency_code,
     });
@@ -162,13 +162,13 @@ export async function getNotificationDigest(): Promise<NotificationDigest> {
     }
 
     const dueLabel =
-      item.daysUntilDue === 0 ? 'hôm nay' : \`còn \${item.daysUntilDue} ngày\`;
+      item.daysUntilDue === 0 ? 'hôm nay' : `còn ${item.daysUntilDue} ngày`;
     notifications.push({
-      id: \`recurring:\${item.id}:\${item.nextDueDate}\`,
+      id: `recurring:${item.id}:${item.nextDueDate}`,
       kind: 'RECURRING_REMINDER',
       severity: item.daysUntilDue === 0 ? 'warning' : 'info',
-      title: \`Sắp đến hạn: \${item.name}\`,
-      message: \`\${formatExactMoney(item.amount, item.currency_code)} · \${dueLabel} (\${item.nextDueDate}).\`,
+      title: `Sắp đến hạn: ${item.name}`,
+      message: `${formatExactMoney(item.amount, item.currency_code)} · ${dueLabel} (${item.nextDueDate}).`,
       href: '/recurring',
       currency_code: item.currency_code,
       due_date: item.nextDueDate,
