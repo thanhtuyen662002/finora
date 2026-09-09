@@ -28,6 +28,8 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   onOpenChange,
   onQuickAction,
 }) => {
+  const { maskBalance } = useBalanceVisibility();
+
   if (!account) return null;
 
   return (
