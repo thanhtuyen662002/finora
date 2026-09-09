@@ -29,9 +29,14 @@ export type DebtPaymentInput = {
   debt_id: string;
   account_id: string;
   category_id: string;
-  amount: string;
+  account_amount: string;
+  account_currency_code: string;
+  debt_amount: string;
   principal_amount: string;
   interest_amount: string;
+  exchange_rate: string;
+  exchange_rate_source: string;
+  exchange_rate_effective_date: string;
   paid_on: string;
   note?: string | null;
 };
