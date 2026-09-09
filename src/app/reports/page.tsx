@@ -22,6 +22,7 @@ import {
 import {
   Download,
   Wallet,
+  CreditCard,
   ArrowDownLeft,
   ArrowUpRight,
   PiggyBank,
@@ -360,6 +361,71 @@ function ReportsContent() {
           )}
         </CardContent>
       </Card>
+
+      {data.selectedCurrency !== 'BASE' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <CreditCard className="h-4 w-4 text-rose-500" />
+              Phân loại trả nợ
+            </CardTitle>
+            <CardDescription>
+              Tách dòng tiền thực tế khỏi phần giảm dư nợ và tiền lãi; các loại tiền không được cộng gộp.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {data.debtRepaymentBreakdown.length === 0 ? (
+              <p className="p-4 text-center text-sm text-muted-foreground">
+                Không có khoản trả nợ trong kỳ này.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {data.debtRepaymentBreakdown.map((item) => (
+                  <div
+                    key={item.accountCurrency + '-' + item.debtCurrency}
+                    className="rounded-lg border bg-muted/20 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        {item.accountCurrency} → {item.debtCurrency}
+                      </p>
+                      <span className="text-xs text-muted-foreground">
+                        {item.paymentCount} lần thanh toán
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Tiền ra khỏi tài khoản</p>
+                        <RevealableBalance
+                          value={formatExactMoney(item.cashOutflow, item.accountCurrency)}
+                          className="font-semibold text-foreground"
+                          ariaLabel={`Tiền ra khỏi tài khoản ${item.accountCurrency}`}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Giảm dư nợ gốc</p>
+                        <RevealableBalance
+                          value={formatExactMoney(item.principalAmount, item.debtCurrency)}
+                          className="font-semibold text-foreground"
+                          ariaLabel={`Giảm dư nợ gốc ${item.debtCurrency}`}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Tiền lãi</p>
+                        <RevealableBalance
+                          value={formatExactMoney(item.interestAmount, item.debtCurrency)}
+                          className="font-semibold text-foreground"
+                          ariaLabel={`Tiền lãi ${item.debtCurrency}`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 2-Column Section: Expense Donut + Income Sources Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
