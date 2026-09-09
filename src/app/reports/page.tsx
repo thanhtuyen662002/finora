@@ -34,7 +34,9 @@ import { createFinancialReportSnapshot } from '@/features/ai/financial-assistant
 
 export default function ReportsPage() {
   return (
+    <AppShell>
       <ReportsContent />
+    </AppShell>
   );
 }
 
@@ -179,6 +181,7 @@ function ReportsContent() {
   const displayCurrency = currency === 'BASE' ? data.baseCurrency : currency;
 
   return (
+    <>
       <PageHeader
         title="Báo cáo tài chính"
         subtitle={`Phân tích dòng tiền, cơ cấu chi tiêu và lịch sử tài chính (${data.dateRangeLabel}).`}
@@ -501,5 +504,6 @@ function ReportsContent() {
           )}
         </CardContent>
       </Card>
+    </>
   );
-}
+}}
