@@ -173,11 +173,19 @@ Do not introduce without an explicit architecture decision:
 - native Android/iOS apps.
 
 
-## Debt & Liability Boundary (Phase 13B-1)
+## Debt & Liability Boundary (Phase 13B-2)
 
 Debt records are a separate liability ledger, not negative account balances. A repayment has two synchronized effects:
 
 1. the selected account records an expense cash outflow; and
 2. the debt liability decreases by the principal portion.
 
-The database RPC record_debt_payment is the atomic boundary for that operation. The UI never edits outstanding_amount directly after creation. Cross-currency repayments are intentionally deferred until the existing FX transaction boundary is extended for debt payments.
+The database RPC `record_debt_payment_v2` is the atomic boundary for that
+operation. The UI never edits `outstanding_amount` directly after creation.
+When the account and debt currencies differ, the user explicitly supplies the
+account→debt rate, source, effective date, account cash amount, and debt amount;
+the database reconciles these exact values and writes the existing historical
+FX snapshot boundary. Reports keep cash outflow, principal reduction, and
+interest grouped by currency pair without fake cross-currency totals. The
+original `record_debt_payment` remains a strict same-currency compatibility
+wrapper.
