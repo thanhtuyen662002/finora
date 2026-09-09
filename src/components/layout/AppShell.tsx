@@ -17,6 +17,7 @@ import {
   Menu,
   Coins,
   CreditCard,
+  Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -133,6 +134,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     {
       group: 'Hệ thống',
       items: [
+        { href: '/notifications', label: 'Thông báo', icon: Bell },
         { href: '/settings', label: 'Cài đặt', icon: Settings },
       ],
     },
