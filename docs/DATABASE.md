@@ -1,7 +1,7 @@
 # Finora — Database
 
 ## Status
-**Database implementation:** PHASE_8_PASS_B_CROSS_CURRENCY_TRANSFERS (Schema defined, source-gate ready, remote deployment pending)
+**Database implementation:** PHASE_13B-1_DEBT_SCHEMA_ADDED (migration pending production verification)
 
 This document records the data model, tables, relationships, and invariants implemented in Finora. Executable Supabase migrations under `supabase/migrations/` are the authoritative schema source of truth.
 
@@ -326,3 +326,36 @@ Encrypted AI API credentials (application-level AES-256-GCM envelope encryption)
   - Composite unique key ensuring a single snapshot per transaction per target currency.
   - RLS restricted to owner.
   - Reads exposed via exact-text view `transaction_fx_snapshot_details`.
+
+
+## Phase 13B-1: Debt & Liability Management
+
+### public.debts
+
+User-owned liability records. The stored outstanding_amount is the authoritative principal balance remaining.
+
+- id, user_id
+- name, lender_name, debt_type
+- principal_amount, outstanding_amount, currency_code
+- interest_rate, minimum_payment
+- payment_frequency, first_due_date, due_day
+- note, is_archived, timestamps
+
+Constraints prevent negative balances, overpayment of initial principal, invalid currency codes, unsupported debt types/frequencies, and oversized text.
+
+### public.debt_payments
+
+Append-only repayment ledger owned by the same user.
+
+- debt_id, transaction_id, account_id
+- amount, principal_amount, interest_amount, currency_code
+- paid_on, note, created_at
+
+Every payment is linked to an expense transaction and the exact breakdown satisfies amount = principal_amount + interest_amount.
+
+### Debt views and RPC
+
+- debt_details exposes exact text amounts, paid principal/interest totals, and payment count.
+- debt_payment_details joins debt, account, and expense-category labels.
+- record_debt_payment is a security-definer RPC that validates auth.uid(), same-user ownership, matching account currency, active expense category, and principal availability before atomically creating the transaction, ledger row, and balance reduction.
+- Browser clients receive SELECT access only for payment rows; repayment mutation is RPC-only.

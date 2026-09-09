@@ -353,3 +353,28 @@ Consequences:
 - Browser code only ever receives safe metadata DTOs with masked key hints (`AIza••••••••••92K`).
 - Full key rotation support via versioned key ring IDs without database schema migrations.
 
+
+
+---
+
+## ADR-017 — Dedicated Liability Ledger and Atomic Repayments
+
+Status: Proposed on feat/phase13b-debt-management; acceptance pending verification and merge.
+
+Decision:
+
+- Model loans and other obligations in public.debts, separate from asset accounts.
+- Store append-only repayment events in public.debt_payments.
+- Represent the cash side of a repayment as an existing expense transaction marked with debt_id.
+- Expose repayment mutation only through the record_debt_payment security-definer RPC, which locks the debt row and performs transaction, payment, and balance updates atomically.
+- Require the payment account currency to match the debt currency for the first version; defer cross-currency repayment until it can reuse the accepted FX invariants.
+
+Reason:
+
+A negative account balance cannot distinguish an asset from a liability and would corrupt net-worth semantics. The atomic RPC prevents concurrent repayments from overpaying a debt and keeps the cash ledger and liability ledger synchronized.
+
+Consequences:
+
+- The application can answer “How much do I owe?” without inferring from transaction notes.
+- Payment history is durable and user-isolated under RLS.
+- Existing reports currently classify the cash outflow as an expense; a later reporting pass can separate principal/interest from consumption without changing the ledger.

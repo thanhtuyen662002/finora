@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 13B — Onboarding, Empty States & Data Lifecycle (next)
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B: NOT STARTED
+- **Current phase:** Phase 13B-1 — Debt & Liability Management
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: IN PROGRESS
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
 - **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
@@ -14,7 +14,7 @@
 - **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
 - **Phase 13A closure receipt:** `docs/receipts/PHASE_13A_CLOSURE.md`
 - **Phase 13A status:** CLOSED / PASS WITH FOLLOW-UPS (production readiness audit complete; no code or database mutation)
-- **Next recommended phase:** Phase 13B — Onboarding, Empty States & Data Lifecycle
+- **Next recommended phase:** Complete Phase 13B-1 verification, then continue onboarding and empty-state work
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1300,8 +1300,29 @@ PHASE_13A_CODE_MUTATION=NONE
 PHASE_13A_DATABASE_MUTATION=NONE
 PHASE_13A_DATA_RESET=PASS_OWNER_DATA_RETAINED
 PHASE_13A_PRODUCTION_HEALTH=PASS
-PHASE_13B_STATUS=NOT_STARTED
+PHASE_13B_STATUS=IN_PROGRESS_DEBT_MANAGEMENT
 
 ### Next recommended action
 
 Begin Phase 13B with onboarding and empty-state behavior, preserving the current owner-created accounts and recurring items. Resolve P1/P2 operational follow-ups through separate, scoped changes.
+
+
+## Phase 13B-1 — Debt & Liability Management
+
+### Status: IMPLEMENTED / PENDING VERIFICATION
+
+This feature branch adds the first dedicated liability module. It does not alter existing owner data and does not require AI.
+
+- Navigation: New Khoản nợ entry in the desktop and mobile application shell.
+- Debt records: Name, lender, debt type, principal, outstanding balance, currency, annual interest rate, minimum payment, due date, frequency, notes, and archive state.
+- Payment ledger: Append-only debt_payments rows linked to one cash-flow transaction.
+- Atomic repayment: record_debt_payment locks the debt, validates ownership/currency/category, creates the expense transaction, appends the payment event, and reduces principal outstanding in one database transaction.
+- Exact money: PostgreSQL numeric(20,4) plus the existing exact-decimal client layer; no floating-point calculations.
+- Isolation: RLS is enabled on debts and debt_payments; all views use security_invoker = true; payment mutation is RPC-only.
+- Multi-currency boundary: A repayment account must match the debt currency in this first version. Cross-currency repayment remains a follow-up.
+- Files: supabase/migrations/20260909000000_phase_13b_debt_management.sql, src/features/debts/, src/app/debts/page.tsx.
+
+### Verification pending
+
+- TypeScript, lint, production build, migration application, and authenticated CRUD/payment smoke must pass before merge.
+- No production database migration has been applied from this feature branch yet.

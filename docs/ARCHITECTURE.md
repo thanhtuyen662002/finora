@@ -2,7 +2,7 @@
 
 ## Status
 
-This document describes the **target architecture**. At the current repository state, application code has not yet been initialized.
+This document describes the implemented modular-monolith architecture. Application code is deployed through the main branch; the debt module is currently implemented on the Phase 13B-1 feature branch pending verification and merge.
 
 ## Architectural Style
 
@@ -59,6 +59,7 @@ Expected application modules:
 - reports
 - currencies / FX
 - income sources
+- debts / liabilities
 - AI
 - admin
 
@@ -75,7 +76,8 @@ The Finance Engine is deterministic application logic responsible for authoritat
 - savings and saving rate;
 - budget usage;
 - report aggregation;
-- historical currency conversion.
+- historical currency conversion;
+- outstanding debt and repayment calculations.
 
 LLMs must not be the source of truth for these calculations.
 
@@ -169,3 +171,13 @@ Do not introduce without an explicit architecture decision:
 - enterprise RBAC;
 - subscription/billing systems;
 - native Android/iOS apps.
+
+
+## Debt & Liability Boundary (Phase 13B-1)
+
+Debt records are a separate liability ledger, not negative account balances. A repayment has two synchronized effects:
+
+1. the selected account records an expense cash outflow; and
+2. the debt liability decreases by the principal portion.
+
+The database RPC record_debt_payment is the atomic boundary for that operation. The UI never edits outstanding_amount directly after creation. Cross-currency repayments are intentionally deferred until the existing FX transaction boundary is extended for debt payments.
