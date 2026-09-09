@@ -12,7 +12,7 @@ import type { AccountRow } from '@/types/database';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyBadge } from './CurrencyBadge';
 import { formatExactMoney } from '@/lib/money';
-import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
+import { RevealableBalance } from './RevealableBalance';
 import { getAccountTypeLabel } from '@/features/accounts';
 
 interface AccountCardProps {
@@ -47,13 +47,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
   };
 
-  const { maskBalance } = useBalanceVisibility();
-  const displayBalance = maskFinancialValue(
-    formatExactMoney(
-      String(currentBalance !== undefined ? currentBalance : account.opening_balance),
-      account.currency_code
-    ),
-    maskBalance
+  const balanceValue = formatExactMoney(
+    String(currentBalance !== undefined ? currentBalance : account.opening_balance),
+    account.currency_code
   );
 
   if (variant === 'compact') {
@@ -75,7 +71,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </div>
         <div className="text-right shrink-0 pl-2">
-          <p className="text-sm font-semibold text-foreground">{displayBalance}</p>
+                    <RevealableBalance
+            value={balanceValue}
+            className="block text-sm font-semibold text-foreground"
+            ariaLabel={`Số dư ${account.name}`}
+          />
         </div>
       </div>
     );
@@ -114,9 +114,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         <div className="mt-5 flex items-baseline justify-between pt-2 border-t border-border/60">
           <div>
             <span className="text-xs text-muted-foreground">{currentBalance !== undefined ? 'Số dư hiện tại' : 'Số dư khởi tạo'}</span>
-            <p className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
-              {displayBalance}
-            </p>
+            <RevealableBalance
+              value={balanceValue}
+              className="block text-lg sm:text-xl font-bold tracking-tight text-foreground"
+              ariaLabel={`Số dư ${account.name}`}
+            />
           </div>
         </div>
       </CardContent>
