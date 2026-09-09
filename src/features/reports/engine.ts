@@ -13,7 +13,7 @@ import {
   computeBasisPoints,
   computeSavingRatePercent,
 } from '@/lib/money';
-import type { AccountRow, TransactionDetailRow } from '@/types/database';
+import type { AccountRow, DebtPaymentDetailRow, TransactionDetailRow } from '@/types/database';
 import type { ExtendedTransaction } from '@/features/transactions';
 import type {
   ReportPeriod,
@@ -24,6 +24,7 @@ import type {
   IncomeStreamBreakdown,
   AccountBalanceSnapshot,
   CurrencyAccountGroup,
+  DebtRepaymentBreakdown,
 } from './types';
 
 export interface CalendarDateInfo {
@@ -541,6 +542,54 @@ export function aggregateCategoryExpenses(
 
   // Sort descending by basis points
   return result.sort((a, b) => b.basisPoints - a.basisPoints);
+}
+
+/**
+ * Keeps debt repayment cash movement separate from the liability allocation.
+ * Rows are grouped by account-currency/debt-currency pair; no currencies are
+ * combined and all sums remain exact decimal strings.
+ */
+export function aggregateDebtRepaymentBreakdown(
+  payments: DebtPaymentDetailRow[],
+  targetAccountCurrency: string,
+  startDate?: string | null,
+  endDate?: string | null
+): DebtRepaymentBreakdown[] {
+  const target = (targetAccountCurrency || '').toUpperCase();
+  const groups = new Map<string, DebtRepaymentBreakdown>();
+
+  for (const payment of payments) {
+    const accountCurrency = (payment.currency_code || '').toUpperCase();
+    if (!accountCurrency || accountCurrency !== target) continue;
+    if (startDate && payment.paid_on < startDate) continue;
+    if (endDate && payment.paid_on > endDate) continue;
+
+    const debtCurrency = (payment.debt_currency_code || '').toUpperCase();
+    if (!debtCurrency) continue;
+    const key = accountCurrency + '::' + debtCurrency;
+    const existing = groups.get(key) || {
+      accountCurrency,
+      debtCurrency,
+      cashOutflow: '0.0000',
+      debtAmount: '0.0000',
+      principalAmount: '0.0000',
+      interestAmount: '0.0000',
+      paymentCount: 0,
+    };
+
+    existing.cashOutflow = addExactDecimals(existing.cashOutflow, toExactDecimal(payment.amount));
+    existing.debtAmount = addExactDecimals(existing.debtAmount, toExactDecimal(payment.debt_amount));
+    existing.principalAmount = addExactDecimals(existing.principalAmount, toExactDecimal(payment.principal_amount));
+    existing.interestAmount = addExactDecimals(existing.interestAmount, toExactDecimal(payment.interest_amount));
+    existing.paymentCount += 1;
+    groups.set(key, existing);
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    const currencyOrder = (a.accountCurrency + a.debtCurrency).localeCompare(b.accountCurrency + b.debtCurrency);
+    if (currencyOrder !== 0) return currencyOrder;
+    return b.paymentCount - a.paymentCount;
+  });
 }
 
 /**
