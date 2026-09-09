@@ -39,7 +39,9 @@ import {
 
 export default function DashboardPage() {
   return (
+    <AppShell>
       <DashboardContent />
+    </AppShell>
   );
 }
 
@@ -188,6 +190,7 @@ function DashboardContent() {
   const previewAccounts = allAccounts.slice(0, 6);
 
   return (
+    <>
       {/* Top Header */}
       <PageHeader
         title="Tổng quan tài chính"
@@ -549,5 +552,6 @@ function DashboardContent() {
         onOpenChange={setTransferOpen}
         onSuccess={loadDashboard}
       />
+    </>
   );
-}
+}}
