@@ -122,6 +122,30 @@ export interface Database {
         };
         Relationships: [];
       };
+      notification_preferences: {
+        Row: {
+          user_id: string;
+          budget_alerts_enabled: boolean;
+          recurring_reminders_enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          budget_alerts_enabled?: boolean;
+          recurring_reminders_enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          budget_alerts_enabled?: boolean;
+          recurring_reminders_enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       accounts: {
         Row: {
           id: string;
@@ -922,6 +946,8 @@ export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
 export type UserSettings = Database['public']['Tables']['user_settings']['Row'];
 export type UserSettingsUpdate = Database['public']['Tables']['user_settings']['Update'];
+export type NotificationPreferenceRow = Database['public']['Tables']['notification_preferences']['Row'];
+export type NotificationPreferenceUpdate = Database['public']['Tables']['notification_preferences']['Update'];
 
 export type AccountRow = Database['public']['Tables']['accounts']['Row'];
 export type AccountInsert = Omit<Database['public']['Tables']['accounts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
