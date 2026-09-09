@@ -108,6 +108,16 @@ export interface IncomeSourceBreakdown {
   streams: IncomeStreamBreakdown[];
 }
 
+export interface DebtRepaymentBreakdown {
+  accountCurrency: string;
+  debtCurrency: string;
+  cashOutflow: string;
+  debtAmount: string;
+  principalAmount: string;
+  interestAmount: string;
+  paymentCount: number;
+}
+
 export interface DashboardReportData {
   baseCurrency: string;
   autoFxEnabled: boolean;
@@ -155,6 +165,7 @@ export interface DetailedReportData {
   cashFlow: MonthlyCashFlowPoint[];
   categoryBreakdown: CategoryExpenseBreakdown[];
   incomeBreakdown: IncomeSourceBreakdown[];
+  debtRepaymentBreakdown: DebtRepaymentBreakdown[];
   accountsInCurrency: AccountBalanceSnapshot[] | null;
   totalAccountBalance: string | null; // Exact decimal sum of accounts in selected currency
   transactions: ExtendedTransaction[]; // could contain BaseConvertedTransaction
