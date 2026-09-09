@@ -43,6 +43,10 @@ import {
   revokeMyPersonalAiCredential,
 } from '@/features/ai/credentials/actions';
 import type { AiCredentialSafeMetadata } from '@/features/ai/credentials/types';
+import {
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from '@/features/notifications';
 
 const SUPPORTED_CURRENCIES = [
   { value: 'VND', label: 'VND - Đồng Việt Nam (₫)' },
@@ -84,7 +88,6 @@ export default function SettingsPage() {
   // Notifications
   const [notifyBudgetAlert, setNotifyBudgetAlert] = useState(true);
   const [notifyRecurringBill, setNotifyRecurringBill] = useState(true);
-  const [notifyGoalMilestone, setNotifyGoalMilestone] = useState(true);
 
   // AI Credential Configuration (Phase 11)
   const [aiMetadata, setAiMetadata] = useState<AiCredentialSafeMetadata | null>(null);
@@ -153,6 +156,16 @@ export default function SettingsPage() {
         }
 
         try {
+          const notificationPreferences = await getNotificationPreferences();
+          if (isMounted) {
+            setNotifyBudgetAlert(notificationPreferences.budget_alerts_enabled);
+            setNotifyRecurringBill(notificationPreferences.recurring_reminders_enabled);
+          }
+        } catch {
+          // Notification preferences are optional until the Phase 13C migration is available.
+        }
+
+        try {
           const aiRes = await getMyAiCredentialMetadata();
           if (aiRes.ok && isMounted) {
             setAiMetadata(aiRes.metadata);
@@ -203,10 +216,21 @@ export default function SettingsPage() {
 
       const { error: settingsError } = await updateCurrentUserSettings(settingsUpdates);
 
-      if (profileError || settingsError) {
+      let notificationError: Error | null = null;
+      try {
+        await updateNotificationPreferences({
+          budget_alerts_enabled: notifyBudgetAlert,
+          recurring_reminders_enabled: notifyRecurringBill,
+        });
+      } catch (err) {
+        notificationError = err instanceof Error ? err : new Error('Không thể cập nhật tùy chọn thông báo.');
+      }
+
+      if (profileError || settingsError || notificationError) {
         const errorDetail =
           profileError?.message ||
           settingsError?.message ||
+          notificationError?.message ||
           'Không thể cập nhật thông tin cài đặt.';
         setErrorMessage(`Lỗi lưu cài đặt: ${errorDetail}`);
         return;
@@ -546,39 +570,51 @@ export default function SettingsPage() {
               {/* Notifications Preferences */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center space-x-2">
-                    <Bell className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-base font-semibold">Thông báo & Cảnh báo</CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="h-5 w-5 text-primary" />
+                      <CardTitle className="text-base font-semibold">Thông báo & Cảnh báo</CardTitle>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => router.push('/notifications')}
+                    >
+                      Xem thông báo
+                    </Button>
                   </div>
                   <CardDescription>
-                    Cấu hình các nhắc nhở tài chính định kỳ và cảnh báo.
+                    Bật các cảnh báo trong ứng dụng. Finora không gửi email/push và không tự tạo giao dịch.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="flex items-center justify-between opacity-60">
+                  <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">Cảnh báo ngưỡng ngân sách</p>
-                        <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium">Sắp hỗ trợ</span>
-                      </div>
+                      <p className="text-sm font-medium text-foreground">Cảnh báo ngưỡng ngân sách</p>
                       <p className="text-xs text-muted-foreground">
-                        Nhắc nhở khi danh mục chi tiêu chạm hạn mức.
+                        Hiển thị khi chi tiêu của danh mục đạt từ 80% hạn mức tháng.
                       </p>
                     </div>
-                    <Switch checked={false} disabled />
+                    <Switch
+                      checked={notifyBudgetAlert}
+                      onCheckedChange={setNotifyBudgetAlert}
+                      aria-label="Bật cảnh báo ngưỡng ngân sách"
+                    />
                   </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t opacity-60">
+                  <div className="flex items-center justify-between gap-4 pt-2 border-t">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">Nhắc nhở khoản chi định kỳ</p>
-                        <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium">Sắp hỗ trợ</span>
-                      </div>
+                      <p className="text-sm font-medium text-foreground">Nhắc nhở khoản chi định kỳ</p>
                       <p className="text-xs text-muted-foreground">
-                        Nhắc trước 3 ngày khi sắp đến hạn thanh toán.
+                        Hiển thị trước tối đa 3 ngày khi khoản chi định kỳ sắp đến hạn.
                       </p>
                     </div>
-                    <Switch checked={false} disabled />
+                    <Switch
+                      checked={notifyRecurringBill}
+                      onCheckedChange={setNotifyRecurringBill}
+                      aria-label="Bật nhắc nhở khoản chi định kỳ"
+                    />
                   </div>
                 </CardContent>
               </Card>
