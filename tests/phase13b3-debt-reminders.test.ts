@@ -53,7 +53,7 @@ test('one-time, archived, settled, and undated debts do not create reminders', (
 test('reminders are sorted by urgency and then name', () => {
   const reminders = getDebtReminders([
     debt({ id: 'later', name: 'B', first_due_date: '2026-09-12' }),
-    debt({ id: 'today', name: 'Z', first_due_date: '2026-09-09' }),
+    debt({ id: 'today', name: 'Z', first_due_date: '2026-09-09', due_day: 9 }),
     debt({ id: 'same', name: 'A', first_due_date: '2026-09-12' }),
   ], '2026-09-09');
   assert.deepEqual(reminders.map((item) => item.debt.id), ['today', 'same', 'later']);
