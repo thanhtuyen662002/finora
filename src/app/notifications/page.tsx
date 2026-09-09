@@ -24,7 +24,7 @@ import type {
 function formatGeneratedDate(dateString: string): string {
   const [year, month, day] = dateString.split('-');
   if (!year || !month || !day) return dateString;
-  return \`\${day}/\${month}/\${year}\`;
+  return `${day}/${month}/${year}`;
 }
 
 function NotificationPageIcon({ item }: { item: FinancialNotification }) {
@@ -92,7 +92,7 @@ export default function NotificationsPage() {
           onClick={loadData}
           disabled={loading}
         >
-          <RefreshCw className={\`h-4 w-4 \${loading ? 'animate-spin' : ''}\`} />
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Làm mới
         </Button>
       </PageHeader>
@@ -109,7 +109,7 @@ export default function NotificationsPage() {
                 <p className="text-xs text-muted-foreground">
                   {loading
                     ? 'Đang kiểm tra dữ liệu tài chính...'
-                    : \`\${notificationCount} thông báo đang cần chú ý\`}
+                    : `${notificationCount} thông báo đang cần chú ý`}
                 </p>
               </div>
             </div>
