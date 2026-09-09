@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 13B-1 — Debt & Liability Management
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: IN PROGRESS
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
 - **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
@@ -14,7 +14,7 @@
 - **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
 - **Phase 13A closure receipt:** `docs/receipts/PHASE_13A_CLOSURE.md`
 - **Phase 13A status:** CLOSED / PASS WITH FOLLOW-UPS (production readiness audit complete; no code or database mutation)
-- **Next recommended phase:** Complete Phase 13B-1 verification, then continue onboarding and empty-state work
+- **Next recommended phase:** Continue product QA and UX follow-ups after Phase 13B-1 closure
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1300,16 +1300,16 @@ PHASE_13A_CODE_MUTATION=NONE
 PHASE_13A_DATABASE_MUTATION=NONE
 PHASE_13A_DATA_RESET=PASS_OWNER_DATA_RETAINED
 PHASE_13A_PRODUCTION_HEALTH=PASS
-PHASE_13B_STATUS=IN_PROGRESS_DEBT_MANAGEMENT
+PHASE_13B_STATUS=CLOSED_PASS_PRODUCTION_DEPLOYED
 
 ### Next recommended action
 
-Begin Phase 13B with onboarding and empty-state behavior, preserving the current owner-created accounts and recurring items. Resolve P1/P2 operational follow-ups through separate, scoped changes.
+Continue product QA and UX follow-ups after the Phase 13B-1 debt module deployment. Cross-currency repayment and separate principal/interest report classification remain explicitly deferred.
 
 
 ## Phase 13B-1 — Debt & Liability Management
 
-### Status: IMPLEMENTED / PENDING VERIFICATION
+### Status: COMPLETE / PRODUCTION DEPLOYED
 
 This feature branch adds the first dedicated liability module. It does not alter existing owner data and does not require AI.
 
@@ -1324,5 +1324,8 @@ This feature branch adds the first dedicated liability module. It does not alter
 
 ### Verification pending
 
-- TypeScript, lint, production build, migration application, and authenticated CRUD/payment smoke must pass before merge.
-- No production database migration has been applied from this feature branch yet.
+- TypeScript: PASS (Vercel production build for main `64264dc737c9dfea52b4c86fbe8cd04532a3b83a`).
+- Migration: PASS — `phase_13b_debt_management` applied to Supabase project `qibfitbnlfgiqctntufr` (remote migration version `20260909020803`).
+- Remote schema: PASS — `debts`, `debt_payments`, `debt_details`, `debt_payment_details`, and `transaction_details` exist; RLS is enabled on both debt tables; debt/payment row counts are 0.
+- Production route: PASS — `/debts` returned HTTP 200 on `https://finora-orpin-nu.vercel.app`.
+- Owner financial data mutation: NONE. No test debt or payment rows were inserted; authenticated owner CRUD/payment smoke is reserved for the owner’s first real debt entry.
