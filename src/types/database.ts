@@ -97,6 +97,7 @@ export interface Database {
           timezone: string;
           theme: 'light' | 'dark' | 'system';
           auto_fx_enabled: boolean;
+          mask_balance: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -107,6 +108,7 @@ export interface Database {
           timezone?: string;
           theme?: 'light' | 'dark' | 'system';
           auto_fx_enabled?: boolean;
+          mask_balance?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -117,6 +119,7 @@ export interface Database {
           timezone?: string;
           theme?: 'light' | 'dark' | 'system';
           auto_fx_enabled?: boolean;
+          mask_balance?: boolean;
           created_at?: string;
           updated_at?: string;
         };
