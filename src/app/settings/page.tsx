@@ -69,6 +69,14 @@ const COMMON_TIMEZONES = [
 ];
 
 export default function SettingsPage() {
+  return (
+    <AppShell>
+      <SettingsContent />
+    </AppShell>
+  );
+}
+
+function SettingsContent() {
   const router = useRouter();
   const { maskBalance, setMaskBalance } = useBalanceVisibility();
 
@@ -378,7 +386,6 @@ export default function SettingsPage() {
     : 'FN';
 
   return (
-    <AppShell>
       <div className="max-w-6xl mx-auto space-y-6">
         <PageHeader
           title="Cài đặt"
@@ -1063,6 +1070,5 @@ export default function SettingsPage() {
           </form>
         )}
       </div>
-    </AppShell>
   );
 }
