@@ -1446,12 +1446,12 @@ This follow-up added:
 - A single Node runtime contract: `.nvmrc`, `package.json`, and `package-lock.json` now pin the supported major to Node `22.x`.
 - Historical architecture status text updated to reflect the deployed Phase 13B-1, 13C, and 13D modules.
 
-Supabase Auth leaked-password protection remains an operator setting and is not changed by source-code commits.
+Supabase Auth leaked-password protection is a managed Pro Plan feature. The current Free Plan cannot enable it, and no SQL or source-code workaround is applicable. It is tracked as a deferred security enhancement rather than a release blocker; revisit it if the project moves to Pro.
 
 ```text
 PHASE_13A_PRODUCTION_SMOKE=PASS_OWNER_ATTESTED
 PHASE_13A_CI_RELEASE_GATE=PASS_MAIN_VERIFIED
 PHASE_13A_NODE_RUNTIME=PINNED_22_X
-PHASE_13A_LEAKED_PASSWORD_PROTECTION=OPERATOR_ACTION_REQUIRED
+PHASE_13A_LEAKED_PASSWORD_PROTECTION=DEFERRED_FREE_PLAN
 PHASE_13B_2=PLANNED
 ```
