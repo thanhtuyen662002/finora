@@ -1334,7 +1334,7 @@ This feature branch adds the first dedicated liability module. It does not alter
 
 ## Phase 13C — In-App Notification & Reminder Center
 
-### Status: IMPLEMENTED / PENDING_BUILD_AND_PRODUCTION_DEPLOYMENT
+### Status: COMPLETE / PRODUCTION_DEPLOYED
 
 Phase 13C turns the previous Settings placeholders into user-controlled, in-app financial notifications. The first release is deliberately on-demand: it derives a digest from the authenticated user's current budget and recurring-item views when the Notification Center is opened or refreshed. It does not run cron/queue jobs, send email or push notifications, or create transactions automatically.
 
@@ -1360,6 +1360,15 @@ Phase 13C turns the previous Settings placeholders into user-controlled, in-app 
 - `public.notification_preferences` exists with RLS enabled and exactly three ownership policies (select/insert/update).
 - Existing financial rows were not inserted, updated, or deleted; the new preference table remains empty until an authenticated user opens Settings or the Notification Center.
 
+### Verification complete
+
+- Pull request #13 merged to `main` as implementation commit `25360d49d9f0029c7374286d3bd3e7f7db86b4f5`.
+- Vercel production deployment `dpl_7eo8nX7mijoLzudKaeVZsa8fiWDJ` reached `READY`; the canonical aliases include `https://finora-orpin-nu.vercel.app`.
+- Production build compiled TypeScript successfully and generated the new `/notifications` route; the public route returned HTTP 200.
+- Vercel reported no runtime errors in the selected 24-hour window.
+- Supabase migration `phase_13c_notification_preferences` is applied; RLS is enabled with exactly three ownership policies and no preference rows were created during deployment.
+- Authenticated Settings persistence and digest rendering remain user smoke-test steps because this environment cannot impersonate the owner session.
+
 ### Next gate
 
-Run typecheck, lint, production build, and authenticated preview smoke for `/notifications` and Settings toggle persistence before merging to `main`.
+Owner smoke test: open **Cài đặt → Thông báo & Cảnh báo**, toggle each switch, save, then open **Thông báo** and refresh.
