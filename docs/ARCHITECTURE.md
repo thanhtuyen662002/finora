@@ -2,7 +2,7 @@
 
 ## Status
 
-This document describes the implemented modular-monolith architecture. Application code is deployed through the main branch; the debt module is currently implemented on the Phase 13B-1 feature branch pending verification and merge.
+This document describes the implemented modular-monolith architecture. The debt module, notification center, balance privacy, backup export, and tap-to-reveal UX are deployed through the main branch.
 
 ## Architectural Style
 

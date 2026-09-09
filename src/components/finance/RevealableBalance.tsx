@@ -21,11 +21,21 @@ export function RevealableBalance({
   ariaLabel = 'Số tiền',
 }: RevealableBalanceProps) {
   const { maskBalance } = useBalanceVisibility();
-  const [revealed, setRevealed] = useState(false);
+  const [revealState, setRevealState] = useState({
+    maskBalance,
+    revealed: false,
+  });
 
   useEffect(() => {
-    setRevealed(false);
+    const timeoutId = window.setTimeout(() => {
+      setRevealState({ maskBalance, revealed: false });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [maskBalance]);
+
+  const revealed =
+    revealState.maskBalance === maskBalance && revealState.revealed;
 
   if (!maskBalance) {
     return <span className={className}>{value}</span>;
@@ -43,11 +53,14 @@ export function RevealableBalance({
       )}
       onClick={(event) => {
         event.stopPropagation();
-        setRevealed((current) => !current);
+        setRevealState((current) => ({
+          maskBalance,
+          revealed: current.maskBalance === maskBalance ? !current.revealed : true,
+        }));
       }}
       onDoubleClick={(event) => {
         event.stopPropagation();
-        setRevealed(true);
+        setRevealState({ maskBalance, revealed: true });
       }}
       aria-label={`${ariaLabel}, ${stateLabel}. Nhấn để ${revealed ? 'che' : 'hiện'} số tiền`}
       title={`Nhấn để ${revealed ? 'che' : 'hiện'} số tiền`}

@@ -74,7 +74,11 @@ export default function NotificationsPage() {
   }, []);
 
   useEffect(() => {
-    void loadData();
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [loadData]);
 
   const notificationCount = digest?.notifications.length ?? 0;
