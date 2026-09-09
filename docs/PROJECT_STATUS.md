@@ -1391,3 +1391,29 @@ This phase adds two account-level capabilities:
 - **Xuất bản sao lưu dữ liệu:** Settings can download a JSON backup containing only rows owned by the authenticated user: profile/settings, notification preferences, accounts, categories, transactions, transfers, FX snapshots, budgets, goals, recurring items, income sources/streams, debts, and debt payments. AI credentials and all private credential material are intentionally excluded.
 
 The database change is additive and RLS-safe: `public.user_settings.mask_balance BOOLEAN NOT NULL DEFAULT FALSE` with authenticated-column update permission. The export runs in the browser after a fresh auth check, reads user-scoped rows through the existing Supabase client, creates a local JSON Blob, and revokes the object URL after download. No storage upload, server-side file persistence, or credential read is performed.
+
+## Phase 13C Corrective — Notification Preference Write Grants
+
+**Status:** COMPLETE — production hotfix applied and migration recorded
+
+The Settings save error was traced to the remote Data API permissions for
+`public.notification_preferences`. The three ownership RLS policies were
+present, but the `authenticated` role had no effective schema/table
+`INSERT` or `UPDATE` privilege, so the client upsert was rejected before
+the RLS checks could authorize the owner row.
+
+Resolution:
+
+- Applied Supabase migration
+  `20260909033350_phase_13c_notification_preferences_grants_fix`.
+- Granted `USAGE` on schema `public` and `SELECT, INSERT, UPDATE` on
+  `public.notification_preferences` to `authenticated`.
+- Kept the existing owner-only RLS policies unchanged; anonymous access and
+  cross-user rows remain blocked.
+- Reloaded the PostgREST schema cache after the grant change.
+- Verified remotely that `authenticated` has schema usage and all three
+  required table privileges, while RLS remains enabled with exactly the
+  select/insert/update ownership policies.
+
+The source migration is committed at
+`supabase/migrations/20260909033350_phase_13c_notification_preferences_grants_fix.sql`.
