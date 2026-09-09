@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/finance/MoneyInput';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { getAccounts } from '@/features/accounts/accounts';
@@ -609,7 +610,15 @@ export default function DebtsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="debt-principal">Số tiền gốc ({debtForm.currency_code})</Label>
-                <Input id="debt-principal" inputMode="decimal" value={debtForm.principal_amount} onChange={(event) => setDebtForm({ ...debtForm, principal_amount: event.target.value })} placeholder="0" disabled={Boolean(editingDebt)} required={!editingDebt} />
+                <MoneyInput
+                  id="debt-principal"
+                  currencyCode={debtForm.currency_code}
+                  value={debtForm.principal_amount}
+                  onChange={(value) => setDebtForm({ ...debtForm, principal_amount: value })}
+                  placeholder={debtForm.currency_code === 'VND' ? '0' : '0.00'}
+                  disabled={Boolean(editingDebt)}
+                  required={!editingDebt}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="debt-currency">Tiền tệ</Label>
@@ -623,7 +632,13 @@ export default function DebtsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="debt-minimum">Trả tối thiểu</Label>
-                <Input id="debt-minimum" inputMode="decimal" value={debtForm.minimum_payment} onChange={(event) => setDebtForm({ ...debtForm, minimum_payment: event.target.value })} placeholder="Không bắt buộc" />
+                <MoneyInput
+                  id="debt-minimum"
+                  currencyCode={debtForm.currency_code}
+                  value={debtForm.minimum_payment}
+                  onChange={(value) => setDebtForm({ ...debtForm, minimum_payment: value })}
+                  placeholder={debtForm.currency_code === 'VND' ? 'Không bắt buộc' : '0.00'}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="debt-frequency">Chu kỳ trả</Label>
@@ -686,15 +701,36 @@ export default function DebtsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="payment-amount">Tổng thanh toán</Label>
-                <Input id="payment-amount" inputMode="decimal" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} placeholder="0" required />
+                <MoneyInput
+                  id="payment-amount"
+                  currencyCode={paymentDebt?.currency_code || 'VND'}
+                  value={paymentForm.amount}
+                  onChange={(value) => setPaymentForm({ ...paymentForm, amount: value })}
+                  placeholder={paymentDebt?.currency_code === 'VND' ? '0' : '0.00'}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="payment-principal">Tiền gốc</Label>
-                <Input id="payment-principal" inputMode="decimal" value={paymentForm.principal_amount} onChange={(event) => setPaymentForm({ ...paymentForm, principal_amount: event.target.value })} placeholder="0" required />
+                <MoneyInput
+                  id="payment-principal"
+                  currencyCode={paymentDebt?.currency_code || 'VND'}
+                  value={paymentForm.principal_amount}
+                  onChange={(value) => setPaymentForm({ ...paymentForm, principal_amount: value })}
+                  placeholder={paymentDebt?.currency_code === 'VND' ? '0' : '0.00'}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="payment-interest">Tiền lãi</Label>
-                <Input id="payment-interest" inputMode="decimal" value={paymentForm.interest_amount} onChange={(event) => setPaymentForm({ ...paymentForm, interest_amount: event.target.value })} placeholder="0" required />
+                <MoneyInput
+                  id="payment-interest"
+                  currencyCode={paymentDebt?.currency_code || 'VND'}
+                  value={paymentForm.interest_amount}
+                  onChange={(value) => setPaymentForm({ ...paymentForm, interest_amount: value })}
+                  placeholder={paymentDebt?.currency_code === 'VND' ? '0' : '0.00'}
+                  required
+                />
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
