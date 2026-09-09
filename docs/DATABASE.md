@@ -1,7 +1,7 @@
 # Finora — Database
 
 ## Status
-**Database implementation:** PHASE_13B-1_DEBT_SCHEMA_APPLIED / VERIFIED (remote migration `20260909020803`, source migration `20260909000000_phase_13b_debt_management.sql`)
+**Database implementation:** PHASE_13B-2_CROSS_CURRENCY_REPAYMENT_APPLIED / VERIFIED (Phase 13B-1 remote migration `20260909020803`; Phase 13B-2 remote migration `20260909071009`)
 
 This document records the data model, tables, relationships, and invariants implemented in Finora. Executable Supabase migrations under `supabase/migrations/` are the authoritative schema source of truth.
 
@@ -367,3 +367,30 @@ Every payment is linked to an expense transaction and the exact breakdown satisf
 - `record_debt_payment` is SECURITY DEFINER with an empty `search_path`; its RPC is the only repayment mutation path.
 - Production verification found zero debt rows and zero debt-payment rows, so no owner financial data was created, deleted, or rewritten by deployment.
 
+## Phase 13B-2: Cross-Currency Debt Repayment
+
+Phase 13B-2 preserves the Phase 13B-1 cash-flow boundary while adding explicit
+dual-currency provenance to `public.debt_payments`:
+
+- `amount` / `currency_code`: cash debited from the selected account;
+- `debt_amount` / `debt_currency_code`: liability reduction;
+- `principal_amount` / `interest_amount`: debt-currency allocation;
+- `exchange_rate`: exact account-currency → debt-currency rate (`numeric(30,12)`);
+- `exchange_rate_source` and `exchange_rate_effective_date`: explicit audit provenance.
+
+The additive migration `phase_13b2_cross_currency_repayments` was applied as
+remote version `20260909071009`. It backfills existing same-currency rows with
+rate `1` and `SAME_CURRENCY`, then enforces six exact constraints including
+`round(account_amount * rate, 4) = debt_amount` at the RPC boundary.
+
+`record_debt_payment_v2` is `SECURITY DEFINER`, uses `SET search_path = ''`,
+locks the debt row, validates owner/account/category and precision, creates one
+expense transaction, appends one payment row, writes one
+`transaction_fx_snapshots` row only for cross-currency payments, and reduces
+outstanding principal atomically. The original `record_debt_payment` remains a
+strict same-currency compatibility wrapper.
+
+The `debt_payment_details` security-invoker view exposes the new provenance
+fields. Reports group repayments by account/debt currency pair and never add
+different currencies together. Production verification found zero debt rows,
+zero payment rows, and zero debt-linked transactions after migration.
