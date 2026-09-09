@@ -1322,10 +1322,11 @@ This feature branch adds the first dedicated liability module. It does not alter
 - Multi-currency boundary: A repayment account must match the debt currency in this first version. Cross-currency repayment remains a follow-up.
 - Files: supabase/migrations/20260909000000_phase_13b_debt_management.sql, src/features/debts/, src/app/debts/page.tsx.
 
-### Verification pending
+### Verification complete
 
-- TypeScript: PASS (Vercel production build for main `64264dc737c9dfea52b4c86fbe8cd04532a3b83a`).
+- TypeScript: PASS (Vercel production build for main `eb194ab1c458e88bb5e3d79db1ff7a0f391adf00`).
 - Migration: PASS — `phase_13b_debt_management` applied to Supabase project `qibfitbnlfgiqctntufr` (remote migration version `20260909020803`).
 - Remote schema: PASS — `debts`, `debt_payments`, `debt_details`, `debt_payment_details`, and `transaction_details` exist; RLS is enabled on both debt tables; debt/payment row counts are 0.
 - Production route: PASS — `/debts` returned HTTP 200 on `https://finora-orpin-nu.vercel.app`.
+- Vercel production deployment: READY — `dpl_HmndHgqLmgvbHmmA6Vw9G4EqZGoR`.
 - Owner financial data mutation: NONE. No test debt or payment rows were inserted; authenticated owner CRUD/payment smoke is reserved for the owner’s first real debt entry.
