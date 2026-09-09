@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { getCurrentUserContext, signOut } from '@/lib/auth';
 import { resolveDisplayIdentity } from '@/lib/auth/identity';
 import { applyTheme } from '@/lib/theme';
+import { BalanceVisibilityContext } from '@/features/preferences';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -44,6 +45,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<string>('VND');
   const [locale, setLocale] = useState<string>('vi-VN');
+  const [maskBalance, setMaskBalance] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -67,6 +69,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           if (settings) {
             if (settings.base_currency) setBaseCurrency(settings.base_currency);
             if (settings.locale) setLocale(settings.locale);
+            if (settings.mask_balance !== undefined) setMaskBalance(settings.mask_balance);
             if (settings.theme) applyTheme(settings.theme as 'light' | 'dark' | 'system');
           }
 
@@ -151,7 +154,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
+    <BalanceVisibilityContext.Provider value={{ maskBalance, setMaskBalance }}>
+      <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
       {/* Desktop Left Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 border-r bg-card h-screen sticky top-0 z-30 overflow-y-auto">
         {/* Brand Header */}
@@ -423,6 +427,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           // Local mock feedback handled inside modal
         }}
       />
-    </div>
+      </div>
+    </BalanceVisibilityContext.Provider>
   );
 };
