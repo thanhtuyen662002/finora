@@ -12,6 +12,7 @@ import type { AccountRow } from '@/types/database';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyBadge } from './CurrencyBadge';
 import { formatExactMoney } from '@/lib/money';
+import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
 import { getAccountTypeLabel } from '@/features/accounts';
 
 interface AccountCardProps {
@@ -46,9 +47,13 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
   };
 
-  const displayBalance = formatExactMoney(
-    String(currentBalance !== undefined ? currentBalance : account.opening_balance),
-    account.currency_code
+  const { maskBalance } = useBalanceVisibility();
+  const displayBalance = maskFinancialValue(
+    formatExactMoney(
+      String(currentBalance !== undefined ? currentBalance : account.opening_balance),
+      account.currency_code
+    ),
+    maskBalance
   );
 
   if (variant === 'compact') {
