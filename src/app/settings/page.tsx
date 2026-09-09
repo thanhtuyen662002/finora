@@ -200,7 +200,7 @@ function SettingsContent() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [setMaskBalance]);
 
   const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
     setTheme(newTheme);
