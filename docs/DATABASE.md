@@ -1,7 +1,7 @@
 # Finora — Database
 
 ## Status
-**Database implementation:** PHASE_13B-1_DEBT_SCHEMA_ADDED (migration pending production verification)
+**Database implementation:** PHASE_13B-1_DEBT_SCHEMA_APPLIED / VERIFIED (remote migration `20260909020803`, source migration `20260909000000_phase_13b_debt_management.sql`)
 
 This document records the data model, tables, relationships, and invariants implemented in Finora. Executable Supabase migrations under `supabase/migrations/` are the authoritative schema source of truth.
 
@@ -359,3 +359,11 @@ Every payment is linked to an expense transaction and the exact breakdown satisf
 - debt_payment_details joins debt, account, and expense-category labels.
 - record_debt_payment is a security-definer RPC that validates auth.uid(), same-user ownership, matching account currency, active expense category, and principal availability before atomically creating the transaction, ledger row, and balance reduction.
 - Browser clients receive SELECT access only for payment rows; repayment mutation is RPC-only.
+
+### Phase 13B-1 production verification
+
+- Migration applied successfully to Supabase project `qibfitbnlfgiqctntufr`; the failed pre-apply attempt rolled back and left no partial schema.
+- `public.debts` and `public.debt_payments` both have RLS enabled with authenticated owner policies.
+- `record_debt_payment` is SECURITY DEFINER with an empty `search_path`; its RPC is the only repayment mutation path.
+- Production verification found zero debt rows and zero debt-payment rows, so no owner financial data was created, deleted, or rewritten by deployment.
+
