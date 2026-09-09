@@ -36,6 +36,10 @@ function NotificationPageIcon({ item }: { item: FinancialNotification }) {
     );
   }
 
+  if (item.kind === 'DEBT_REMINDER') {
+    return <WalletCards className="h-5 w-5" />;
+  }
+
   return item.severity === 'warning' ? (
     <AlertTriangle className="h-5 w-5" />
   ) : (
@@ -87,7 +91,7 @@ export default function NotificationsPage() {
     <AppShell>
       <PageHeader
         title="Thông báo"
-        subtitle="Cảnh báo ngân sách và nhắc khoản chi định kỳ trong ứng dụng."
+        subtitle="Cảnh báo ngân sách, khoản chi định kỳ và khoản nợ trong ứng dụng."
       >
         <Button
           type="button"
@@ -140,7 +144,7 @@ export default function NotificationsPage() {
         <EmptyState
           icon={Bell}
           title="Chưa có thông báo mới"
-          description="Khi ngân sách đạt 80% hoặc khoản chi định kỳ còn tối đa 3 ngày, thông báo sẽ xuất hiện tại đây."
+          description="Khi ngân sách đạt 80%, khoản chi định kỳ hoặc khoản nợ còn tối đa 3 ngày, thông báo sẽ xuất hiện tại đây."
           actionLabel="Mở cài đặt thông báo"
           onAction={() => router.push('/settings')}
         />
@@ -157,7 +161,11 @@ export default function NotificationsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h2 className="text-sm font-semibold">{item.title}</h2>
                       <span className="text-[11px] font-medium uppercase tracking-wide">
-                        {item.kind === 'BUDGET_THRESHOLD' ? 'Ngân sách' : 'Định kỳ'}
+                        {item.kind === 'BUDGET_THRESHOLD'
+                          ? 'Ngân sách'
+                          : item.kind === 'DEBT_REMINDER'
+                            ? 'Khoản nợ'
+                            : 'Định kỳ'}
                       </span>
                     </div>
                     <p className="text-sm leading-6">{item.message}</p>
@@ -169,7 +177,9 @@ export default function NotificationsPage() {
                     >
                       {item.kind === 'BUDGET_THRESHOLD'
                         ? 'Mở ngân sách'
-                        : 'Mở khoản định kỳ'}
+                        : item.kind === 'DEBT_REMINDER'
+                          ? 'Mở khoản nợ'
+                          : 'Mở khoản định kỳ'}
                     </Button>
                   </div>
                 </div>

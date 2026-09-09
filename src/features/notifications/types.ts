@@ -4,10 +4,10 @@ export type NotificationPreferences = NotificationPreferenceRow;
 
 export type NotificationPreferencesUpdate = Pick<
   NotificationPreferenceRow,
-  'budget_alerts_enabled' | 'recurring_reminders_enabled'
+  'budget_alerts_enabled' | 'recurring_reminders_enabled' | 'debt_reminders_enabled'
 >;
 
-export type NotificationKind = 'BUDGET_THRESHOLD' | 'RECURRING_REMINDER';
+export type NotificationKind = 'BUDGET_THRESHOLD' | 'RECURRING_REMINDER' | 'DEBT_REMINDER';
 export type NotificationSeverity = 'info' | 'warning' | 'critical';
 
 export type FinancialNotification = {
@@ -16,7 +16,7 @@ export type FinancialNotification = {
   severity: NotificationSeverity;
   title: string;
   message: string;
-  href: '/budgets' | '/recurring';
+  href: '/budgets' | '/recurring' | '/debts';
   currency_code?: string;
   due_date?: string;
 };

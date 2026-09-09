@@ -98,6 +98,7 @@ function SettingsContent() {
   // Notifications
   const [notifyBudgetAlert, setNotifyBudgetAlert] = useState(true);
   const [notifyRecurringBill, setNotifyRecurringBill] = useState(true);
+  const [notifyDebtReminder, setNotifyDebtReminder] = useState(true);
 
   // AI Credential Configuration (Phase 11)
   const [aiMetadata, setAiMetadata] = useState<AiCredentialSafeMetadata | null>(null);
@@ -174,6 +175,7 @@ function SettingsContent() {
           if (isMounted) {
             setNotifyBudgetAlert(notificationPreferences.budget_alerts_enabled);
             setNotifyRecurringBill(notificationPreferences.recurring_reminders_enabled);
+            setNotifyDebtReminder(notificationPreferences.debt_reminders_enabled);
           }
         } catch {
           // Notification preferences are optional until the Phase 13C migration is available.
@@ -236,6 +238,7 @@ function SettingsContent() {
         await updateNotificationPreferences({
           budget_alerts_enabled: notifyBudgetAlert,
           recurring_reminders_enabled: notifyRecurringBill,
+          debt_reminders_enabled: notifyDebtReminder,
         });
       } catch (err) {
         notificationError = err instanceof Error ? err : new Error('Không thể cập nhật tùy chọn thông báo.');
@@ -650,6 +653,20 @@ function SettingsContent() {
                       checked={notifyRecurringBill}
                       onCheckedChange={setNotifyRecurringBill}
                       aria-label="Bật nhắc nhở khoản chi định kỳ"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Nhắc nhở khoản nợ</p>
+                      <p className="text-xs text-muted-foreground">
+                        Hiển thị trước tối đa 3 ngày khi khoản nợ sắp đến hạn thanh toán.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notifyDebtReminder}
+                      onCheckedChange={setNotifyDebtReminder}
+                      aria-label="Bật nhắc nhở khoản nợ"
                     />
                   </div>
                 </CardContent>
