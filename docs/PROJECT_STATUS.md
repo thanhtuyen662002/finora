@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 13B-3 — On-Demand Debt Reminders
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-3: IMPLEMENTED / PENDING CI + PRODUCTION DEPLOYMENT
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-3: CLOSED / PASS / PRODUCTION DEPLOYED
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
 - **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
@@ -1454,6 +1454,7 @@ PHASE_13A_CI_RELEASE_GATE=PASS_MAIN_VERIFIED
 PHASE_13A_NODE_RUNTIME=PINNED_22_X
 PHASE_13A_LEAKED_PASSWORD_PROTECTION=DEFERRED_FREE_PLAN
 PHASE_13B_2=COMPLETE_PRODUCTION_DEPLOYED
+PHASE_13B_3=COMPLETE_PRODUCTION_DEPLOYED
 ```
 
 ## Phase 13B-2 — Cross-Currency Debt Repayment & Report Classification
@@ -1493,4 +1494,44 @@ PHASE_13B2_REMOTE_MIGRATION=PASS_REMOTE_20260909071009
 PHASE_13B2_CI=PASS_GITHUB_RUN_34322361304
 PHASE_13B2_PRODUCTION=PASS_VERCEL_dpl_Ey4fX9PXbJBZTUWcxt9aUP12NWoK
 PHASE_13B2_OWNER_DATA_MUTATION=NONE
+```
+
+## Phase 13B-3 — On-Demand Debt Reminders
+
+### Status: COMPLETE / PRODUCTION DEPLOYED
+
+Phase 13B-3 extends the existing in-app Notification Center with a privacy-safe
+debt reminder. It is generated when the user opens or refreshes notifications;
+it does not send email/push, run a background scheduler, or create financial
+records.
+
+- Active, unsettled debts due today through the next three calendar days are shown.
+- One-time, weekly, monthly, quarterly, and yearly schedules are supported.
+- Monthly and quarterly dates use `due_day` with safe end-of-month clamping.
+- Amounts remain exact strings in the debt currency; no FX conversion is performed.
+- Settings includes an owner-scoped `Nhắc nhở khoản nợ` switch, enabled by default.
+- Archived, settled, and undated debts are excluded.
+
+### Verification receipt
+
+- Contract: `docs/PHASE_13B3_CONTRACT.md`
+- Migration source: `supabase/migrations/20260909100000_phase_13b3_debt_reminders.sql`
+- Remote migration: `20260909080938` (`phase_13b3_debt_reminders`)
+- Remote schema/data: PASS — column present, three existing owner policies preserved, no debt/payment rows inserted
+- Deterministic tests: `tests/phase13b3-debt-reminders.test.ts` (4/4 PASS)
+- Source verifier: `scripts/verify-phase13b3-source.mjs` (7/7 PASS)
+- CI: PASS — GitHub run `34328043105`
+- Pull request: #19, merged as `06ebba94339f2ab31abb4967c3d1ef14427c53a2`
+- Production deployment: `dpl_J6zgLPpriA3Msri7UmdDxmswUQCX` READY
+- Production route smoke: `/notifications`, `/settings`, `/debts` returned HTTP 200
+- Runtime errors after deployment: none
+
+```text
+PHASE_13B3_SOURCE_CONTRACT=PASS
+PHASE_13B3_SOURCE_TESTS=PASS_4_OF_4
+PHASE_13B3_SOURCE_VERIFIER=PASS_7_OF_7
+PHASE_13B3_REMOTE_MIGRATION=PASS_REMOTE_20260909080938
+PHASE_13B3_CI=PASS_GITHUB_RUN_34328043105
+PHASE_13B3_PRODUCTION=PASS_VERCEL_dpl_J6zgLPpriA3Msri7UmdDxmswUQCX
+PHASE_13B3_OWNER_DATA_MUTATION=NONE
 ```
