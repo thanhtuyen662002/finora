@@ -1314,6 +1314,7 @@ Continue product QA and UX follow-ups after the Phase 13B-1 debt module deployme
 This feature branch adds the first dedicated liability module. It does not alter existing owner data and does not require AI.
 
 - Navigation: New Khoản nợ entry in the desktop and mobile application shell.
+- Money input UX: Debt principal, minimum payment, and repayment fields use the shared exact `MoneyInput`; VND values group thousands with dots while canonical form values remain exact decimal strings.
 - Debt records: Name, lender, debt type, principal, outstanding balance, currency, annual interest rate, minimum payment, due date, frequency, notes, and archive state.
 - Payment ledger: Append-only debt_payments rows linked to one cash-flow transaction.
 - Atomic repayment: record_debt_payment locks the debt, validates ownership/currency/category, creates the expense transaction, appends the payment event, and reduces principal outstanding in one database transaction.
