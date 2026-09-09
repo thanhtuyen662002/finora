@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/finance/PageHeader';
 import { SummaryCard } from '@/components/finance/SummaryCard';
 import { AccountCard } from '@/components/finance/AccountCard';
+import { RevealableBalance } from '@/components/finance/RevealableBalance';
 import { TransactionList } from '@/components/finance/TransactionList';
 import { CashFlowChart } from '@/components/charts/CashFlowChart';
 import { IncomeSourcesBreakdown } from '@/components/charts/IncomeSourcesBreakdown';
@@ -15,7 +16,7 @@ import { AddTransferModal } from '@/components/finance/AddTransferModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { formatExactMoney, formatExactDecimal } from '@/lib/money';
-import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
+
 import {
   getDashboardReportData,
   enrichDashboardBaseFx,
@@ -46,7 +47,6 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
-  const { maskBalance } = useBalanceVisibility();
   const [data, setData] = useState<DashboardReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -249,7 +249,11 @@ function DashboardContent() {
         ) : (
           <SummaryCard
             title={`Tài sản (${displayCurrency})`}
-            value={maskFinancialValue(formatExactMoney(activeAccountGroup.totalBalance, displayCurrency), maskBalance)}
+            value={<RevealableBalance
+              value={formatExactMoney(activeAccountGroup.totalBalance, displayCurrency)}
+              className="text-inherit"
+              ariaLabel={`Tổng tài sản ${displayCurrency}`}
+            />}
             icon={Wallet}
             highlight={true}
             subtext={`${activeAccountGroup.accounts.length} tài khoản ${displayCurrency}`}
@@ -259,7 +263,11 @@ function DashboardContent() {
           title="Thu nhập tháng này"
           value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Không khả dụng'
-            : maskFinancialValue(formatExactMoney(activeSummary.totalIncome, displayCurrency), maskBalance)}
+            : <RevealableBalance
+              value={formatExactMoney(activeSummary.totalIncome, displayCurrency)}
+              className="text-inherit"
+              ariaLabel={`Thu nhập tháng này ${displayCurrency}`}
+            />}
           icon={ArrowDownLeft}
           subtext={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
@@ -269,7 +277,11 @@ function DashboardContent() {
           title="Chi tiêu tháng này"
           value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Không khả dụng'
-            : maskFinancialValue(formatExactMoney(activeSummary.totalExpense, displayCurrency), maskBalance)}
+            : <RevealableBalance
+              value={formatExactMoney(activeSummary.totalExpense, displayCurrency)}
+              className="text-inherit"
+              ariaLabel={`Chi tiêu tháng này ${displayCurrency}`}
+            />}
           icon={ArrowUpRight}
           subtext={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Chưa thể tổng hợp lịch sử vì một số giao dịch chưa có tỷ giá đã lưu.'
@@ -279,7 +291,11 @@ function DashboardContent() {
           title="Tiết kiệm & Tỷ lệ"
           value={effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
             ? 'Không khả dụng'
-            : maskFinancialValue(formatExactMoney(activeSummary.netSavings, displayCurrency, { showSign: true }), maskBalance)}
+            : <RevealableBalance
+              value={formatExactMoney(activeSummary.netSavings, displayCurrency, { showSign: true })}
+              className="text-inherit"
+              ariaLabel={`Tiết kiệm ròng ${displayCurrency}`}
+            />}
           icon={PiggyBank}
           subtext={
             effectiveCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -310,7 +326,11 @@ function DashboardContent() {
                   <span className="font-medium text-foreground">
                     {isBaseValUnavailable
                       ? 'Không khả dụng'
-                      : maskFinancialValue(formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c), maskBalance)}
+                      : <RevealableBalance
+                        value={formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c)}
+                        className="font-medium text-foreground"
+                        ariaLabel={`Tổng số dư ${c === 'BASE' ? data.baseCurrency : c}`}
+                      />}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
                     ({group?.accounts.length || 0} TK)

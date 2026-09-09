@@ -1417,3 +1417,21 @@ Resolution:
 
 The source migration is committed at
 `supabase/migrations/20260909033350_phase_13c_notification_preferences_grants_fix.sql`.
+
+## Balance Privacy UX — Tap-to-Reveal
+
+**Status:** COMPLETE — local reveal interaction added
+
+When **Che số dư công cộng** is enabled, each masked monetary value can now
+be tapped or clicked to reveal that value locally. A second click hides it
+again; a double-click also ends in the revealed state. The persisted privacy
+setting is never changed by this interaction.
+
+- Reveal state is scoped to the individual value, so revealing one amount does
+  not expose every balance on the page.
+- Reveal state resets when the component unmounts or the privacy setting
+  changes.
+- Account cards, account detail, dashboard summaries, currency totals, report
+  summaries, and report account previews use the same accessible control.
+- No database writes, transaction mutations, or backup/export behavior are
+  affected.

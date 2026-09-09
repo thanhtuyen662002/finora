@@ -8,10 +8,11 @@ import { CashFlowChart } from '@/components/charts/CashFlowChart';
 import { CategoryDonutChart } from '@/components/charts/CategoryDonutChart';
 import { IncomeSourcesBreakdown } from '@/components/charts/IncomeSourcesBreakdown';
 import { TransactionList } from '@/components/finance/TransactionList';
+import { RevealableBalance } from '@/components/finance/RevealableBalance';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatExactMoney } from '@/lib/money';
-import { maskFinancialValue, useBalanceVisibility } from '@/features/preferences';
+
 import {
   getDetailedReportData,
   exportTransactionsToCSV,
@@ -41,7 +42,6 @@ export default function ReportsPage() {
 }
 
 function ReportsContent() {
-  const { maskBalance } = useBalanceVisibility();
   const [period, setPeriod] = useState<ReportPeriod>('6M');
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
   const [data, setData] = useState<DetailedReportData | null>(null);
@@ -267,7 +267,11 @@ function ReportsContent() {
             <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
                 ? '—'
-                : maskFinancialValue(formatExactMoney(summary.totalIncome, displayCurrency), maskBalance)}
+                : <RevealableBalance
+                  value={formatExactMoney(summary.totalIncome, displayCurrency)}
+                  className="text-inherit"
+                  ariaLabel={`Tổng thu nhập ${displayCurrency}`}
+                />}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -288,7 +292,11 @@ function ReportsContent() {
             <p className="text-2xl font-bold text-foreground">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
                 ? '—'
-                : maskFinancialValue(formatExactMoney(summary.totalExpense, displayCurrency), maskBalance)}
+                : <RevealableBalance
+                  value={formatExactMoney(summary.totalExpense, displayCurrency)}
+                  className="text-inherit"
+                  ariaLabel={`Tổng chi tiêu ${displayCurrency}`}
+                />}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -309,7 +317,11 @@ function ReportsContent() {
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
                 ? '—'
-                : maskFinancialValue(formatExactMoney(summary.netSavings, displayCurrency, { showSign: true }), maskBalance)}
+                : <RevealableBalance
+                  value={formatExactMoney(summary.netSavings, displayCurrency, { showSign: true })}
+                  className="text-inherit"
+                  ariaLabel={`Tích lũy ròng ${displayCurrency}`}
+                />}
             </p>
             <span className="text-xs text-muted-foreground block">
               {data.selectedCurrency === 'BASE' && data.baseHistorical.status !== 'AVAILABLE'
@@ -420,7 +432,11 @@ function ReportsContent() {
           <div className="p-3.5 rounded-lg border bg-muted/30 flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Tổng số dư {displayCurrency}:</span>
             <span className="text-base font-bold text-foreground">
-              {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? 'Không khả dụng' : maskFinancialValue(formatExactMoney(data.totalAccountBalance || '0', displayCurrency), maskBalance)}
+              {data.selectedCurrency === 'BASE' && data.baseValuation.status !== 'AVAILABLE' ? 'Không khả dụng' : <RevealableBalance
+                value={formatExactMoney(data.totalAccountBalance || '0', displayCurrency)}
+                className="text-base font-bold text-foreground"
+                ariaLabel={`Tổng số dư ${displayCurrency}`}
+              />}
             </span>
           </div>
 
@@ -457,7 +473,11 @@ function ReportsContent() {
                         </div>
                       </div>
                       <div className="text-right shrink-0 font-semibold text-foreground">
-                        {maskFinancialValue(formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency), maskBalance)}
+                        {<RevealableBalance
+                          value={formatExactMoney(acc.currentBalance, acc.currency === 'BASE' ? data.baseCurrency : acc.currency)}
+                          className="font-semibold text-foreground"
+                          ariaLabel={`Số dư ${acc.name}`}
+                        />}
                       </div>
                     </div>
                   ))}

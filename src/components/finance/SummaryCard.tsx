@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 interface SummaryCardProps {
   title: string;
-  value: string;
+  value: React.ReactNode;
   subtext?: string;
   icon: LucideIcon;
   trend?: {
