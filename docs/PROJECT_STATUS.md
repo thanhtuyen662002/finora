@@ -1377,7 +1377,13 @@ Owner smoke test: open **Cài đặt → Thông báo & Cảnh báo**, toggle eac
 
 ## Phase 13D — Balance Privacy & Data Backup Export
 
-**Status:** IMPLEMENTED — pending CI, production build, and live smoke verification
+**Status:** COMPLETE — merged to `main` and deployed to production
+
+Verification receipt:
+- GitHub PR #14 merged as `58e942be8ef5d13828f5f5e6415260b1ff5fa97b`.
+- Vercel production deployment `dpl_HuD5rkiLYqrMe5NHByMXywnZhWSn` is READY and aliases `https://finora-orpin-nu.vercel.app`.
+- Supabase migration `20260909025859_phase_13d_balance_privacy_and_backup` is applied; `mask_balance` is boolean, non-null, defaults to false, and authenticated column update privilege is verified.
+- Production `/settings` responds successfully; no Vercel runtime errors were found in the verification window.
 
 This phase adds two account-level capabilities:
 
