@@ -1,12 +1,15 @@
 import { createClient } from '@/lib/supabase/client';
 import {
-  addExactDecimals,
   isNonNegativeExactDecimal,
   isPositiveExactDecimal,
   toExactDecimal,
 } from '@/lib/money';
 import type { DebtDetailRow, DebtPaymentDetailRow } from '@/types/database';
 import type { DebtCreateInput, DebtPaymentInput, DebtUpdateInput } from './types';
+import {
+  assertPrincipalWithinOutstanding,
+  normalizeDebtPaymentCurrency,
+} from './payment-domain';
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -221,27 +224,41 @@ export async function getDebtPayments(debtId: string): Promise<DebtPaymentDetail
 }
 
 export async function recordDebtPayment(input: DebtPaymentInput): Promise<DebtDetailRow> {
-  const amount = normalizePositive(input.amount, 'Tổng thanh toán');
-  const principal = normalizeNonNegative(input.principal_amount, 'Tiền gốc');
-  const interest = normalizeNonNegative(input.interest_amount, 'Tiền lãi');
-  const exactSum = addExactDecimals(principal, interest);
-
-  if (amount !== exactSum) {
-    throw new Error('Tổng thanh toán phải bằng tiền gốc cộng tiền lãi.');
-  }
-
-  const paidOn = normalizeDate(input.paid_on, 'Ngày thanh toán');
-  if (!paidOn) throw new Error('Ngày thanh toán là bắt buộc.');
-
   const supabase = createClient();
-  const { error } = await supabase.rpc('record_debt_payment', {
+  const { data: debt, error: debtError } = await supabase
+    .from('debt_details')
+    .select('outstanding_amount,currency_code')
+    .eq('id', input.debt_id)
+    .single();
+
+  if (debtError) throw debtError;
+
+  const normalized = normalizeDebtPaymentCurrency({
+    accountAmount: input.account_amount,
+    debtAmount: input.debt_amount,
+    principalAmount: input.principal_amount,
+    interestAmount: input.interest_amount,
+    accountCurrencyCode: input.account_currency_code,
+    debtCurrencyCode: debt.currency_code,
+    exchangeRate: input.exchange_rate,
+    exchangeRateSource: input.exchange_rate_source,
+    exchangeRateEffectiveDate: input.exchange_rate_effective_date,
+    paidOn: input.paid_on,
+  });
+  assertPrincipalWithinOutstanding(normalized.principalAmount, debt.outstanding_amount);
+
+  const { error } = await supabase.rpc('record_debt_payment_v2', {
     p_debt_id: input.debt_id,
     p_account_id: input.account_id,
     p_category_id: input.category_id,
-    p_amount: amount,
-    p_principal_amount: principal,
-    p_interest_amount: interest,
-    p_paid_on: paidOn,
+    p_account_amount: normalized.accountAmount,
+    p_debt_amount: normalized.debtAmount,
+    p_principal_amount: normalized.principalAmount,
+    p_interest_amount: normalized.interestAmount,
+    p_exchange_rate: normalized.exchangeRate,
+    p_exchange_rate_source: normalized.exchangeRateSource,
+    p_exchange_rate_effective_date: normalized.exchangeRateEffectiveDate,
+    p_paid_on: normalized.paidOn,
     p_note: optionalText(input.note, 1000),
   });
 
