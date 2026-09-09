@@ -15,7 +15,9 @@
     "test:phase12c:assistant": "node --require ./tests/mock-server-only.cjs --import tsx --test --test-concurrency=1 tests/phase12c-financial-assistant.test.ts",
     "test:phase13b2:debt": "node --require ./tests/mock-server-only.cjs --import tsx --test --test-concurrency=1 tests/phase13b2-debt.test.ts",
     "test:phase13b2:source": "node scripts/verify-phase13b2-source.mjs",
-    "test": "npm run test:phase12b:vision && npm run test:phase12c:assistant && npm run test:phase13b2:debt && npm run test:phase13b2:source"
+    "test:phase13b3:debt": "node --require ./tests/mock-server-only.cjs --import tsx --test --test-concurrency=1 tests/phase13b3-debt-reminders.test.ts",
+    "test:phase13b3:source": "node scripts/verify-phase13b3-source.mjs",
+    "test": "npm run test:phase12b:vision && npm run test:phase12c:assistant && npm run test:phase13b2:debt && npm run test:phase13b2:source && npm run test:phase13b3:debt && npm run test:phase13b3:source"
   },
   "dependencies": {
     "@google/genai": "2.19.0",

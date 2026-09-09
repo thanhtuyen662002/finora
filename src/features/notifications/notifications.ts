@@ -3,6 +3,7 @@ import { getCurrentUserSettings } from '@/lib/auth';
 import { getCalendarDateInTimezone } from '@/features/reports/engine';
 import { getBudgets } from '@/features/budgets/budgets';
 import { getRecurringItems } from '@/features/recurring/recurring';
+import { getDebts, getDebtReminders } from '@/features/debts';
 import { formatExactMoney } from '@/lib/money/format';
 import type { NotificationPreferenceRow } from '@/types/database';
 import type {
@@ -76,6 +77,7 @@ export async function updateNotificationPreferences(
         user_id: user.id,
         budget_alerts_enabled: Boolean(updates.budget_alerts_enabled),
         recurring_reminders_enabled: Boolean(updates.recurring_reminders_enabled),
+        debt_reminders_enabled: Boolean(updates.debt_reminders_enabled),
       },
       { onConflict: 'user_id' }
     )
@@ -117,7 +119,7 @@ export async function getNotificationDigest(): Promise<NotificationDigest> {
   const today = await getUserToday();
   const periodMonth = `${today.slice(0, 7)}-01`;
 
-  const [budgets, recurringItems] = await Promise.all([
+  const [budgets, recurringItems, debts] = await Promise.all([
     preferences.budget_alerts_enabled
       ? getBudgets({ periodMonth, includeArchived: false })
       : Promise.resolve([]),
@@ -126,7 +128,10 @@ export async function getNotificationDigest(): Promise<NotificationDigest> {
           includeArchived: false,
           includePaused: false,
           asOfDate: today,
-        })
+      })
+      : Promise.resolve([]),
+    preferences.debt_reminders_enabled
+      ? getDebts({ includeArchived: false })
       : Promise.resolve([]),
   ]);
 
@@ -172,6 +177,20 @@ export async function getNotificationDigest(): Promise<NotificationDigest> {
       href: '/recurring',
       currency_code: item.currency_code,
       due_date: item.nextDueDate,
+    });
+  }
+
+  for (const reminder of getDebtReminders(debts, today)) {
+    const dueLabel = reminder.daysUntilDue === 0 ? 'hôm nay' : `còn ${reminder.daysUntilDue} ngày`;
+    notifications.push({
+      id: `debt:${reminder.debt.id}:${reminder.dueDate}`,
+      kind: 'DEBT_REMINDER',
+      severity: reminder.daysUntilDue === 0 ? 'warning' : 'info',
+      title: `Sắp đến hạn trả nợ: ${reminder.debt.name}`,
+      message: `${formatExactMoney(reminder.debt.outstanding_amount, reminder.debt.currency_code)} còn lại · ${dueLabel} (${reminder.dueDate}).`,
+      href: '/debts',
+      currency_code: reminder.debt.currency_code,
+      due_date: reminder.dueDate,
     });
   }
 
