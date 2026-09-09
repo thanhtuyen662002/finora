@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 13B-2 — Cross-Currency Debt Repayment & Report Classification
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: IMPLEMENTED ON FEATURE BRANCH / PENDING REMOTE MIGRATION
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: CLOSED / PASS / PRODUCTION DEPLOYED
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
 - **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
@@ -14,7 +14,7 @@
 - **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
 - **Phase 13A closure receipt:** `docs/receipts/PHASE_13A_CLOSURE.md`
 - **Phase 13A status:** CLOSED / PASS WITH FOLLOW-UPS (production readiness audit complete; no code or database mutation)
-- **Next recommended phase:** Apply the Phase 13B-2 migration after branch CI and review, then run authenticated repayment/report smoke
+- **Next recommended phase:** Owner smoke test with a real debt and a cross-currency repayment; debt reminder channel remains a separate follow-up
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1304,7 +1304,7 @@ PHASE_13B_STATUS=CLOSED_PASS_PRODUCTION_DEPLOYED
 
 ### Next recommended action
 
-Continue with Phase 13B-2 branch verification and remote migration review. Debt reminders remain a separate Phase 13C follow-up.
+Continue with owner smoke testing for Phase 13B-2. Debt reminders remain a separate follow-up to the on-demand Phase 13C notification center.
 
 
 ## Phase 13B-1 — Debt & Liability Management
@@ -1453,16 +1453,16 @@ PHASE_13A_PRODUCTION_SMOKE=PASS_OWNER_ATTESTED
 PHASE_13A_CI_RELEASE_GATE=PASS_MAIN_VERIFIED
 PHASE_13A_NODE_RUNTIME=PINNED_22_X
 PHASE_13A_LEAKED_PASSWORD_PROTECTION=DEFERRED_FREE_PLAN
-PHASE_13B_2=FEATURE_BRANCH_IMPLEMENTED_PENDING_REMOTE_MIGRATION
+PHASE_13B_2=COMPLETE_PRODUCTION_DEPLOYED
 ```
 
 ## Phase 13B-2 — Cross-Currency Debt Repayment & Report Classification
 
-### Status: IMPLEMENTED ON FEATURE BRANCH / PENDING REMOTE MIGRATION
+### Status: COMPLETE / PRODUCTION DEPLOYED
 
 Phase 13B-2 extends the liability ledger without changing existing owner data.
-The implementation is on `feat/phase13b-2-cross-currency-debt` and is designed
-to be reviewed and CI-verified before applying the additive Supabase migration.
+The implementation was reviewed, CI-verified, applied to Supabase, merged to
+`main`, and deployed to the canonical production origin.
 
 - **Explicit dual-currency contract:** the account cash outflow and liability reduction are stored separately. The rate direction is always account currency → debt currency; the server validates `round(account_amount * rate, 4) = debt_amount`.
 - **Principal/interest separation:** principal and interest remain separate debt-currency allocations, while the linked `EXPENSE` transaction uses the account amount/currency.
@@ -1480,10 +1480,17 @@ to be reviewed and CI-verified before applying the additive Supabase migration.
 - Report classification: `src/features/reports/engine.ts`, `src/features/reports/reports.ts`, `src/app/reports/page.tsx`
 - Deterministic tests: `tests/phase13b2-debt.test.ts` (9/9 PASS)
 - TypeScript, ESLint, full test suite, and production build: PASS on the feature worktree
+- Pull request: #18, merged as `4a37fe2473f1289beb03aac4720b1a5ac77684d7`
+- Supabase migration: applied as remote version `20260909071009` (`phase_13b2_cross_currency_repayments`)
+- Remote schema verification: PASS — 5 new payment columns, 6 exact constraints, v2 RPC authenticated-only, RLS/security-invoker preserved
+- Remote data verification: PASS — `debts=0`, `debt_payments=0`, debt-linked transactions `=0`
+- Production deployment: `dpl_Ey4fX9PXbJBZTUWcxt9aUP12NWoK` READY; `/`, `/login`, `/debts`, and `/reports` returned HTTP 200; runtime errors in the verification window: none
 
 ```text
 PHASE_13B2_SOURCE_CONTRACT=PASS
 PHASE_13B2_SOURCE_TESTS=PASS
-PHASE_13B2_REMOTE_MIGRATION=PENDING_REVIEW
+PHASE_13B2_REMOTE_MIGRATION=PASS_REMOTE_20260909071009
+PHASE_13B2_CI=PASS_GITHUB_RUN_34322361304
+PHASE_13B2_PRODUCTION=PASS_VERCEL_dpl_Ey4fX9PXbJBZTUWcxt9aUP12NWoK
 PHASE_13B2_OWNER_DATA_MUTATION=NONE
 ```
