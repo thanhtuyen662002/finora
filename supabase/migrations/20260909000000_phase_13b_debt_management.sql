@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_debts_due_date ON public.debts(user_id, first_due
 ALTER TABLE public.transactions
     ADD COLUMN IF NOT EXISTS debt_id UUID NULL;
 
-DO $
+DO $phase13b$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
@@ -76,7 +76,7 @@ BEGIN
             FOREIGN KEY (debt_id, user_id)
             REFERENCES public.debts (id, user_id) ON DELETE RESTRICT;
     END IF;
-END $;
+END $phase13b$;
 
 CREATE TABLE IF NOT EXISTS public.debt_payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -389,7 +389,7 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = ''
-AS $
+AS $guard_debt$
 BEGIN
     IF OLD.debt_id IS NOT NULL AND (
         NEW.account_id IS DISTINCT FROM OLD.account_id
@@ -408,7 +408,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$;
+$guard_debt$;
 
 DROP TRIGGER IF EXISTS guard_debt_payment_transaction_update_trigger ON public.transactions;
 CREATE TRIGGER guard_debt_payment_transaction_update_trigger
