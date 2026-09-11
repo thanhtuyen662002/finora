@@ -160,6 +160,8 @@ export interface Database {
           type: string;
           currency_code: string;
           opening_balance: number;
+          credit_limit: string | null;
+          linked_debt_id: string | null;
           institution: string | null;
           color: string;
           is_archived: boolean;
@@ -173,6 +175,8 @@ export interface Database {
           type: string;
           currency_code: string;
           opening_balance?: number | string;
+          credit_limit?: number | string | null;
+          linked_debt_id?: string | null;
           institution?: string | null;
           color?: string;
           is_archived?: boolean;
@@ -186,6 +190,8 @@ export interface Database {
           type?: string;
           currency_code?: string;
           opening_balance?: number | string;
+          credit_limit?: number | string | null;
+          linked_debt_id?: string | null;
           institution?: string | null;
           color?: string;
           is_archived?: boolean;
@@ -1055,3 +1061,4 @@ export type IncomeSourceUpdate = Omit<Database['public']['Tables']['income_sourc
 export type IncomeSourceStreamRow = Database['public']['Tables']['income_source_streams']['Row'];
 export type IncomeSourceStreamInsert = Omit<Database['public']['Tables']['income_source_streams']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type IncomeSourceStreamUpdate = Omit<Database['public']['Tables']['income_source_streams']['Update'], 'id' | 'user_id' | 'income_source_id' | 'created_at' | 'updated_at'>;
+
