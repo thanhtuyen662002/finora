@@ -133,12 +133,12 @@ BEGIN
     IF TG_OP <> 'INSERT' THEN
         SELECT linked_debt_id, credit_limit INTO old_debt, old_limit
         FROM public.accounts WHERE id = OLD.account_id AND user_id = OLD.user_id;
-        IF OLD.type = 'EXPENSE' AND OLD.is_voided = FALSE THEN old_delta := OLD.amount; END IF;
+        IF OLD.type = 'EXPENSE' AND OLD.is_voided = FALSE AND OLD.debt_id IS NULL THEN old_delta := OLD.amount; END IF;
     END IF;
     IF TG_OP <> 'DELETE' THEN
         SELECT linked_debt_id, credit_limit INTO new_debt, new_limit
         FROM public.accounts WHERE id = NEW.account_id AND user_id = NEW.user_id;
-        IF NEW.type = 'EXPENSE' AND NEW.is_voided = FALSE THEN new_delta := NEW.amount; END IF;
+        IF NEW.type = 'EXPENSE' AND NEW.is_voided = FALSE AND NEW.debt_id IS NULL THEN new_delta := NEW.amount; END IF;
     END IF;
 
     IF old_debt IS NOT NULL AND old_debt = new_debt THEN
