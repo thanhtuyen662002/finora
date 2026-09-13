@@ -17,6 +17,7 @@ import {
   Menu,
   Coins,
   CreditCard,
+  HandCoins,
   Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -120,6 +121,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         { href: '/budgets', label: 'Ngân sách', icon: Target },
         { href: '/recurring', label: 'Định kỳ & Hóa đơn', icon: Repeat },
         { href: '/debts', label: 'Khoản nợ', icon: CreditCard },
+        { href: '/receivables', label: 'Khoản phải thu', icon: HandCoins },
       ],
     },
     {
