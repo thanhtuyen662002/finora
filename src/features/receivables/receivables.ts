@@ -117,10 +117,8 @@ export async function getReceivables(options?: {
 }
 
 export async function createReceivable(input: ReceivableCreateInput): Promise<Receivable> {
-  const supabase = createReceivablesClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) {
-    throw new Error('Bạn cần đăng nhập để tạo khoản phải thu.');
+  if (!input.funding_account_id) {
+    throw new Error('Bạn cần chọn tài khoản hoặc ví dùng để cho vay.');
   }
 
   const name = requireText(input.name, 'Tên khoản phải thu', 200);
@@ -136,27 +134,23 @@ export async function createReceivable(input: ReceivableCreateInput): Promise<Re
   const firstDueDate = normalizeDate(input.first_due_date, 'Ngày đến hạn');
   validateDueDay(input.due_day);
 
-  const { data, error } = await supabase
-    .from('receivables')
-    .insert({
-      user_id: userData.user.id,
-      name,
-      borrower_name: borrowerName,
-      principal_amount: principal,
-      outstanding_amount: principal,
-      currency_code: currency,
-      interest_rate: interestRate,
-      expected_payment: expectedPayment,
-      payment_frequency: input.payment_frequency,
-      first_due_date: firstDueDate,
-      due_day: input.due_day ?? null,
-      note: optionalText(input.note, 1000),
-    })
-    .select('id')
-    .single();
+  const supabase = createReceivablesClient();
+  const { data, error } = await supabase.rpc('create_receivable_v2', {
+    p_name: name,
+    p_borrower_name: borrowerName,
+    p_principal_amount: principal,
+    p_currency_code: currency,
+    p_funding_account_id: input.funding_account_id,
+    p_interest_rate: interestRate,
+    p_expected_payment: expectedPayment,
+    p_payment_frequency: input.payment_frequency,
+    p_first_due_date: firstDueDate,
+    p_due_day: input.due_day ?? null,
+    p_note: optionalText(input.note, 1000),
+  });
 
   if (error) throw error;
-  return getReceivableExact(data.id);
+  return getReceivableExact(data as string);
 }
 
 export async function updateReceivable(
@@ -188,18 +182,30 @@ export async function updateReceivable(
   if (input.note !== undefined) payload.note = optionalText(input.note, 1000);
   if (input.is_archived !== undefined) payload.is_archived = input.is_archived;
 
-  if (Object.keys(payload).length === 0) return getReceivableExact(id);
-
   const supabase = createReceivablesClient();
-  const { data, error } = await supabase
-    .from('receivables')
-    .update(payload)
-    .eq('id', id)
-    .select('id')
-    .single();
 
-  if (error) throw error;
-  return getReceivableExact(data.id);
+  if (Object.keys(payload).length > 0) {
+    const { error } = await supabase
+      .from('receivables')
+      .update(payload)
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  if (input.funding_account_id) {
+    const current = await getReceivableExact(id);
+    if (!current.funding_account_id) {
+      const { error } = await supabase.rpc('link_receivable_funding_account', {
+        p_receivable_id: id,
+        p_funding_account_id: input.funding_account_id,
+      });
+      if (error) throw error;
+    } else if (current.funding_account_id !== input.funding_account_id) {
+      throw new Error('Tài khoản nguồn đã gắn với khoản phải thu và không thể đổi để bảo toàn lịch sử.');
+    }
+  }
+
+  return getReceivableExact(id);
 }
 
 export async function archiveReceivable(
@@ -225,6 +231,10 @@ export async function getReceivablePayments(receivableId: string): Promise<Recei
 export async function recordReceivablePayment(
   input: ReceivablePaymentInput
 ): Promise<Receivable> {
+  if (!input.receiving_account_id) {
+    throw new Error('Bạn cần chọn tài khoản nhận tiền.');
+  }
+
   const amount = normalizePositive(input.amount, 'Số tiền nhận');
   const principal = normalizeNonNegative(input.principal_amount, 'Tiền gốc');
   const interest = normalizeNonNegative(input.interest_amount, 'Tiền lãi');
@@ -241,8 +251,9 @@ export async function recordReceivablePayment(
   }
 
   const supabase = createReceivablesClient();
-  const { error } = await supabase.rpc('record_receivable_payment', {
+  const { error } = await supabase.rpc('record_receivable_payment_v2', {
     p_receivable_id: input.receivable_id,
+    p_receiving_account_id: input.receiving_account_id,
     p_amount: amount,
     p_principal_amount: principal,
     p_interest_amount: interest,

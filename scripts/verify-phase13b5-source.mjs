@@ -24,7 +24,11 @@ const checks = [
   ['service rechecks outstanding before RPC', service.includes('current.outstanding_amount') && service.includes('Tiền gốc nhận vượt quá dư còn phải thu')],
   ['UI exposes borrower and outstanding semantics', page.includes('Người vay') && page.includes('Dư còn phải thu')],
   ['UI keeps principal and interest separate', page.includes('Tiền gốc') && page.includes('Tiền lãi')],
-  ['UI explicitly avoids silent cashflow classification', page.includes('Chưa tự tạo giao dịch thu tiền vào ví/ngân hàng')],
+  [
+    'UI keeps receivable cashflow classification explicit',
+    page.includes('Chưa tự tạo giao dịch thu tiền vào ví/ngân hàng') ||
+      (page.includes('không tính là chi tiêu') && page.includes('không tính là thu nhập')),
+  ],
 ];
 
 let failures = 0;

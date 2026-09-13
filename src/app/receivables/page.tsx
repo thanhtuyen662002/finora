@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { getAccounts, getAccountBalances } from '@/features/accounts/accounts';
 import {
   archiveReceivable,
   createReceivable,
@@ -26,14 +27,16 @@ import {
   type ReceivablePaymentInput,
   type ReceivableUpdateInput,
 } from '@/features/receivables';
+import type { AccountRow } from '@/types/database';
 import { addExactDecimals, compareExactDecimals, computeBasisPoints, formatExactDecimal, formatExactMoney } from '@/lib/money';
-import { AlertCircle, CalendarClock, CheckCircle2, Edit3, HandCoins, History, Plus, RefreshCw, UserRound } from 'lucide-react';
+import { AlertCircle, CalendarClock, CheckCircle2, Edit3, HandCoins, History, Plus, RefreshCw, UserRound, WalletCards } from 'lucide-react';
 
 type ReceivableFormState = {
   name: string;
   borrower_name: string;
   principal_amount: string;
   currency_code: string;
+  funding_account_id: string;
   interest_rate: string;
   expected_payment: string;
   payment_frequency: ReceivablePaymentFrequency;
@@ -43,6 +46,7 @@ type ReceivableFormState = {
 };
 
 type PaymentFormState = {
+  receiving_account_id: string;
   amount: string;
   principal_amount: string;
   interest_amount: string;
@@ -52,15 +56,29 @@ type PaymentFormState = {
 
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyForm = (): ReceivableFormState => ({
-  name: '', borrower_name: '', principal_amount: '', currency_code: 'VND', interest_rate: '0',
-  expected_payment: '', payment_frequency: 'ONE_TIME', first_due_date: '', due_day: '', note: '',
+  name: '',
+  borrower_name: '',
+  principal_amount: '',
+  currency_code: 'VND',
+  funding_account_id: '',
+  interest_rate: '0',
+  expected_payment: '',
+  payment_frequency: 'ONE_TIME',
+  first_due_date: '',
+  due_day: '',
+  note: '',
 });
 
 function formatDate(value: string | null) {
   if (!value) return 'Chưa đặt';
   const parsed = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(parsed);
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(parsed);
 }
 
 function daysUntil(value: string | null) {
@@ -88,6 +106,8 @@ function SummaryCard({ label, value, detail, icon }: { label: string; value: Rea
 
 export default function ReceivablesPage() {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [accountBalances, setAccountBalances] = useState<Record<string, string>>({});
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -100,7 +120,14 @@ export default function ReceivablesPage() {
   const [formSubmitting, setFormSubmitting] = useState(false);
 
   const [paymentTarget, setPaymentTarget] = useState<Receivable | null>(null);
-  const [paymentForm, setPaymentForm] = useState<PaymentFormState>({ amount: '', principal_amount: '', interest_amount: '0', paid_on: today(), note: '' });
+  const [paymentForm, setPaymentForm] = useState<PaymentFormState>({
+    receiving_account_id: '',
+    amount: '',
+    principal_amount: '',
+    interest_amount: '0',
+    paid_on: today(),
+    note: '',
+  });
   const [paymentError, setPaymentError] = useState('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
 
@@ -112,9 +139,16 @@ export default function ReceivablesPage() {
     try {
       setLoading(true);
       setErrorMessage('');
-      setReceivables(await getReceivables({ includeArchived }));
+      const [receivableRows, accountRows, balances] = await Promise.all([
+        getReceivables({ includeArchived }),
+        getAccounts(),
+        getAccountBalances(),
+      ]);
+      setReceivables(receivableRows);
+      setAccounts(accountRows);
+      setAccountBalances(balances);
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : 'Không thể tải danh sách khoản phải thu.');
+      setErrorMessage(error instanceof Error ? error.message : 'Không thể tải dữ liệu khoản phải thu.');
     } finally {
       setLoading(false);
     }
@@ -126,9 +160,15 @@ export default function ReceivablesPage() {
   }, [loadData]);
 
   const active = useMemo(() => receivables.filter((item) => !item.is_archived), [receivables]);
+  const eligibleAccounts = useMemo(
+    () => accounts.filter((account) => !account.is_archived && account.type !== 'CREDIT_CARD'),
+    [accounts]
+  );
   const totals = useMemo(() => {
     const result: Record<string, string> = {};
-    for (const item of active) result[item.currency_code] = addExactDecimals(result[item.currency_code] || '0.0000', item.outstanding_amount);
+    for (const item of active) {
+      result[item.currency_code] = addExactDecimals(result[item.currency_code] || '0.0000', item.outstanding_amount);
+    }
     return result;
   }, [active]);
   const dueSoon = useMemo(() => active.filter((item) => {
@@ -140,9 +180,21 @@ export default function ReceivablesPage() {
     return days !== null && days < 0 && compareExactDecimals(item.outstanding_amount, '0.0000') > 0;
   }).length, [active]);
 
+  const accountOptions = (currency?: string) => eligibleAccounts
+    .filter((account) => !currency || account.currency_code === currency)
+    .map((account) => ({
+      value: account.id,
+      label: `${account.name} · ${formatExactMoney(accountBalances[account.id] || '0', account.currency_code)}`,
+    }));
+
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm());
+    const firstAccount = eligibleAccounts[0];
+    setForm({
+      ...emptyForm(),
+      funding_account_id: firstAccount?.id || '',
+      currency_code: firstAccount?.currency_code || 'VND',
+    });
     setFormError('');
     setFormOpen(true);
   };
@@ -154,6 +206,7 @@ export default function ReceivablesPage() {
       borrower_name: item.borrower_name,
       principal_amount: item.principal_amount,
       currency_code: item.currency_code,
+      funding_account_id: item.funding_account_id || '',
       interest_rate: item.interest_rate,
       expected_payment: item.expected_payment || '',
       payment_frequency: item.payment_frequency,
@@ -165,15 +218,26 @@ export default function ReceivablesPage() {
     setFormOpen(true);
   };
 
+  const handleFundingAccountChange = (accountId: string) => {
+    const account = eligibleAccounts.find((item) => item.id === accountId);
+    setForm((current) => ({
+      ...current,
+      funding_account_id: accountId,
+      currency_code: account?.currency_code || current.currency_code,
+    }));
+  };
+
   const saveReceivable = async (event: React.FormEvent) => {
     event.preventDefault();
     setFormSubmitting(true);
     setFormError('');
     try {
+      if (!form.funding_account_id) throw new Error('Bạn cần chọn nguồn tiền cho vay.');
       if (editing) {
         const input: ReceivableUpdateInput = {
           name: form.name,
           borrower_name: form.borrower_name,
+          funding_account_id: form.funding_account_id,
           interest_rate: form.interest_rate,
           expected_payment: form.expected_payment || null,
           payment_frequency: form.payment_frequency,
@@ -189,6 +253,7 @@ export default function ReceivablesPage() {
           borrower_name: form.borrower_name,
           principal_amount: form.principal_amount,
           currency_code: form.currency_code,
+          funding_account_id: form.funding_account_id,
           interest_rate: form.interest_rate,
           expected_payment: form.expected_payment || null,
           payment_frequency: form.payment_frequency,
@@ -197,7 +262,7 @@ export default function ReceivablesPage() {
           note: form.note || null,
         };
         await createReceivable(input);
-        setNoticeMessage('Đã thêm khoản phải thu mới.');
+        setNoticeMessage('Đã tạo khoản phải thu và trừ tiền khỏi tài khoản nguồn.');
       }
       setFormOpen(false);
       await loadData();
@@ -221,8 +286,16 @@ export default function ReceivablesPage() {
   };
 
   const openPayment = (item: Receivable) => {
+    const firstReceiving = eligibleAccounts.find((account) => account.currency_code === item.currency_code);
     setPaymentTarget(item);
-    setPaymentForm({ amount: '', principal_amount: '', interest_amount: '0', paid_on: today(), note: '' });
+    setPaymentForm({
+      receiving_account_id: firstReceiving?.id || '',
+      amount: '',
+      principal_amount: '',
+      interest_amount: '0',
+      paid_on: today(),
+      note: '',
+    });
     setPaymentError('');
   };
 
@@ -233,6 +306,7 @@ export default function ReceivablesPage() {
     setPaymentError('');
     const input: ReceivablePaymentInput = {
       receivable_id: paymentTarget.id,
+      receiving_account_id: paymentForm.receiving_account_id,
       amount: paymentForm.amount,
       principal_amount: paymentForm.principal_amount,
       interest_amount: paymentForm.interest_amount,
@@ -242,7 +316,7 @@ export default function ReceivablesPage() {
     try {
       await recordReceivablePayment(input);
       setPaymentTarget(null);
-      setNoticeMessage('Đã ghi nhận người vay trả tiền và cập nhật dư còn phải thu.');
+      setNoticeMessage('Đã thu tiền: gốc hoàn về tài khoản, phần lãi được ghi nhận là thu nhập.');
       setPayments((current) => {
         const next = { ...current };
         delete next[input.receivable_id];
@@ -276,7 +350,7 @@ export default function ReceivablesPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Khoản phải thu" subtitle="Theo dõi tiền người khác đang nợ bạn, hạn trả và lịch sử thu hồi gốc/lãi.">
+      <PageHeader title="Khoản phải thu" subtitle="Theo dõi tiền người khác đang nợ bạn và dòng tiền thực tế giữa khoản phải thu với ví/tài khoản.">
         <Button variant="outline" size="sm" onClick={() => void loadData()}><RefreshCw className="h-4 w-4" />Làm mới</Button>
         <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" />Thêm khoản phải thu</Button>
       </PageHeader>
@@ -298,15 +372,19 @@ export default function ReceivablesPage() {
         </Card>
       </div>
 
+      <div className="finora-notice-warning rounded-lg border px-4 py-3 text-sm">
+        <strong>Nguyên tắc dòng tiền:</strong> cho vay chỉ chuyển tài sản từ ví/tài khoản sang khoản phải thu nên không tính là chi tiêu. Khi thu nợ, tiền gốc quay lại tài khoản và chỉ phần lãi được tính là thu nhập.
+      </div>
+
       <div className="flex items-center justify-between gap-3">
-        <div><h2 className="text-lg font-semibold">Danh sách khoản phải thu</h2><p className="text-sm text-muted-foreground">Dư gốc là số tiền người vay còn phải hoàn lại cho bạn.</p></div>
+        <div><h2 className="text-lg font-semibold">Danh sách khoản phải thu</h2><p className="text-sm text-muted-foreground">Mỗi khoản mới phải chọn nguồn tiền thực tế dùng để cho vay.</p></div>
         <Button variant={includeArchived ? 'default' : 'outline'} size="sm" onClick={() => setIncludeArchived((value) => !value)}>{includeArchived ? 'Đang hiện đã lưu trữ' : 'Hiện đã lưu trữ'}</Button>
       </div>
 
       {loading ? (
         <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">Đang tải khoản phải thu...</CardContent></Card>
       ) : receivables.length === 0 ? (
-        <EmptyState icon={HandCoins} title="Chưa có khoản phải thu" description="Thêm khoản đầu tiên khi có người mượn tiền bạn để theo dõi dư còn phải thu và lịch sử hoàn trả." actionLabel="Thêm khoản phải thu" onAction={openCreate} />
+        <EmptyState icon={HandCoins} title="Chưa có khoản phải thu" description="Thêm khoản đầu tiên và chọn ví/tài khoản đã dùng để đưa tiền cho người vay." actionLabel="Thêm khoản phải thu" onAction={openCreate} />
       ) : (
         <div className="space-y-4">
           {receivables.map((item) => {
@@ -319,8 +397,13 @@ export default function ReceivablesPage() {
                 <CardHeader className="pb-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="flex flex-wrap items-center gap-2"><CardTitle className="text-lg">{item.name}</CardTitle>{settled && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600"><CheckCircle2 className="h-3 w-3" />Đã thu đủ gốc</span>}{item.is_archived && <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">Đã lưu trữ</span>}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CardTitle className="text-lg">{item.name}</CardTitle>
+                        {settled && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600"><CheckCircle2 className="h-3 w-3" />Đã thu đủ gốc</span>}
+                        {item.is_archived && <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">Đã lưu trữ</span>}
+                      </div>
                       <CardDescription className="mt-1">Người vay: <strong className="text-foreground">{item.borrower_name}</strong> · {RECEIVABLE_FREQUENCY_LABELS[item.payment_frequency]} · Hạn {formatDate(item.first_due_date)}</CardDescription>
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><WalletCards className="h-3.5 w-3.5" />Nguồn cho vay: <strong className="text-foreground">{item.funding_account_name || 'Chưa gắn tài khoản nguồn'}</strong></div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {!item.is_archived && !settled && <Button size="sm" onClick={() => openPayment(item)}><HandCoins className="h-4 w-4" />Ghi nhận trả tiền</Button>}
@@ -344,7 +427,7 @@ export default function ReceivablesPage() {
                     <Button variant="ghost" size="sm" onClick={() => void toggleHistory(item.id)}><History className="h-4 w-4" />{expandedId === item.id ? 'Ẩn lịch sử' : `Lịch sử (${item.payment_count})`}</Button>
                   </div>
                   {item.note && <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">{item.note}</div>}
-                  {expandedId === item.id && <div className="rounded-lg border bg-muted/10 p-3"><div className="mb-2 text-sm font-semibold">Lịch sử người vay trả tiền</div>{paymentsLoading === item.id ? <div className="py-3 text-center text-xs text-muted-foreground">Đang tải...</div> : history.length === 0 ? <div className="py-3 text-center text-xs text-muted-foreground">Chưa có lần trả tiền nào.</div> : <div className="space-y-2">{history.map((payment) => <div key={payment.id} className="flex items-center justify-between rounded-md border bg-background px-3 py-2"><div><div className="text-sm font-medium">{formatDate(payment.paid_on)}</div><div className="text-xs text-muted-foreground">Gốc {formatExactMoney(payment.principal_amount, payment.currency_code)} · Lãi {formatExactMoney(payment.interest_amount, payment.currency_code)}</div></div><strong className="text-sm">{formatExactMoney(payment.amount, payment.currency_code)}</strong></div>)}</div>}</div>}
+                  {expandedId === item.id && <div className="rounded-lg border bg-muted/10 p-3"><div className="mb-2 text-sm font-semibold">Lịch sử người vay trả tiền</div>{paymentsLoading === item.id ? <div className="py-3 text-center text-xs text-muted-foreground">Đang tải...</div> : history.length === 0 ? <div className="py-3 text-center text-xs text-muted-foreground">Chưa có lần trả tiền nào.</div> : <div className="space-y-2">{history.map((payment) => <div key={payment.id} className="flex flex-col gap-1 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-sm font-medium">{formatDate(payment.paid_on)} · {payment.receiving_account_name || 'Khoản cũ chưa gắn tài khoản nhận'}</div><div className="text-xs text-muted-foreground">Gốc {formatExactMoney(payment.principal_amount, payment.currency_code)} · Lãi {formatExactMoney(payment.interest_amount, payment.currency_code)}</div></div><strong className="text-sm">{formatExactMoney(payment.amount, payment.currency_code)}</strong></div>)}</div>}</div>}
                 </CardContent>
               </Card>
             );
@@ -353,27 +436,15 @@ export default function ReceivablesPage() {
       )}
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[560px]">
-          <DialogHeader><DialogTitle>{editing ? 'Sửa khoản phải thu' : 'Thêm khoản phải thu'}</DialogTitle><DialogDescription>Ghi lại tiền người khác đang nợ bạn. Dư gốc giảm khi bạn ghi nhận họ trả tiền.</DialogDescription></DialogHeader>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[580px]">
+          <DialogHeader><DialogTitle>{editing ? 'Sửa khoản phải thu' : 'Thêm khoản phải thu'}</DialogTitle><DialogDescription>Chọn đúng ví/tài khoản thực tế đã dùng để đưa tiền cho người vay.</DialogDescription></DialogHeader>
           <form onSubmit={saveReceivable} className="space-y-4">
             {formError && <div className="finora-notice-error rounded-lg border px-3 py-2 text-sm">{formError}</div>}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5"><Label htmlFor="rName">Tên khoản</Label><Input id="rName" value={form.name} onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))} required /></div>
-              <div className="space-y-1.5"><Label htmlFor="rBorrower">Người vay</Label><Input id="rBorrower" value={form.borrower_name} onChange={(e) => setForm((v) => ({ ...v, borrower_name: e.target.value }))} required /></div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5"><Label htmlFor="rPrincipal">Số tiền gốc ({form.currency_code})</Label><MoneyInput id="rPrincipal" value={form.principal_amount} onChange={(value) => setForm((v) => ({ ...v, principal_amount: value }))} currencyCode={form.currency_code} disabled={Boolean(editing)} required /></div>
-              <div className="space-y-1.5"><Label htmlFor="rCurrency">Tiền tệ</Label><Input id="rCurrency" value={form.currency_code} onChange={(e) => setForm((v) => ({ ...v, currency_code: e.target.value.toUpperCase() }))} maxLength={5} disabled={Boolean(editing)} required /></div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5"><Label htmlFor="rInterest">Lãi suất (%)</Label><Input id="rInterest" inputMode="decimal" value={form.interest_rate} onChange={(e) => setForm((v) => ({ ...v, interest_rate: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label htmlFor="rExpected">Dự kiến thu mỗi kỳ</Label><MoneyInput id="rExpected" value={form.expected_payment} onChange={(value) => setForm((v) => ({ ...v, expected_payment: value }))} currencyCode={form.currency_code} /></div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5"><Label htmlFor="rFrequency">Chu kỳ trả</Label><Select id="rFrequency" value={form.payment_frequency} onChange={(e) => setForm((v) => ({ ...v, payment_frequency: e.target.value as ReceivablePaymentFrequency }))} options={Object.entries(RECEIVABLE_FREQUENCY_LABELS).map(([value, label]) => ({ value, label }))} /></div>
-              <div className="space-y-1.5"><Label htmlFor="rDue">Ngày đến hạn đầu</Label><Input id="rDue" type="date" value={form.first_due_date} onChange={(e) => setForm((v) => ({ ...v, first_due_date: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label htmlFor="rDueDay">Ngày trong tháng</Label><Input id="rDueDay" type="number" min={1} max={31} value={form.due_day} onChange={(e) => setForm((v) => ({ ...v, due_day: e.target.value }))} /></div>
-            </div>
+            <div className="space-y-1.5"><Label htmlFor="rFunding">Nguồn tiền cho vay</Label><Select id="rFunding" value={form.funding_account_id} onChange={(e) => handleFundingAccountChange(e.target.value)} disabled={Boolean(editing?.funding_account_id)} required options={[{ value: '', label: 'Chọn ví / tài khoản' }, ...accountOptions(editing ? form.currency_code : undefined)]} />{editing?.funding_account_id ? <p className="text-xs text-muted-foreground">Nguồn tiền đã phát sinh nên được khóa để bảo toàn lịch sử.</p> : editing ? <p className="text-xs text-amber-600">Khoản cũ chưa có nguồn tiền. Chọn một tài khoản để Finora trừ gốc cho vay vào số dư.</p> : null}</div>
+            <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="rName">Tên khoản</Label><Input id="rName" value={form.name} onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))} required /></div><div className="space-y-1.5"><Label htmlFor="rBorrower">Người vay</Label><Input id="rBorrower" value={form.borrower_name} onChange={(e) => setForm((v) => ({ ...v, borrower_name: e.target.value }))} required /></div></div>
+            <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="rPrincipal">Số tiền gốc ({form.currency_code})</Label><MoneyInput id="rPrincipal" value={form.principal_amount} onChange={(value) => setForm((v) => ({ ...v, principal_amount: value }))} currencyCode={form.currency_code} disabled={Boolean(editing)} required /></div><div className="space-y-1.5"><Label>Tiền tệ</Label><Input value={form.currency_code} disabled /></div></div>
+            <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="rInterest">Lãi suất (%)</Label><Input id="rInterest" inputMode="decimal" value={form.interest_rate} onChange={(e) => setForm((v) => ({ ...v, interest_rate: e.target.value }))} /></div><div className="space-y-1.5"><Label htmlFor="rExpected">Dự kiến thu mỗi kỳ</Label><MoneyInput id="rExpected" value={form.expected_payment} onChange={(value) => setForm((v) => ({ ...v, expected_payment: value }))} currencyCode={form.currency_code} /></div></div>
+            <div className="grid gap-4 sm:grid-cols-3"><div className="space-y-1.5"><Label htmlFor="rFrequency">Chu kỳ trả</Label><Select id="rFrequency" value={form.payment_frequency} onChange={(e) => setForm((v) => ({ ...v, payment_frequency: e.target.value as ReceivablePaymentFrequency }))} options={Object.entries(RECEIVABLE_FREQUENCY_LABELS).map(([value, label]) => ({ value, label }))} /></div><div className="space-y-1.5"><Label htmlFor="rDue">Ngày đến hạn đầu</Label><Input id="rDue" type="date" value={form.first_due_date} onChange={(e) => setForm((v) => ({ ...v, first_due_date: e.target.value }))} /></div><div className="space-y-1.5"><Label htmlFor="rDueDay">Ngày trong tháng</Label><Input id="rDueDay" type="number" min={1} max={31} value={form.due_day} onChange={(e) => setForm((v) => ({ ...v, due_day: e.target.value }))} /></div></div>
             <div className="space-y-1.5"><Label htmlFor="rNote">Ghi chú</Label><textarea id="rNote" value={form.note} onChange={(e) => setForm((v) => ({ ...v, note: e.target.value }))} rows={3} maxLength={1000} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Hủy</Button><Button type="submit" disabled={formSubmitting}>{formSubmitting ? 'Đang lưu...' : editing ? 'Lưu thay đổi' : 'Tạo khoản phải thu'}</Button></DialogFooter>
           </form>
@@ -381,16 +452,13 @@ export default function ReceivablesPage() {
       </Dialog>
 
       <Dialog open={Boolean(paymentTarget)} onOpenChange={(open) => !open && setPaymentTarget(null)}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[540px]">
           <DialogHeader><DialogTitle>Ghi nhận người vay trả tiền</DialogTitle><DialogDescription>{paymentTarget ? `${paymentTarget.borrower_name} · còn phải thu ${formatExactMoney(paymentTarget.outstanding_amount, paymentTarget.currency_code)}` : ''}</DialogDescription></DialogHeader>
           <form onSubmit={savePayment} className="space-y-4">
             {paymentError && <div className="finora-notice-error rounded-lg border px-3 py-2 text-sm">{paymentError}</div>}
-            <div className="finora-notice-warning rounded-lg border px-3 py-2 text-xs">Bản này cập nhật sổ khoản phải thu và tách gốc/lãi. Chưa tự tạo giao dịch thu tiền vào ví/ngân hàng để tránh tính tiền gốc hoàn lại thành thu nhập.</div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5"><Label htmlFor="pTotal">Tổng nhận</Label><MoneyInput id="pTotal" value={paymentForm.amount} onChange={(value) => setPaymentForm((v) => ({ ...v, amount: value }))} currencyCode={paymentTarget?.currency_code || 'VND'} required /></div>
-              <div className="space-y-1.5"><Label htmlFor="pPrincipal">Tiền gốc</Label><MoneyInput id="pPrincipal" value={paymentForm.principal_amount} onChange={(value) => setPaymentForm((v) => ({ ...v, principal_amount: value }))} currencyCode={paymentTarget?.currency_code || 'VND'} required /></div>
-              <div className="space-y-1.5"><Label htmlFor="pInterest">Tiền lãi</Label><MoneyInput id="pInterest" value={paymentForm.interest_amount} onChange={(value) => setPaymentForm((v) => ({ ...v, interest_amount: value }))} currencyCode={paymentTarget?.currency_code || 'VND'} /></div>
-            </div>
+            <div className="space-y-1.5"><Label htmlFor="pAccount">Tài khoản nhận tiền</Label><Select id="pAccount" value={paymentForm.receiving_account_id} onChange={(e) => setPaymentForm((v) => ({ ...v, receiving_account_id: e.target.value }))} required options={[{ value: '', label: 'Chọn ví / tài khoản nhận' }, ...accountOptions(paymentTarget?.currency_code)]} /></div>
+            <div className="finora-notice-warning rounded-lg border px-3 py-2 text-xs">Tiền gốc sẽ cộng lại vào số dư tài khoản nhận nhưng không tính là thu nhập. Chỉ phần tiền lãi được tạo thành giao dịch thu nhập.</div>
+            <div className="grid gap-4 sm:grid-cols-3"><div className="space-y-1.5"><Label htmlFor="pTotal">Tổng nhận</Label><MoneyInput id="pTotal" value={paymentForm.amount} onChange={(value) => setPaymentForm((v) => ({ ...v, amount: value }))} currencyCode={paymentTarget?.currency_code || 'VND'} required /></div><div className="space-y-1.5"><Label htmlFor="pPrincipal">Tiền gốc</Label><MoneyInput id="pPrincipal" value={paymentForm.principal_amount} onChange={(value) => setPaymentForm((v) => ({ ...v, principal_amount: value }))} currencyCode={paymentTarget?.currency_code || 'VND'} required /></div><div className="space-y-1.5"><Label htmlFor="pInterest">Tiền lãi</Label><MoneyInput id="pInterest" value={paymentForm.interest_amount} onChange={(value) => setPaymentForm((v) => ({ ...v, interest_amount: value }))} currencyCode={paymentTarget?.currency_code || 'VND'} /></div></div>
             <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="pDate">Ngày nhận tiền</Label><Input id="pDate" type="date" value={paymentForm.paid_on} onChange={(e) => setPaymentForm((v) => ({ ...v, paid_on: e.target.value }))} required /></div><div className="space-y-1.5"><Label htmlFor="pNote">Ghi chú</Label><Input id="pNote" value={paymentForm.note} onChange={(e) => setPaymentForm((v) => ({ ...v, note: e.target.value }))} /></div></div>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setPaymentTarget(null)}>Hủy</Button><Button type="submit" disabled={paymentSubmitting}>{paymentSubmitting ? 'Đang ghi nhận...' : 'Xác nhận đã nhận tiền'}</Button></DialogFooter>
           </form>
