@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const checks = [
-  ['migration exists', 'supabase/migrations/20260909100000_phase_13b3_debt_reminders.sql', /debt_reminders_enabled/],
+  ['migration exists', 'supabase/migrations/20260909080938_phase_13b3_debt_reminders.sql', /debt_reminders_enabled/],
   ['notification kind exists', 'src/features/notifications/types.ts', /DEBT_REMINDER/],
   ['debt notification route exists', 'src/features/notifications/notifications.ts', /href: '\/debts'/],
   ['debt reminder domain is pure', 'src/features/debts/reminders.ts', /export function getDebtReminders/],
