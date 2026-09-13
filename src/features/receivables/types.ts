@@ -22,6 +22,9 @@ export type Receivable = {
   is_archived: boolean;
   created_at: string;
   updated_at: string;
+  funding_account_id: string | null;
+  funding_account_name: string | null;
+  funding_account_type: string | null;
   received_principal_amount: string;
   received_interest_amount: string;
   payment_count: number;
@@ -37,6 +40,9 @@ export type ReceivablePayment = {
   paid_on: string;
   note: string | null;
   created_at: string;
+  receiving_account_id: string | null;
+  receiving_account_name: string | null;
+  interest_transaction_id: string | null;
   receivable_name: string;
   borrower_name: string;
   currency_code: string;
@@ -47,6 +53,7 @@ export type ReceivableCreateInput = {
   borrower_name: string;
   principal_amount: string;
   currency_code: string;
+  funding_account_id: string;
   interest_rate?: string;
   expected_payment?: string | null;
   payment_frequency: ReceivablePaymentFrequency;
@@ -56,13 +63,15 @@ export type ReceivableCreateInput = {
 };
 
 export type ReceivableUpdateInput = Partial<
-  Omit<ReceivableCreateInput, 'principal_amount' | 'currency_code'>
+  Omit<ReceivableCreateInput, 'principal_amount' | 'currency_code' | 'funding_account_id'>
 > & {
+  funding_account_id?: string;
   is_archived?: boolean;
 };
 
 export type ReceivablePaymentInput = {
   receivable_id: string;
+  receiving_account_id: string;
   amount: string;
   principal_amount: string;
   interest_amount: string;
