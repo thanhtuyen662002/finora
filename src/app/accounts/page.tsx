@@ -11,12 +11,14 @@ import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/finance/EmptyState';
 import { Plus, Wallet, Globe, ArrowRightLeft } from 'lucide-react';
 import { getAccounts, createAccount, updateAccount, getAccountBalances } from '@/features/accounts/accounts';
+import { getDebts } from '@/features/debts';
 import { AddTransferModal } from '@/components/finance/AddTransferModal';
 import type { AccountRow, AccountInsert, AccountUpdate } from '@/types/database';
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [balances, setBalances] = useState<Record<string, string>>({});
+  const [debtOutstandingById, setDebtOutstandingById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
@@ -32,12 +34,14 @@ export default function AccountsPage() {
     try {
       setLoading(true);
       setErrorMessage('');
-      const [accountsData, balancesData] = await Promise.all([
+      const [accountsData, balancesData, debtsData] = await Promise.all([
         getAccounts(),
         getAccountBalances(),
+        getDebts(),
       ]);
       setAccounts(accountsData);
       setBalances(balancesData);
+      setDebtOutstandingById(Object.fromEntries(debtsData.map((debt) => [debt.id, debt.outstanding_amount])));
     } catch (err: unknown) {
       console.error('Failed to load accounts', err);
       setErrorMessage(err instanceof Error ? err.message : 'Không thể tải danh sách tài khoản');
@@ -203,7 +207,12 @@ export default function AccountsPage() {
               .slice((accountPage - 1) * accountPageSize, accountPage * accountPageSize)
               .map((account) => (
                 <div key={account.id} className="relative group">
-                  <AccountCard account={account} currentBalance={balances[account.id]} variant="detailed" />
+                  <AccountCard
+                    account={account}
+                    currentBalance={balances[account.id]}
+                    linkedDebtOutstanding={account.linked_debt_id ? debtOutstandingById[account.linked_debt_id] : null}
+                    variant="detailed"
+                  />
                   <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
                       variant="ghost"
@@ -278,3 +287,4 @@ export default function AccountsPage() {
     </AppShell>
   );
 }
+

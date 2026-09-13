@@ -1,16 +1,17 @@
 import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(path, 'utf8');
+const migrationPath = 'supabase/migrations/20260909071009_phase_13b2_cross_currency_repayments.sql';
 const checks = [
   ['Phase 13B2 contract exists', fs.existsSync('docs/PHASE_13B2_CONTRACT.md')],
-  ['Additive Phase 13B2 migration exists', fs.existsSync('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql')],
-  ['Migration defines the explicit v2 RPC', read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql').includes('record_debt_payment_v2')],
-  ['Migration locks the debt and authenticates the caller', /auth\.uid\(\)[\s\S]*FOR UPDATE/.test(read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql'))],
-  ['Migration rejects precision loss', read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql').includes('round(p_exchange_rate, 12)')],
-  ['Migration validates cross-currency reconciliation', read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql').includes('round(p_account_amount * p_exchange_rate, 4)')],
-  ['Migration writes historical FX provenance', read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql').includes('INSERT INTO public.transaction_fx_snapshots')],
-  ['Migration uses an empty search path for definer functions', (read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql').match(/SET search_path = ''/g) || []).length >= 2],
-  ['Migration grants v2 only to authenticated', read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql').includes('GRANT EXECUTE ON FUNCTION public.record_debt_payment_v2') && read('supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql').includes(') TO authenticated')],
+  ['Additive Phase 13B2 migration exists', fs.existsSync(migrationPath)],
+  ['Migration defines the explicit v2 RPC', read(migrationPath).includes('record_debt_payment_v2')],
+  ['Migration locks the debt and authenticates the caller', /auth\.uid\(\)[\s\S]*FOR UPDATE/.test(read(migrationPath))],
+  ['Migration rejects precision loss', read(migrationPath).includes('round(p_exchange_rate, 12)')],
+  ['Migration validates cross-currency reconciliation', read(migrationPath).includes('round(p_account_amount * p_exchange_rate, 4)')],
+  ['Migration writes historical FX provenance', read(migrationPath).includes('INSERT INTO public.transaction_fx_snapshots')],
+  ['Migration uses an empty search path for definer functions', (read(migrationPath).match(/SET search_path = ''/g) || []).length >= 2],
+  ['Migration grants v2 only to authenticated', read(migrationPath).includes('GRANT EXECUTE ON FUNCTION public.record_debt_payment_v2') && read(migrationPath).includes(') TO authenticated')],
   ['Client normalizer uses exact decimal FX math', read('src/features/debts/payment-domain.ts').includes('convertExactAmount') && read('src/features/debts/payment-domain.ts').includes('toExactRate')],
   ['Client normalizer rejects silent relabeling', read('src/features/debts/payment-domain.ts').includes('Cùng tiền tệ phải dùng tỷ giá 1:1')],
   ['Debt service calls only v2 for new payments', read('src/features/debts/debts.ts').includes("rpc('record_debt_payment_v2'")],

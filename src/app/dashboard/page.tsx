@@ -488,6 +488,8 @@ function DashboardContent() {
                       type: acc.type,
                       currency_code: acc.currency,
                       opening_balance: 0,
+                      credit_limit: null,
+                      linked_debt_id: null,
                       institution: acc.institution,
                       color: acc.color,
                       is_archived: acc.isArchived,
@@ -575,3 +577,4 @@ function DashboardContent() {
     </>
   );
 }
+

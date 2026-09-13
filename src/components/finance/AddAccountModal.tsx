@@ -17,6 +17,8 @@ import { Select } from '@/components/ui/select';
 import { PlusCircle, Check } from 'lucide-react';
 import { MoneyInput } from './MoneyInput';
 import type { AccountRow, AccountInsert, AccountUpdate, AccountType } from '@/types/database';
+import { getDebts } from '@/features/debts';
+import type { Debt } from '@/features/debts/types';
 
 interface AddAccountModalProps {
   open: boolean;
@@ -35,6 +37,9 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   const [type, setType] = useState<AccountType>('BANK');
   const [currencyCode, setCurrencyCode] = useState('VND');
   const [balance, setBalance] = useState('');
+  const [creditLimit, setCreditLimit] = useState('');
+  const [linkedDebtId, setLinkedDebtId] = useState('');
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [institution, setInstitution] = useState('');
   const [color, setColor] = useState('#005a3c');
   const [submitted, setSubmitted] = useState(false);
@@ -48,6 +53,8 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
       setType(initialData.type as AccountType);
       setCurrencyCode(initialData.currency_code);
       setBalance(initialData.opening_balance?.toString() || '');
+      setCreditLimit(initialData.credit_limit?.toString() || '');
+      setLinkedDebtId(initialData.linked_debt_id || '');
       setInstitution(initialData.institution || '');
       setColor(initialData.color);
     } else {
@@ -55,12 +62,15 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
       setType('BANK');
       setCurrencyCode('VND');
       setBalance('');
+      setCreditLimit('');
+      setLinkedDebtId('');
       setInstitution('');
       setColor('#005a3c');
     }
 
     setErrorMsg('');
     setSubmitted(false);
+    void getDebts().then(setDebts).catch(() => setDebts([]));
   }, [open, initialData]);
 
   const colors = [
@@ -90,6 +100,16 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
       return;
     }
 
+    const normalizedCreditLimit = creditLimit.trim();
+    if (linkedDebtId && (!normalizedCreditLimit || !/^\d+(?:\.\d{1,4})?$/.test(normalizedCreditLimit))) {
+      setErrorMsg('Tài khoản liên kết khoản nợ phải có hạn mức tín dụng hợp lệ.');
+      return;
+    }
+    if (linkedDebtId && balance.trim() && balance.trim() !== '0') {
+      setErrorMsg('Tài khoản tín dụng nên có số dư khởi tạo bằng 0; dư nợ được theo dõi ở mục Khoản nợ.');
+      return;
+    }
+
     setSubmitted(true);
     setErrorMsg('');
 
@@ -100,6 +120,8 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
           type,
           currency_code: upperCurrency,
           opening_balance: normalizedBalance,
+          credit_limit: normalizedCreditLimit || null,
+          linked_debt_id: linkedDebtId || null,
           institution: institution.trim() || null,
           color,
         });
@@ -141,6 +163,39 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               autoFocus
             />
           </div>
+          {(type === 'CREDIT_CARD' || type === 'EWALLET' || Boolean(linkedDebtId)) && (
+            <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Hạn mức & liên kết khoản nợ</p>
+                <p className="text-xs text-muted-foreground">Mỗi chi tiêu mới bằng tài khoản này sẽ tự cộng vào dư nợ liên kết.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="creditLimit">Hạn mức tín dụng ({currencyCode || 'VND'})</Label>
+                <MoneyInput
+                  id="creditLimit"
+                  currencyCode={currencyCode || 'VND'}
+                  placeholder="Ví dụ: 15.000.000"
+                  value={creditLimit}
+                  onChange={(val) => setCreditLimit(val)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="linkedDebt">Khoản nợ liên kết</Label>
+                <Select
+                  id="linkedDebt"
+                  value={linkedDebtId}
+                  onChange={(e) => setLinkedDebtId(e.target.value)}
+                  options={[
+                    { value: '', label: '-- Chưa liên kết --' },
+                    ...debts
+                      .filter((debt) => debt.currency_code === currencyCode.toUpperCase() && !debt.is_archived)
+                      .map((debt) => ({ value: debt.id, label: `${debt.name} (${debt.outstanding_amount} ${debt.currency_code})` })),
+                  ]}
+                />
+                {debts.length === 0 && <p className="text-xs text-muted-foreground">Hãy tạo khoản nợ trước tại mục Khoản nợ.</p>}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="accType">Loại tài khoản</Label>
@@ -220,3 +275,4 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
     </Dialog>
   );
 };
+
