@@ -169,7 +169,7 @@ test('report aggregation never includes another account currency', () => {
 test('source contract keeps the new RPC and FX snapshot boundary explicit', async () => {
   const fs = await import('node:fs/promises');
   const migration = await fs.readFile(
-    new URL('../supabase/migrations/20260909065158_phase_13b2_cross_currency_repayments.sql', import.meta.url),
+    new URL('../supabase/migrations/20260909071009_phase_13b2_cross_currency_repayments.sql', import.meta.url),
     'utf8'
   );
 

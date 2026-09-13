@@ -1535,3 +1535,28 @@ PHASE_13B3_CI=PASS_GITHUB_RUN_34328043105
 PHASE_13B3_PRODUCTION=PASS_VERCEL_dpl_J6zgLPpriA3Msri7UmdDxmswUQCX
 PHASE_13B3_OWNER_DATA_MUTATION=NONE
 ```
+
+## Phase 13B-4 — Credit / Pay-Later Account Linkage
+
+### Status: IMPLEMENTED / PENDING REMOTE MIGRATION AND PRODUCTION DEPLOYMENT
+
+Credit-card and pay-later accounts can now optionally declare a credit limit and
+link to one owner-scoped debt. Active expense transactions on a linked account
+atomically increase that debt's outstanding amount; voiding or editing a
+transaction removes only the active outstanding effect. A purchase that would
+exceed the configured limit is rejected. Repayments continue to use the Phase
+13B-2 principal/interest split, so a 2,500,000 VND payment can reduce principal
+by 2,100,000 VND and record 400,000 VND as fee/interest.
+
+- Migration: `supabase/migrations/20260911130000_phase_13b4_credit_account_linkage.sql`
+- Account UI: credit limit and debt-link fields in `AddAccountModal`; linked-account cards show remaining limit and usage.
+- Safety: owner-scoped composite foreign key, one account per linked debt, currency match, over-limit guard, no database seed or data rewrite.
+- Verification: `git diff --check` PASS. Full npm gates are pending because this sandbox lacks `node_modules` and package installation is currently unavailable.
+
+```text
+PHASE_13B4_SOURCE_IMPLEMENTATION=COMPLETE
+PHASE_13B4_REMOTE_MIGRATION=PENDING_PERMISSION
+PHASE_13B4_DATA_MUTATION=NONE
+PHASE_13B4_PRODUCTION=NOT_DEPLOYED
+```
+

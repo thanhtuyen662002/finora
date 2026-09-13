@@ -11,13 +11,14 @@ import {
 import type { AccountRow } from '@/types/database';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyBadge } from './CurrencyBadge';
-import { formatExactMoney } from '@/lib/money';
+import { compareExactDecimals, formatExactMoney, subExactDecimals } from '@/lib/money';
 import { RevealableBalance } from './RevealableBalance';
 import { getAccountTypeLabel } from '@/features/accounts';
 
 interface AccountCardProps {
   account: AccountRow;
   currentBalance?: number | string;
+  linkedDebtOutstanding?: string | null;
   onClick?: () => void;
   variant?: 'compact' | 'detailed';
 }
@@ -25,6 +26,7 @@ interface AccountCardProps {
 export const AccountCard: React.FC<AccountCardProps> = ({
   account,
   currentBalance,
+  linkedDebtOutstanding,
   onClick,
   variant = 'detailed',
 }) => {
@@ -51,6 +53,13 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     String(currentBalance !== undefined ? currentBalance : account.opening_balance),
     account.currency_code
   );
+  const creditLimit = account.credit_limit ? String(account.credit_limit) : null;
+  const rawCreditAvailable = creditLimit && linkedDebtOutstanding !== null && linkedDebtOutstanding !== undefined
+    ? subExactDecimals(creditLimit, linkedDebtOutstanding)
+    : null;
+  const creditAvailable = rawCreditAvailable && compareExactDecimals(rawCreditAvailable, '0.0000') >= 0
+    ? formatExactMoney(rawCreditAvailable, account.currency_code)
+    : null;
 
   if (variant === 'compact') {
     return (
@@ -72,7 +81,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         </div>
         <div className="text-right shrink-0 pl-2">
                     <RevealableBalance
-            value={balanceValue}
+            value={creditAvailable || balanceValue}
             className="block text-sm font-semibold text-foreground"
             ariaLabel={`Số dư ${account.name}`}
           />
@@ -113,15 +122,21 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
         <div className="mt-5 flex items-baseline justify-between pt-2 border-t border-border/60">
           <div>
-            <span className="text-xs text-muted-foreground">{currentBalance !== undefined ? 'Số dư hiện tại' : 'Số dư khởi tạo'}</span>
+            <span className="text-xs text-muted-foreground">{creditAvailable ? 'Hạn mức còn lại' : currentBalance !== undefined ? 'Số dư hiện tại' : 'Số dư khởi tạo'}</span>
             <RevealableBalance
-              value={balanceValue}
+              value={creditAvailable || balanceValue}
               className="block text-lg sm:text-xl font-bold tracking-tight text-foreground"
               ariaLabel={`Số dư ${account.name}`}
             />
           </div>
+          {creditAvailable && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Đã dùng {formatExactMoney(linkedDebtOutstanding || '0', account.currency_code)} / {formatExactMoney(creditLimit || '0', account.currency_code)}
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 };
+
