@@ -53,6 +53,8 @@ CREATE INDEX IF NOT EXISTS idx_receivable_payments_receiving_account
     ON public.receivable_payments(user_id, receiving_account_id)
     WHERE receiving_account_id IS NOT NULL;
 
+-- Preserve all existing view columns in their exact order; append new linkage
+-- columns only at the end so CREATE OR REPLACE remains migration-safe.
 CREATE OR REPLACE VIEW public.receivable_details WITH (security_invoker = true) AS
 SELECT
     r.id,
@@ -71,12 +73,12 @@ SELECT
     r.is_archived,
     r.created_at,
     r.updated_at,
-    r.funding_account_id,
-    fa.name AS funding_account_name,
-    fa.type AS funding_account_type,
     CAST(COALESCE(SUM(p.principal_amount), 0) AS TEXT) AS received_principal_amount,
     CAST(COALESCE(SUM(p.interest_amount), 0) AS TEXT) AS received_interest_amount,
-    COUNT(p.id)::INTEGER AS payment_count
+    COUNT(p.id)::INTEGER AS payment_count,
+    r.funding_account_id,
+    fa.name AS funding_account_name,
+    fa.type AS funding_account_type
 FROM public.receivables r
 LEFT JOIN public.accounts fa
     ON fa.id = r.funding_account_id
@@ -103,12 +105,12 @@ SELECT
     p.paid_on,
     p.note,
     p.created_at,
-    p.receiving_account_id,
-    ra.name AS receiving_account_name,
-    p.interest_transaction_id,
     r.name AS receivable_name,
     r.borrower_name,
-    p.currency_code
+    p.currency_code,
+    p.receiving_account_id,
+    ra.name AS receiving_account_name,
+    p.interest_transaction_id
 FROM public.receivable_payments p
 JOIN public.receivables r
     ON r.id = p.receivable_id
