@@ -6,7 +6,7 @@
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
 - **Current phase:** Phase 13B-6 — Receivable Account Linkage
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-3: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-4/5/6: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-3: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-4/5/6: MERGED / CI PASS / PRODUCTION DEPLOYED / REMOTE MIGRATION PASS — OWNER SMOKE PENDING
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
 - **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
@@ -14,7 +14,7 @@
 - **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
 - **Phase 13A closure receipt:** `docs/receipts/PHASE_13A_CLOSURE.md`
 - **Phase 13A status:** CLOSED / PASS WITH FOLLOW-UPS (production readiness audit complete; no code or database mutation)
-- **Next recommended phase:** Verify that the Phase 13B-4/5/6 migrations are applied on Supabase project `qibfitbnlfgiqctntufr`, then owner smoke-test credit-account purchases, receivable creation, and receivable collection
+- **Next recommended phase:** Owner smoke test for credit-account purchases, receivable creation, and receivable collection (Phase 13B-4/5/6 remote migrations verified 2026-11-05)
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1538,7 +1538,7 @@ PHASE_13B3_OWNER_DATA_MUTATION=NONE
 
 ## Phase 13B-4 — Credit / Pay-Later Account Linkage
 
-### Status: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
+### Status: MERGED / CI PASS / PRODUCTION DEPLOYED / REMOTE MIGRATION PASS
 
 Credit-card and pay-later accounts can now optionally declare a credit limit and
 link to one owner-scoped debt. Active expense transactions on a linked account
@@ -1560,14 +1560,14 @@ by 2,100,000 VND and record 400,000 VND as fee/interest.
 - CI: PASS — GitHub run `34760050674` (typecheck, lint, test, build) on the merge SHA.
 - Vercel production deployment for the merge SHA: completed (`dpl_6Hr3ENvEbbWZX5MGinBNHYBHrDBu`).
 - Source verifier: `scripts/verify-phase13b4-source.mjs` (11/11 PASS, re-run locally).
-- Remote migration: UNVERIFIED — no receipt was recorded, and the Supabase migration catalog was not reachable from this documentation pass.
+- Remote migration: PASS — `20260911130000 phase_13b4_credit_account_linkage` and `20260913203000 phase_13b4_credit_trigger_authority_fix` are in the Supabase migration catalog of `qibfitbnlfgiqctntufr` (read-only check, 2026-11-05).
 - Owner smoke test (linked-account purchase, over-limit rejection, void/edit, repayment): NOT RECORDED.
 
 ```text
 PHASE_13B4_SOURCE_IMPLEMENTATION=COMPLETE
 PHASE_13B4_SOURCE_VERIFIER=PASS_11_OF_11
 PHASE_13B4_CI=PASS_GITHUB_RUN_34760050674
-PHASE_13B4_REMOTE_MIGRATION=UNVERIFIED
+PHASE_13B4_REMOTE_MIGRATION=PASS_REMOTE_20260911130000_20260913203000
 PHASE_13B4_DATA_MUTATION=NONE
 PHASE_13B4_PRODUCTION=APP_DEPLOYED_dpl_6Hr3ENvEbbWZX5MGinBNHYBHrDBu
 PHASE_13B4_OWNER_SMOKE=PENDING
@@ -1575,7 +1575,7 @@ PHASE_13B4_OWNER_SMOKE=PENDING
 
 ## Phase 13B-5 — Receivables (Money Others Owe Me)
 
-### Status: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
+### Status: MERGED / CI PASS / PRODUCTION DEPLOYED / REMOTE MIGRATION PASS
 
 Phase 13B-5 adds a receivable ledger, separate from `public.debts` (which only
 holds the owner's liabilities). A receivable records a borrower, principal,
@@ -1596,20 +1596,20 @@ schedule (one-time, weekly, monthly, quarterly, yearly), and archive state.
 - CI: PASS — GitHub run `34761345276`.
 - Vercel production deployment for the merge SHA: completed (`dpl_DGpE28fMndV6AxMDDMWCiPKQdBuv`).
 - Source verifier: `scripts/verify-phase13b5-source.mjs` (15/15 PASS, re-run locally).
-- Remote migration: UNVERIFIED.
+- Remote migration: PASS — `20260913210000 phase_13b5_receivables` is in the remote migration catalog (read-only check, 2026-11-05).
 
 ```text
 PHASE_13B5_SOURCE_IMPLEMENTATION=COMPLETE
 PHASE_13B5_SOURCE_VERIFIER=PASS_15_OF_15
 PHASE_13B5_CI=PASS_GITHUB_RUN_34761345276
-PHASE_13B5_REMOTE_MIGRATION=UNVERIFIED
+PHASE_13B5_REMOTE_MIGRATION=PASS_REMOTE_20260913210000
 PHASE_13B5_DATA_MUTATION=NONE
 PHASE_13B5_PRODUCTION=APP_DEPLOYED_dpl_DGpE28fMndV6AxMDDMWCiPKQdBuv
 ```
 
 ## Phase 13B-6 — Receivable Account Linkage
 
-### Status: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
+### Status: MERGED / CI PASS / PRODUCTION DEPLOYED / REMOTE MIGRATION PASS
 
 Phase 13B-6 connects receivables to real cash accounts while keeping principal
 out of income and expense reports:
@@ -1632,13 +1632,13 @@ out of income and expense reports:
 - CI: PASS — GitHub run `34763947072`.
 - Vercel production deployment for the merge SHA: completed (`dpl_4or66ZPYd5dhTj5J4phvb4g2C5r5`).
 - Source verifier: `scripts/verify-phase13b6-source.mjs` — 25/25 PASS in CI (Linux). A local Windows checkout reports 24/25: with `core.autocrlf=true` the migration has CRLF line endings, and the `only interest creates INCOME transaction` check matches a literal `\n`. This is a verifier portability issue, not a source defect.
-- Remote migration: UNVERIFIED.
+- Remote migration: PASS — `20260913214500 phase_13b6_receivable_account_linkage` is in the remote migration catalog. Read-only queries (2026-11-05) confirmed: `create_receivable_v2`, `link_receivable_funding_account` and `record_receivable_payment_v2` exist with authenticated EXECUTE; legacy `record_receivable_payment` and the guard function have no authenticated EXECUTE; trigger `guard_receivable_interest_transaction_mutation` is enabled on `public.transactions`; the three linkage columns exist; RLS is enabled on `receivables` and `receivable_payments`; both tables have 0 rows.
 
 ```text
 PHASE_13B6_SOURCE_IMPLEMENTATION=COMPLETE
 PHASE_13B6_SOURCE_VERIFIER=PASS_25_OF_25_CI
 PHASE_13B6_CI=PASS_GITHUB_RUN_34763947072
-PHASE_13B6_REMOTE_MIGRATION=UNVERIFIED
+PHASE_13B6_REMOTE_MIGRATION=PASS_REMOTE_20260913214500
 PHASE_13B6_DATA_MUTATION=NONE
 PHASE_13B6_PRODUCTION=APP_DEPLOYED_dpl_4or66ZPYd5dhTj5J4phvb4g2C5r5
 PHASE_13B6_OWNER_SMOKE=PENDING
@@ -1648,7 +1648,7 @@ PHASE_13B6_OWNER_SMOKE=PENDING
 
 | ID | Finding | Priority |
 | --- | --- | --- |
-| F13B6-OPS-01 | No record that the 13B-4, 13B-4 corrective, 13B-5 and 13B-6 migrations are applied remotely. The deployed app calls `create_receivable_v2` / `record_receivable_payment_v2`, so receivables fail at runtime if 13B-6 is missing. | P1 |
+| ~~F13B6-OPS-01~~ | RESOLVED 2026-11-05: all four Phase 13B-4/5/6 migrations are in the remote migration catalog, and the 13B-6 functions, trigger, columns and RLS were confirmed by read-only queries. | — |
 | F13B6-DATA-01 | The Phase 13D JSON backup export (`src/features/backup/export.ts`) does not include `receivables` or `receivable_payments`. | P2 |
 | F13B6-FIN-01 | Outstanding receivables are not part of dashboard/report net worth. After 13B-6, lending lowers account balances, so net worth temporarily drops by the outstanding principal. | P2 |
 | F13B6-TEST-01 | `verify-phase13b6-source.mjs` depends on LF line endings and fails one check on Windows CRLF checkouts. | P3 |
@@ -1656,6 +1656,7 @@ PHASE_13B6_OWNER_SMOKE=PENDING
 
 ### Next recommended action
 
-1. Check the Supabase migration catalog for `20260911130000`, `20260913203000`, `20260913210000` and `20260913214500` (or their remote versions), and apply the missing ones.
-2. Owner smoke test: create a receivable from a funding account, record a collection with principal + interest, and confirm the account balance changes and the interest appears only as income.
+1. Owner smoke test: create a receivable from a funding account, record a collection with principal + interest, and confirm the account balance changes and the interest appears only as income.
+2. Owner smoke test for Phase 13B-4: a purchase on a linked credit / pay-later account, an over-limit rejection, and a repayment.
+3. Address F13B6-DATA-01 (backup export) and F13B6-FIN-01 (net worth) before relying on receivables for real data.
 
