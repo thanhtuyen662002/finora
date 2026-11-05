@@ -1701,5 +1701,5 @@ PWA_DATABASE_CHANGE=NONE
 | ID | Finding | Priority |
 | --- | --- | --- |
 | F15-PWA-01 | Owner test: install from Chrome on Android/desktop and "Add to Home Screen" on iOS Safari after deployment. | P1 |
-| F15-SEC-01 | `protectedRoutes` in `src/lib/supabase/proxy.ts` does not list `/debts`, `/receivables`, `/notifications` or `/income-sources`. Data stays protected by RLS, but signed-out users reach those pages instead of being redirected to `/login`. Found during this work; not changed here. | P2 |
+| ~~F15-SEC-01~~ | RESOLVED 2026-11-05: `/income-sources`, `/debts`, `/receivables` and `/notifications` added to `protectedRoutes` in `src/lib/supabase/proxy.ts`. New `scripts/verify-protected-routes-source.mjs` (in `npm test`) fails if a top-level page under `src/app` is neither public by design nor protected. | — |
 | F15-PWA-02 | No custom in-app install button; installation relies on the browser's own install UI. | P3 |
