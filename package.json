@@ -20,8 +20,9 @@
     "test:phase13b4:source": "node scripts/verify-phase13b4-source.mjs",
     "test:phase13b5:source": "node scripts/verify-phase13b5-source.mjs",
     "test:phase13b6:source": "node scripts/verify-phase13b6-source.mjs",
-    "test": "npm run test:phase12b:vision && npm run test:phase12c:assistant && npm run test:phase13b2:debt && npm run test:phase13b2:source && npm run test:phase13b3:debt && npm run test:phase13b3:source && npm run test:phase13b4:source && npm run test:phase13b5:source && npm run test:phase13b6:source && npm run test:pwa:source",
-    "test:pwa:source": "node scripts/verify-pwa-source.mjs"
+    "test": "npm run test:phase12b:vision && npm run test:phase12c:assistant && npm run test:phase13b2:debt && npm run test:phase13b2:source && npm run test:phase13b3:debt && npm run test:phase13b3:source && npm run test:phase13b4:source && npm run test:phase13b5:source && npm run test:phase13b6:source && npm run test:pwa:source && npm run test:routes:source",
+    "test:pwa:source": "node scripts/verify-pwa-source.mjs",
+    "test:routes:source": "node scripts/verify-protected-routes-source.mjs"
   },
   "dependencies": {
     "@google/genai": "2.19.0",
