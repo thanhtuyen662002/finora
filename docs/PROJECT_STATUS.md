@@ -5,8 +5,8 @@
 - **Project:** Finora
 - **Repository:** `thanhtuyen662002/finora`
 - **Default branch:** `main`
-- **Current phase:** Phase 13B-3 — On-Demand Debt Reminders
-- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-3: CLOSED / PASS / PRODUCTION DEPLOYED
+- **Current phase:** Phase 13B-6 — Receivable Account Linkage
+- **Phase status:** Phase 12A: CLOSED / PASS | Phase 12B-1/2/3: CLOSED / PASS | Phase 12C: IMPLEMENTED / PRODUCTION DEPLOYED | Phase 13A: CLOSED / PASS WITH FOLLOW-UPS | Phase 13B-1: CLOSED / PASS | Phase 13B-2: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-3: CLOSED / PASS / PRODUCTION DEPLOYED | Phase 13B-4/5/6: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
 - **Phase 12B contract:** `docs/PHASE_12B_CONTRACT_DISCOVERY.md`
 - **Phase 12B status:** CLOSED / PASS (`PHASE_12B_1_2_3_STATUS = COMPLETE_RUNTIME_VERIFIED`)
 - **Phase 12B runtime closure receipt:** `docs/receipts/PHASE_12B_RUNTIME_CLOSURE.md`
@@ -14,7 +14,7 @@
 - **Phase 12C implementation:** COMPLETE / PRODUCTION_DEPLOYED
 - **Phase 13A closure receipt:** `docs/receipts/PHASE_13A_CLOSURE.md`
 - **Phase 13A status:** CLOSED / PASS WITH FOLLOW-UPS (production readiness audit complete; no code or database mutation)
-- **Next recommended phase:** Production smoke test for debt creation, repayment, and the new on-demand reminder toggle
+- **Next recommended phase:** Verify that the Phase 13B-4/5/6 migrations are applied on Supabase project `qibfitbnlfgiqctntufr`, then owner smoke-test credit-account purchases, receivable creation, and receivable collection
 - **Accepted Phase 12A implementation SHA:** `8430212af02417a79dcc0a2f048437b719d0d186`
 - **Accepted Phase 12A implementation tree:** `0d6369fae0fa23485e6e371ade7ec36a8551bf1a`
 - **Phase 12A production deployment:** `dpl_3cajAVrkUEtNcWfSYAzEgoSAjYwt`
@@ -1538,7 +1538,7 @@ PHASE_13B3_OWNER_DATA_MUTATION=NONE
 
 ## Phase 13B-4 — Credit / Pay-Later Account Linkage
 
-### Status: IMPLEMENTED / PENDING REMOTE MIGRATION AND PRODUCTION DEPLOYMENT
+### Status: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
 
 Credit-card and pay-later accounts can now optionally declare a credit limit and
 link to one owner-scoped debt. Active expense transactions on a linked account
@@ -1548,15 +1548,114 @@ exceed the configured limit is rejected. Repayments continue to use the Phase
 13B-2 principal/interest split, so a 2,500,000 VND payment can reduce principal
 by 2,100,000 VND and record 400,000 VND as fee/interest.
 
-- Migration: `supabase/migrations/20260911130000_phase_13b4_credit_account_linkage.sql`
+- Migrations:
+  - `supabase/migrations/20260911130000_phase_13b4_credit_account_linkage.sql`
+  - `supabase/migrations/20260913203000_phase_13b4_credit_trigger_authority_fix.sql` (corrective: the debt-balance trigger function was `SECURITY INVOKER`, so authenticated purchases hit the intentional column-level protection on `debts.principal_amount` / `debts.outstanding_amount` and rolled back. Only the trigger function is elevated, with pinned `search_path`, the triggering row bound to `auth.uid()`, and client `EXECUTE` revoked; direct client mutation of debt balances stays blocked.)
 - Account UI: credit limit and debt-link fields in `AddAccountModal`; linked-account cards show remaining limit and usage.
 - Safety: owner-scoped composite foreign key, one account per linked debt, currency match, over-limit guard, no database seed or data rewrite.
-- Verification: `git diff --check` PASS. Full npm gates are pending because this sandbox lacks `node_modules` and package installation is currently unavailable.
+
+### Verification receipt (2026-11-05)
+
+- Pull request #20 (`feat/phase13b-4-credit-account-linkage`), merged 2026-09-13 as `fed732f33b13f767044d194d9c3d1c1a6bbbab6c`.
+- CI: PASS — GitHub run `34760050674` (typecheck, lint, test, build) on the merge SHA.
+- Vercel production deployment for the merge SHA: completed (`dpl_6Hr3ENvEbbWZX5MGinBNHYBHrDBu`).
+- Source verifier: `scripts/verify-phase13b4-source.mjs` (11/11 PASS, re-run locally).
+- Remote migration: UNVERIFIED — no receipt was recorded, and the Supabase migration catalog was not reachable from this documentation pass.
+- Owner smoke test (linked-account purchase, over-limit rejection, void/edit, repayment): NOT RECORDED.
 
 ```text
 PHASE_13B4_SOURCE_IMPLEMENTATION=COMPLETE
-PHASE_13B4_REMOTE_MIGRATION=PENDING_PERMISSION
+PHASE_13B4_SOURCE_VERIFIER=PASS_11_OF_11
+PHASE_13B4_CI=PASS_GITHUB_RUN_34760050674
+PHASE_13B4_REMOTE_MIGRATION=UNVERIFIED
 PHASE_13B4_DATA_MUTATION=NONE
-PHASE_13B4_PRODUCTION=NOT_DEPLOYED
+PHASE_13B4_PRODUCTION=APP_DEPLOYED_dpl_6Hr3ENvEbbWZX5MGinBNHYBHrDBu
+PHASE_13B4_OWNER_SMOKE=PENDING
 ```
+
+## Phase 13B-5 — Receivables (Money Others Owe Me)
+
+### Status: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
+
+Phase 13B-5 adds a receivable ledger, separate from `public.debts` (which only
+holds the owner's liabilities). A receivable records a borrower, principal,
+outstanding amount, currency, optional interest rate, expected payment,
+schedule (one-time, weekly, monthly, quarterly, yearly), and archive state.
+
+- **Tables:** `public.receivables` and append-only `public.receivable_payments`; views `receivable_details` and `receivable_payment_details` use `security_invoker = true`.
+- **Collections:** `record_receivable_payment` locks the receivable, checks that amount = principal + interest and that principal does not exceed outstanding, appends the payment, and reduces outstanding in one transaction.
+- **Ledger-only scope:** in this phase, payments did not create income/expense transactions or touch account balances. Phase 13B-6 replaced this behaviour.
+- **Isolation:** RLS enabled on both tables with owner-only policies; authenticated has column-level INSERT/UPDATE allowlists on `receivables`; payments are SELECT-only for clients and written only through the RPC.
+- **Constraints:** `outstanding_amount` stays between 0 and `principal_amount`; `numeric(20,4)` money; currency code format check.
+- **UI:** new `/receivables` page and navigation entry in `AppShell`.
+- Files: `supabase/migrations/20260913210000_phase_13b5_receivables.sql`, `src/features/receivables/`, `src/app/receivables/page.tsx`.
+
+### Verification receipt (2026-11-05)
+
+- Pull request #21 (`feat/phase13b5-receivables`), merged 2026-09-13 as `8ea8baca523e3392cb3186d83d2e947178d5db49`.
+- CI: PASS — GitHub run `34761345276`.
+- Vercel production deployment for the merge SHA: completed (`dpl_DGpE28fMndV6AxMDDMWCiPKQdBuv`).
+- Source verifier: `scripts/verify-phase13b5-source.mjs` (15/15 PASS, re-run locally).
+- Remote migration: UNVERIFIED.
+
+```text
+PHASE_13B5_SOURCE_IMPLEMENTATION=COMPLETE
+PHASE_13B5_SOURCE_VERIFIER=PASS_15_OF_15
+PHASE_13B5_CI=PASS_GITHUB_RUN_34761345276
+PHASE_13B5_REMOTE_MIGRATION=UNVERIFIED
+PHASE_13B5_DATA_MUTATION=NONE
+PHASE_13B5_PRODUCTION=APP_DEPLOYED_dpl_DGpE28fMndV6AxMDDMWCiPKQdBuv
+```
+
+## Phase 13B-6 — Receivable Account Linkage
+
+### Status: MERGED / CI PASS / APP DEPLOYED — REMOTE MIGRATION UNVERIFIED
+
+Phase 13B-6 connects receivables to real cash accounts while keeping principal
+out of income and expense reports:
+
+- **Lending:** `create_receivable_v2` requires a funding account. The account must be owned, active, not `CREDIT_CARD`, and in the receivable currency. The lent principal reduces that account's balance as an asset movement, not an `EXPENSE`.
+- **Legacy receivables:** a receivable created in 13B-5 without a funding account can be linked exactly once with `link_receivable_funding_account`.
+- **Collection:** `record_receivable_payment_v2` requires a receiving account with the same ownership, active, non-credit-card and currency rules. Principal restores that account's balance without an `INCOME` row; only the interest portion creates an `INCOME` transaction (category `Khác`), linked through `receivable_payments.interest_transaction_id`.
+- **Balance view:** `account_balances` now subtracts lent principal per funding account and adds returned principal per receiving account.
+- **Integrity:**
+  - Composite foreign keys `(account_id, user_id, currency_code)` bind both account links to the owner and the currency.
+  - A `BEFORE UPDATE OR DELETE` trigger on `transactions` blocks clients from editing or deleting generated interest transactions.
+  - Client `EXECUTE` on the legacy `record_receivable_payment` and direct client `INSERT` on `receivables` are revoked, so new rows must go through the v2 RPCs.
+- **View compatibility:** existing `receivable_details` / `receivable_payment_details` columns keep their order; linkage columns are appended at the end (corrective `bc1386d`).
+- **UI:** the receivable form asks for **Nguồn tiền cho vay**; the collection form asks for **Tài khoản nhận tiền**; the copy explains that principal is not counted as expense or income.
+- Files: `supabase/migrations/20260913214500_phase_13b6_receivable_account_linkage.sql`, `src/features/receivables/`, `src/app/receivables/page.tsx`, `scripts/verify-phase13b6-source.mjs`.
+
+### Verification receipt (2026-11-05)
+
+- Pull request #22 (`feat/phase13b6-receivable-account-linkage-mainwork`), merged 2026-09-13 as `342ccc030720965472457e77efb38308171f8ac7` (current `main` head).
+- CI: PASS — GitHub run `34763947072`.
+- Vercel production deployment for the merge SHA: completed (`dpl_4or66ZPYd5dhTj5J4phvb4g2C5r5`).
+- Source verifier: `scripts/verify-phase13b6-source.mjs` — 25/25 PASS in CI (Linux). A local Windows checkout reports 24/25: with `core.autocrlf=true` the migration has CRLF line endings, and the `only interest creates INCOME transaction` check matches a literal `\n`. This is a verifier portability issue, not a source defect.
+- Remote migration: UNVERIFIED.
+
+```text
+PHASE_13B6_SOURCE_IMPLEMENTATION=COMPLETE
+PHASE_13B6_SOURCE_VERIFIER=PASS_25_OF_25_CI
+PHASE_13B6_CI=PASS_GITHUB_RUN_34763947072
+PHASE_13B6_REMOTE_MIGRATION=UNVERIFIED
+PHASE_13B6_DATA_MUTATION=NONE
+PHASE_13B6_PRODUCTION=APP_DEPLOYED_dpl_4or66ZPYd5dhTj5J4phvb4g2C5r5
+PHASE_13B6_OWNER_SMOKE=PENDING
+```
+
+### Known issues / follow-ups (Phase 13B-4/5/6)
+
+| ID | Finding | Priority |
+| --- | --- | --- |
+| F13B6-OPS-01 | No record that the 13B-4, 13B-4 corrective, 13B-5 and 13B-6 migrations are applied remotely. The deployed app calls `create_receivable_v2` / `record_receivable_payment_v2`, so receivables fail at runtime if 13B-6 is missing. | P1 |
+| F13B6-DATA-01 | The Phase 13D JSON backup export (`src/features/backup/export.ts`) does not include `receivables` or `receivable_payments`. | P2 |
+| F13B6-FIN-01 | Outstanding receivables are not part of dashboard/report net worth. After 13B-6, lending lowers account balances, so net worth temporarily drops by the outstanding principal. | P2 |
+| F13B6-TEST-01 | `verify-phase13b6-source.mjs` depends on LF line endings and fails one check on Windows CRLF checkouts. | P3 |
+| F13B6-DOC-01 | `docs/DATABASE.md`, `docs/ARCHITECTURE.md` and `docs/DECISIONS.md` do not yet describe the receivable ledger or the credit-account linkage. | P3 |
+
+### Next recommended action
+
+1. Check the Supabase migration catalog for `20260911130000`, `20260913203000`, `20260913210000` and `20260913214500` (or their remote versions), and apply the missing ones.
+2. Owner smoke test: create a receivable from a funding account, record a collection with principal + interest, and confirm the account balance changes and the interest appears only as income.
 
