@@ -120,6 +120,14 @@ export async function updateSession(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
+  // 0. There is no public landing page: the root sends users straight into the app.
+  if (pathname === '/') {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = isAuthenticated ? '/dashboard' : '/login';
+
+    return createSafeRedirectResponse(redirectUrl, supabaseResponse);
+  }
+
   // 1. If unauthenticated user tries to access protected route -> redirect to /login
   if (!isAuthenticated && isProtectedRoute) {
     const redirectUrl = request.nextUrl.clone();

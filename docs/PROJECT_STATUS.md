@@ -1703,3 +1703,14 @@ PWA_DATABASE_CHANGE=NONE
 | F15-PWA-01 | Owner test: install from Chrome on Android/desktop and "Add to Home Screen" on iOS Safari after deployment. | P1 |
 | ~~F15-SEC-01~~ | RESOLVED 2026-11-05: `/income-sources`, `/debts`, `/receivables` and `/notifications` added to `protectedRoutes` in `src/lib/supabase/proxy.ts`. New `scripts/verify-protected-routes-source.mjs` (in `npm test`) fails if a top-level page under `src/app` is neither public by design nor protected. | — |
 | F15-PWA-02 | No custom in-app install button; installation relies on the browser's own install UI. | P3 |
+
+## Root Route — No Public Landing Page
+
+### Status: IMPLEMENTED ON BRANCH `feat/root-redirect-to-login`
+
+Finora is private-first, so the marketing-style landing page at `/` is removed.
+
+- `src/lib/supabase/proxy.ts`: `/` now redirects to `/dashboard` when signed in and to `/login` when signed out.
+- `src/app/page.tsx`: replaced the landing page with a server `redirect('/login')`, used only when the proxy does not run (no auth env vars).
+- Verification: TypeScript, ESLint, production build, protected-routes verifier (20/20) and PWA verifier (17/17) PASS. On a local `next start`, `/` returns `307 → /login` and the browser lands on the login page with no console errors. The signed-in redirect to `/dashboard` is checked after deployment.
+- Legacy `scripts/verify-phase8-ux-performance.mjs` (not part of `npm test`, already failing other historical checks) has landing-page check 33 (FinoraLogo on the landing page) that no longer applies.
