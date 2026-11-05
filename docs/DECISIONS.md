@@ -384,3 +384,27 @@ Consequences:
 - The application can answer “How much do I owe?” without inferring from transaction notes.
 - Payment history is durable and user-isolated under RLS.
 - Existing reports currently classify the cash outflow as an expense; a later reporting pass can separate principal/interest from consumption without changing the ledger.
+
+---
+
+## ADR-018 — Installable PWA With a No-Financial-Data Service Worker
+
+Status: Accepted (2026-11-05).
+
+Decision:
+
+- Serve the Web App Manifest from `src/app/manifest.ts` (Next.js metadata route, `/manifest.webmanifest`), with standalone display, `/dashboard` as start URL, and generated `any` + `maskable` icons in `public/icons/`.
+- Ship a hand-written service worker (`public/sw.js`) instead of a PWA plugin or Workbox build step.
+- The worker caches only fingerprinted build output (`/_next/static/*`), icons, brand images, and a static offline page. Page navigations are always fetched from the network; the cached `offline.html` is shown only when that fetch fails.
+- The worker never handles non-GET requests, cross-origin requests (Supabase, FX providers), API routes, or RSC payloads.
+- The worker is registered only in production builds; in development, existing registrations are removed.
+
+Reason:
+
+Finora pages are rendered per user and contain financial data. Caching HTML or API responses would leave one user's balances on a shared device after sign-out and could show stale amounts as if they were current. A small explicit worker keeps that rule easy to audit and avoids a new build dependency. Offline mutation sync is explicitly out of scope (AGENTS.md §34).
+
+Consequences:
+
+- Finora can be installed from Chrome/Edge/Android and added to the iOS home screen.
+- Offline use shows a clear "Bạn đang offline" page; no financial screen works offline.
+- `CACHE_VERSION` in `public/sw.js` must be bumped when the precache list or caching rules change. `/sw.js` is served with `no-cache` headers so updates reach users on the next visit.
