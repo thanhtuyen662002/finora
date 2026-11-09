@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -254,9 +255,8 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="editAnchorDate">Ngày bắt đầu</Label>
-              <Input
+              <DateInput
                 id="editAnchorDate"
-                type="date"
                 value={anchorDate}
                 onChange={(e) => setAnchorDate(e.target.value)}
                 required
@@ -265,9 +265,8 @@ export const EditRecurringModal: React.FC<EditRecurringModalProps> = ({
 
             <div className="space-y-1.5">
               <Label htmlFor="editEndDate">Ngày kết thúc (Tùy chọn)</Label>
-              <Input
+              <DateInput
                 id="editEndDate"
-                type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />

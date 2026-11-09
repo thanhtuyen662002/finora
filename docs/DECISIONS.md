@@ -408,3 +408,27 @@ Consequences:
 - Finora can be installed from Chrome/Edge/Android and added to the iOS home screen.
 - Offline use shows a clear "Bạn đang offline" page; no financial screen works offline.
 - `CACHE_VERSION` in `public/sw.js` must be bumped when the precache list or caching rules change. `/sw.js` is served with `no-cache` headers so updates reach users on the next visit.
+
+---
+
+## ADR-019 — Dashboard Shows Net Worth: Assets Minus Debts, Linked Credit Balances Excluded
+
+Status: Accepted (2026-11-09).
+
+Decision:
+
+- The Dashboard headline is net worth per currency: `totalAssets − totalDebt`.
+- `totalAssets` is the sum of active account balances, excluding accounts linked to a debt (`accounts.linked_debt_id`, Phase 13B-4).
+- `totalDebt` is the outstanding amount of non-archived debts with a positive balance.
+- Currencies are never mixed. The BASE view converts both assets and debts at the current rate, consistent with current asset valuation (AGENTS.md §18).
+- The calculation is the pure function `computeNetWorthByCurrency` in `src/features/reports/engine.ts`.
+
+Reason:
+
+A linked credit / pay-later account's balance only mirrors spending that the linked debt already carries. Counting both would double-count it, and counting the unused credit limit as an asset overstated the owner's wealth. Debts were previously not subtracted anywhere on the Dashboard.
+
+Consequences:
+
+- Credit / pay-later accounts should be linked to a debt and use `opening_balance = 0`, with the amount owed at setup recorded on the debt.
+- Receivables (Phase 13B-5/6) are not yet added as assets (F13B6-FIN-01 remains open).
+- The Reports page still shows the account balance total; it was not changed here.

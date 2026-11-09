@@ -1714,3 +1714,41 @@ Finora is private-first, so the marketing-style landing page at `/` is removed.
 - `src/app/page.tsx`: replaced the landing page with a server `redirect('/login')`, used only when the proxy does not run (no auth env vars).
 - Verification: TypeScript, ESLint, production build, protected-routes verifier (20/20) and PWA verifier (17/17) PASS. On a local `next start`, `/` returns `307 → /login` and the browser lands on the login page with no console errors. The signed-in redirect to `/dashboard` is checked after deployment.
 - Legacy `scripts/verify-phase8-ux-performance.mjs` (not part of `npm test`, already failing other historical checks) has landing-page check 33 (FinoraLogo on the landing page) that no longer applies.
+
+## Net Worth on Dashboard + dd/MM/yyyy Date Fields
+
+### Status: IMPLEMENTED ON BRANCH `feat/dashboard-net-worth-debts`
+
+**Owner data correction (production, 2026-11-09, owner-approved):** two of the owner's credit / pay-later accounts had a credit limit but no linked debt, and their opening balance held the available credit. One atomic, owner-scoped statement, using the owner's chosen start date:
+
+- created one debt per account, with outstanding = (limit − available credit at the start date) + expenses recorded since that date;
+- linked each account to its debt and set its `opening_balance` to 0;
+- available credit (limit − outstanding) is unchanged. No transactions were changed.
+
+Amounts are intentionally not recorded here because this repository is public.
+
+**Net worth (ADR-019):**
+
+- `computeNetWorthByCurrency` in `src/features/reports/engine.ts` computes per-currency assets, debts and net worth. Accounts linked to a debt are excluded from assets.
+- `getDashboardReportData` now also loads debts. `enrichDashboardBaseFx` converts debts at the current rate for the BASE view, and debt currencies are added to the FX request.
+- Dashboard: the headline card is now **Tài sản ròng**, and its subtext says how many debts were subtracted. The per-currency chips also show net worth.
+
+**Date fields:**
+
+- New `src/components/ui/date-input.tsx` always shows and accepts `dd/MM/yyyy`, whatever the browser language. It keeps the stored `yyyy-MM-dd` value, auto-inserts slashes while typing, and flags impossible dates such as 31/11 or 29/02 in non-leap years. A calendar button opens the native picker.
+- It replaces all 13 native `type="date"` inputs: debts, receivables, goals, recurring, transactions and transfers.
+- The pure conversion logic is in `src/lib/dates/display-date.ts`.
+
+### Verification (2026-11-09)
+
+- TypeScript, ESLint and a clean production build: PASS.
+- New unit tests `tests/display-date.test.ts` and `tests/net-worth.test.ts`: 9/9 PASS (`npm run test:unit:dates-networth`, added to `npm test`). The net-worth test covers linked credit / pay-later accounts, archived and settled debts, debt-only currencies and archived accounts.
+- Existing suites PASS: 12B 32/32, 12C 5/5, 13B-2 9/9, 13B-3 4/4. Verifiers 13B-2…13B-5, PWA and protected routes also PASS.
+- Browser check of `DateInput` on a temporary local page, removed before commit:
+  - shows `09/11/2026` for `2026-11-09`;
+  - typing `05082026` gives `05/08/2026`, stored as `2026-08-05`;
+  - `31/11/2026` is flagged as invalid;
+  - an incomplete entry reverts on blur;
+  - external value changes and calendar selection update the field;
+  - no console errors.
+- Not verified locally: the Dashboard itself, because it needs a signed-in Supabase session. Check it on production after deploy.

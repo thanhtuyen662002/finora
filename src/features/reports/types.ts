@@ -78,12 +78,36 @@ export interface AccountBalanceSnapshot {
   color: string;
   institution: string | null;
   isArchived: boolean;
+  // Set for credit / pay-later accounts linked to a debt (Phase 13B-4). Their
+  // spending is already counted in that debt, so net worth excludes their balance.
+  linkedDebtId: string | null;
 }
 
 export interface CurrencyAccountGroup {
   currency: string;
   totalBalance: string; // Exact decimal sum
   accounts: AccountBalanceSnapshot[];
+}
+
+/** Minimal debt shape needed to value liabilities. */
+export interface DebtLiabilityRow {
+  currency_code: string;
+  outstanding_amount: string;
+  is_archived: boolean;
+}
+
+/**
+ * Net worth for one currency (or BASE):
+ * totalAssets = active account balances, excluding accounts linked to a debt;
+ * totalDebt   = outstanding of active debts;
+ * netWorth    = totalAssets - totalDebt.
+ */
+export interface CurrencyNetWorth {
+  currency: string;
+  totalAssets: string;
+  totalDebt: string;
+  netWorth: string;
+  debtCount: number;
 }
 
 export interface IncomeStreamBreakdown {
@@ -134,6 +158,9 @@ export interface DashboardReportData {
   
   // Account balances grouped by currency
   accountBalancesByCurrency: Record<string, CurrencyAccountGroup>;
+
+  // Assets minus debts per currency (BASE added after FX valuation)
+  netWorthByCurrency: Record<string, CurrencyNetWorth>;
   
   // 6-month cash flow series per currency
   sixMonthCashFlowByCurrency: Record<string, MonthlyCashFlowPoint[]>;

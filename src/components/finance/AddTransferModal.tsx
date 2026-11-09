@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { ArrowRightLeft, AlertCircle, CheckCircle2, RotateCcw, Ban, RefreshCw } from 'lucide-react';
@@ -539,9 +540,8 @@ export const AddTransferModal: React.FC<AddTransferModalProps> = ({
               <Label htmlFor="occurred-on" className="text-xs font-semibold">
                 Ngày thực hiện <span className="text-destructive">*</span>
               </Label>
-              <Input
+              <DateInput
                 id="occurred-on"
-                type="date"
                 value={occurredOn}
                 onChange={(e) => setOccurredOn(e.target.value)}
                 disabled={loading}

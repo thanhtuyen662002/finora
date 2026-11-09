@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { MoneyInput } from '@/components/finance/MoneyInput';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
@@ -670,7 +671,7 @@ export default function DebtsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="debt-due-date">Ngày đến hạn đầu tiên</Label>
-                <Input id="debt-due-date" type="date" value={debtForm.first_due_date} onChange={(event) => setDebtForm({ ...debtForm, first_due_date: event.target.value })} />
+                <DateInput id="debt-due-date" value={debtForm.first_due_date} onChange={(event) => setDebtForm({ ...debtForm, first_due_date: event.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="debt-due-day">Ngày trả hàng tháng</Label>
@@ -809,7 +810,7 @@ export default function DebtsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="payment-rate-date">Ngày hiệu lực tỷ giá</Label>
-                <Input id="payment-rate-date" type="date" value={paymentForm.exchange_rate_effective_date} onChange={(event) => setPaymentForm({ ...paymentForm, exchange_rate_effective_date: event.target.value })} required />
+                <DateInput id="payment-rate-date" value={paymentForm.exchange_rate_effective_date} onChange={(event) => setPaymentForm({ ...paymentForm, exchange_rate_effective_date: event.target.value })} required />
               </div>
               <div className="flex items-end">
                 <p className="text-xs leading-5 text-muted-foreground">
@@ -822,7 +823,7 @@ export default function DebtsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="payment-date">Ngày thanh toán</Label>
-                <Input id="payment-date" type="date" value={paymentForm.paid_on} onChange={(event) => setPaymentForm({ ...paymentForm, paid_on: event.target.value })} required />
+                <DateInput id="payment-date" value={paymentForm.paid_on} onChange={(event) => setPaymentForm({ ...paymentForm, paid_on: event.target.value })} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="payment-note">Ghi chú</Label>

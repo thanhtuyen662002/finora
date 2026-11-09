@@ -24,6 +24,8 @@ import type {
   IncomeStreamBreakdown,
   AccountBalanceSnapshot,
   CurrencyAccountGroup,
+  CurrencyNetWorth,
+  DebtLiabilityRow,
   DebtRepaymentBreakdown,
 } from './types';
 
@@ -378,6 +380,7 @@ export function aggregateAccountBalancesByCurrency(
       color: account.color,
       institution: account.institution,
       isArchived: account.is_archived,
+      linkedDebtId: account.linked_debt_id ?? null,
     };
 
     // Active accounts participate in total balance and account list
@@ -391,6 +394,52 @@ export function aggregateAccountBalancesByCurrency(
   }
 
   return groups;
+}
+
+function emptyNetWorth(currency: string): CurrencyNetWorth {
+  return { currency, totalAssets: '0.0000', totalDebt: '0.0000', netWorth: '0.0000', debtCount: 0 };
+}
+
+/**
+ * Computes net worth per currency from grouped account balances and debts.
+ *
+ * - Assets: active accounts, excluding accounts linked to a debt. A linked
+ *   credit / pay-later account's balance only mirrors spending that the
+ *   linked debt already carries, so counting both would double-count it.
+ * - Debts: non-archived debts with a positive outstanding amount.
+ *
+ * Currencies are never mixed; BASE is produced separately after FX valuation.
+ */
+export function computeNetWorthByCurrency(
+  groups: Record<string, CurrencyAccountGroup>,
+  debts: DebtLiabilityRow[]
+): Record<string, CurrencyNetWorth> {
+  const result: Record<string, CurrencyNetWorth> = {};
+
+  for (const group of Object.values(groups)) {
+    const entry = emptyNetWorth(group.currency);
+    for (const account of group.accounts) {
+      if (account.isArchived || account.linkedDebtId) continue;
+      entry.totalAssets = addExactDecimals(entry.totalAssets, account.currentBalance);
+    }
+    result[group.currency] = entry;
+  }
+
+  for (const debt of debts) {
+    if (debt.is_archived) continue;
+    const outstanding = toExactDecimal(debt.outstanding_amount);
+    if (compareExactDecimals(outstanding, '0.0000') <= 0) continue;
+    const currency = (debt.currency_code || 'VND').toUpperCase();
+    if (!result[currency]) result[currency] = emptyNetWorth(currency);
+    result[currency].totalDebt = addExactDecimals(result[currency].totalDebt, outstanding);
+    result[currency].debtCount += 1;
+  }
+
+  for (const entry of Object.values(result)) {
+    entry.netWorth = subExactDecimals(entry.totalAssets, entry.totalDebt);
+  }
+
+  return result;
 }
 
 /**
