@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Target, AlertCircle } from 'lucide-react';
@@ -171,9 +172,8 @@ export const EditGoalModal: React.FC<EditGoalModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="editTargetDate">Hạn hoàn thành</Label>
-              <Input
+              <DateInput
                 id="editTargetDate"
-                type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
               />
