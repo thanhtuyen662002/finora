@@ -178,6 +178,13 @@ function DashboardContent() {
     totalBalance: '0.0000',
     accounts: [],
   };
+  const emptyNetWorth = {
+    totalAssets: '0.0000',
+    totalDebt: '0.0000',
+    netWorth: '0.0000',
+    debtCount: 0,
+  };
+  const activeNetWorth = data.netWorthByCurrency?.[effectiveCurrency] || emptyNetWorth;
 
   // Flatten active non-archived accounts for the account preview display (max 6)
   const allAccounts: AccountBalanceSnapshot[] = [];
@@ -248,15 +255,17 @@ function DashboardContent() {
           </div>
         ) : (
           <SummaryCard
-            title={`Tài sản (${displayCurrency})`}
+            title={`Tài sản ròng (${displayCurrency})`}
             value={<RevealableBalance
-              value={formatExactMoney(activeAccountGroup.totalBalance, displayCurrency)}
+              value={formatExactMoney(activeNetWorth.netWorth, displayCurrency)}
               className="text-inherit"
-              ariaLabel={`Tổng tài sản ${displayCurrency}`}
+              ariaLabel={`Tài sản ròng ${displayCurrency}`}
             />}
             icon={Wallet}
             highlight={true}
-            subtext={`${activeAccountGroup.accounts.length} tài khoản ${displayCurrency}`}
+            subtext={activeNetWorth.debtCount > 0
+              ? `${activeAccountGroup.accounts.length} tài khoản, đã trừ ${activeNetWorth.debtCount} khoản nợ`
+              : `${activeAccountGroup.accounts.length} tài khoản ${displayCurrency}`}
           />
         )}
         <SummaryCard
@@ -311,7 +320,7 @@ function DashboardContent() {
       {data.availableCurrencies.length > 1 && (
         <div className="p-3.5 rounded-lg border bg-card/80 text-xs space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-foreground">Tổng số dư theo từng loại tiền tệ:</span>
+            <span className="font-semibold text-foreground">Tài sản ròng theo từng loại tiền tệ:</span>
             <span className="text-[11px] text-muted-foreground italic">
               Đã bao gồm tỷ giá quy đổi tài sản tự động.
             </span>
@@ -319,6 +328,7 @@ function DashboardContent() {
           <div className="flex flex-wrap gap-3 pt-1">
             {data.availableCurrencies.map((c) => {
               const group = data.accountBalancesByCurrency[c];
+              const netWorth = data.netWorthByCurrency?.[c];
               const isBaseValUnavailable = c === 'BASE' && data.baseValuation.status !== 'AVAILABLE';
               return (
                 <div key={c} className="flex items-center space-x-1.5 bg-muted/40 px-2.5 py-1 rounded-md border">
@@ -327,9 +337,9 @@ function DashboardContent() {
                     {isBaseValUnavailable
                       ? 'Không khả dụng'
                       : <RevealableBalance
-                        value={formatExactMoney(group?.totalBalance || '0.0000', c === 'BASE' ? data.baseCurrency : c)}
+                        value={formatExactMoney(netWorth?.netWorth || '0.0000', c === 'BASE' ? data.baseCurrency : c)}
                         className="font-medium text-foreground"
-                        ariaLabel={`Tổng số dư ${c === 'BASE' ? data.baseCurrency : c}`}
+                        ariaLabel={`Tài sản ròng ${c === 'BASE' ? data.baseCurrency : c}`}
                       />}
                   </span>
                   <span className="text-[10px] text-muted-foreground">

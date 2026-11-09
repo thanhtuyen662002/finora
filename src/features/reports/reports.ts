@@ -8,6 +8,7 @@ import {
   type ExtendedTransaction,
 } from '@/features/transactions';
 import { getAccounts, getAccountBalances } from '@/features/accounts';
+import { getDebts } from '@/features/debts';
 import type { AccountRow } from '@/types/database';
 import {
   getDateRangeForPeriod,
@@ -17,6 +18,7 @@ import {
   validateAndResolveTimezone,
   aggregateCurrencySummaries,
   aggregateAccountBalancesByCurrency,
+  computeNetWorthByCurrency,
   aggregateCashFlow,
   aggregateCategoryExpenses,
   aggregateIncomeSourcesBreakdown,
@@ -28,6 +30,7 @@ import type {
   DetailedReportData,
   CurrencySummary,
   AccountBalanceSnapshot,
+  DebtLiabilityRow,
   BaseValuationProvenance,
   BaseHistoricalProvenance,
   BaseConvertedTransaction,
@@ -91,9 +94,10 @@ export async function getDashboardReportData(
 ): Promise<DashboardReportData> {
   const supabase = createClient();
 
-  const [accounts, balances, userSettingsResult] = await Promise.all([
+  const [accounts, balances, debtRows, userSettingsResult] = await Promise.all([
     getAccounts(),
     getAccountBalances(),
+    getDebts(),
     supabase.from('user_settings').select('*').maybeSingle(),
   ]);
 
@@ -130,6 +134,12 @@ export async function getDashboardReportData(
   const currentMonthPrefix = getCurrentMonthPrefix(timezone);
   const currentMonthSummaries = aggregateCurrencySummaries(transactions, currentMonthPrefix);
   const accountBalancesByCurrency = aggregateAccountBalancesByCurrency(accounts, balances);
+  const debts: DebtLiabilityRow[] = debtRows.map((debt) => ({
+    currency_code: debt.currency_code,
+    outstanding_amount: String(debt.outstanding_amount),
+    is_archived: debt.is_archived,
+  }));
+  const netWorthByCurrency = computeNetWorthByCurrency(accountBalancesByCurrency, debts);
 
   const sixMonthCashFlowByCurrency: Record<string, any> = {};
   const incomeBreakdownByCurrency: Record<string, any> = {};
@@ -161,6 +171,7 @@ export async function getDashboardReportData(
     _periodTxList?: ExtendedTransaction[];
     _accounts?: AccountRow[];
     _balances?: Record<string, string>;
+    _debts?: DebtLiabilityRow[];
     _dateRange6M?: any;
     _currentMonthPrefix?: string;
   } = {
@@ -173,6 +184,7 @@ export async function getDashboardReportData(
     baseHistorical,
     currentMonthSummaries,
     accountBalancesByCurrency,
+    netWorthByCurrency,
     sixMonthCashFlowByCurrency,
     incomeBreakdownByCurrency,
     recentTransactions,
@@ -180,6 +192,7 @@ export async function getDashboardReportData(
     _periodTxList: periodTxList,
     _accounts: accounts,
     _balances: balances,
+    _debts: debts,
     _dateRange6M: dateRange6M,
     _currentMonthPrefix: currentMonthPrefix,
   };
@@ -195,6 +208,7 @@ export async function enrichDashboardBaseFx(
   const periodTxList: ExtendedTransaction[] = (data as any)._periodTxList || [];
   const accounts: AccountRow[] = (data as any)._accounts || [];
   const balances: Record<string, string> = (data as any)._balances || {};
+  const debts: DebtLiabilityRow[] = (data as any)._debts || [];
   const dateRange6M = (data as any)._dateRange6M || getDateRangeForPeriod('6M', data.timezone, new Date(), undefined, undefined);
   const currentMonthPrefix = (data as any)._currentMonthPrefix || getCurrentMonthPrefix(data.timezone);
 
@@ -202,7 +216,11 @@ export async function enrichDashboardBaseFx(
 
   const valuationTask = (async () => {
     const activeAccounts = accounts.filter((a) => !a.is_archived);
-    const uniqueAccCurrencies = Array.from(new Set(activeAccounts.map((a) => (a.currency_code || 'VND').toUpperCase())));
+    const activeDebts = debts.filter((d) => !d.is_archived);
+    const uniqueAccCurrencies = Array.from(new Set([
+      ...activeAccounts.map((a) => (a.currency_code || 'VND').toUpperCase()),
+      ...activeDebts.map((d) => (d.currency_code || 'VND').toUpperCase()),
+    ]));
     const rateRes = await fetch('/api/fx/current-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -248,13 +266,33 @@ export async function enrichDashboardBaseFx(
       }
     }
 
+    const baseGroup = {
+      currency: 'BASE',
+      totalBalance: baseTotalBalance,
+      accounts: baseAccounts
+    };
     enriched.accountBalancesByCurrency = {
       ...enriched.accountBalancesByCurrency,
-      BASE: {
-        currency: 'BASE',
-        totalBalance: baseTotalBalance,
-        accounts: baseAccounts
+      BASE: baseGroup
+    };
+
+    // Debts are valued at today's rate, the same as foreign-currency assets.
+    const baseDebts: DebtLiabilityRow[] = activeDebts.map((debt) => {
+      const c = (debt.currency_code || 'VND').toUpperCase();
+      const rateObj = rates[c];
+      if (!rateObj && c !== data.baseCurrency) {
+        throw new Error(`Missing required rate for ${c}`);
       }
+      const rate = rateObj ? rateObj.rate : '1.000000000000';
+      return {
+        currency_code: 'BASE',
+        outstanding_amount: convertExactAmount(debt.outstanding_amount, rate),
+        is_archived: false,
+      };
+    });
+    enriched.netWorthByCurrency = {
+      ...enriched.netWorthByCurrency,
+      BASE: computeNetWorthByCurrency({ BASE: baseGroup }, baseDebts).BASE,
     };
   })();
 
